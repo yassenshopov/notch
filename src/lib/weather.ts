@@ -1,3 +1,10 @@
+import {
+  fetchAirQuality,
+  type AirQualityPayload,
+  type AirQualitySample,
+  type AqiScale,
+  type PollenType,
+} from "./air-quality"
 import { getSettings } from "../config/settings-store"
 import { normalizeWindDegrees, windDirection } from "./utils"
 
@@ -22,6 +29,11 @@ export type HourlyPoint = {
   pressure: number
   visibilityKm: number
   uvIndex: number
+  aqi: number | null
+  aqiScale: AqiScale
+  pm25: number | null
+  pollen: number | null
+  pollenType: PollenType | null
   code: WeatherCode
   isDay: boolean
 }
@@ -43,6 +55,11 @@ export type DayForecast = {
   pressure: number
   visibilityKm: number
   uvIndex: number
+  aqi: number | null
+  aqiScale: AqiScale
+  pm25: number | null
+  pollen: number | null
+  pollenType: PollenType | null
   isDay: boolean
   /** Compact strip for the overview row */
   hourly: HourlyPoint[]
@@ -68,6 +85,8 @@ export type WeatherMetric =
   | "pressure"
   | "visibility"
   | "uv"
+  | "aqi"
+  | "pollen"
 
 type GeoResult = {
   latitude: number
@@ -105,10 +124,27 @@ function dateKey(iso: string) {
   return iso.slice(0, 10)
 }
 
-function pointAt(hourly: HourlyBags, i: number): HourlyPoint {
+const emptyAq: AirQualitySample = {
+  aqi: null,
+  aqiScale: "european",
+  pm25: null,
+  pm10: null,
+  uvIndex: null,
+  pollen: null,
+  pollenType: null,
+}
+
+function aqAt(aq: AirQualityPayload | null, time: string): AirQualitySample {
+  return aq?.byTime.get(time) ?? emptyAq
+}
+
+function pointAt(hourly: HourlyBags, i: number, aq: AirQualityPayload | null): HourlyPoint {
   const windDegrees = normalizeWindDegrees(hourly.wind_direction_10m[i])
+  const time = hourly.time[i]
+  const air = aqAt(aq, time)
+  const forecastUv = Math.round((hourly.uv_index?.[i] ?? 0) * 10) / 10
   return {
-    time: hourly.time[i],
+    time,
     temp: hourly.temperature_2m[i],
     feelsLike: hourly.apparent_temperature[i],
     humidity: hourly.relative_humidity_2m[i],
@@ -117,7 +153,12 @@ function pointAt(hourly: HourlyBags, i: number): HourlyPoint {
     windDegrees,
     pressure: Math.round(hourly.surface_pressure[i]),
     visibilityKm: Math.round(((hourly.visibility?.[i] ?? 10000) / 1000) * 10) / 10,
-    uvIndex: Math.round((hourly.uv_index?.[i] ?? 0) * 10) / 10,
+    uvIndex: air.uvIndex ?? forecastUv,
+    aqi: air.aqi,
+    aqiScale: air.aqiScale,
+    pm25: air.pm25,
+    pollen: air.pollen,
+    pollenType: air.pollenType,
     code: mapWeatherCode(hourly.weather_code[i]),
     isDay: hourly.is_day[i] === 1,
   }
@@ -250,7 +291,10 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
     wind_speed_unit: windUnit,
   })
 
-  const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
+  const [res, air] = await Promise.all([
+    fetch(`https://api.open-meteo.com/v1/forecast?${params}`),
+    fetchAirQuality(loc.latitude, loc.longitude, 7),
+  ])
   if (!res.ok) throw new Error("Weather request failed")
 
   const data = await res.json()
@@ -268,12 +312,13 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
     const indices = dayIndices(date, hourly.time)
     const overviewIdx = pickOverviewHours(indices, hourly.time, isToday, nowMs)
     const seriesIdx = pickSeriesHours(indices)
-    const overview = overviewIdx.map((idx) => pointAt(hourly, idx))
-    const series = seriesIdx.map((idx) => pointAt(hourly, idx))
+    const overview = overviewIdx.map((idx) => pointAt(hourly, idx, air))
+    const series = seriesIdx.map((idx) => pointAt(hourly, idx, air))
 
     if (isToday) {
       const visibilityM = hourly.visibility?.[currentHourIndex] ?? 10000
-      const uv = hourly.uv_index?.[currentHourIndex] ?? 0
+      const forecastUv = hourly.uv_index?.[currentHourIndex] ?? 0
+      const currentAq = air?.current ?? aqAt(air, hourly.time[currentHourIndex])
       return {
         date,
         isToday: true,
@@ -290,7 +335,12 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
         windDegrees: normalizeWindDegrees(data.current.wind_direction_10m),
         pressure: Math.round(data.current.surface_pressure),
         visibilityKm: Math.round((visibilityM / 1000) * 10) / 10,
-        uvIndex: Math.round(uv * 10) / 10,
+        uvIndex: currentAq.uvIndex ?? Math.round(forecastUv * 10) / 10,
+        aqi: currentAq.aqi,
+        aqiScale: currentAq.aqiScale,
+        pm25: currentAq.pm25,
+        pollen: currentAq.pollen,
+        pollenType: currentAq.pollenType,
         isDay: data.current.is_day === 1,
         hourly: overview,
         series,
@@ -302,7 +352,8 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
     )
     const sampleIdx = noonIdx >= 0 ? noonIdx : hourly.time.findIndex((t) => dateKey(t) === date)
     const visibilityM = hourly.visibility?.[sampleIdx] ?? 10000
-    const uv = hourly.uv_index?.[sampleIdx] ?? 0
+    const forecastUv = hourly.uv_index?.[sampleIdx] ?? 0
+    const noonAq = aqAt(air, hourly.time[sampleIdx] ?? "")
 
     return {
       date,
@@ -320,7 +371,12 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
       windDegrees: normalizeWindDegrees(sampleAt(date, hourly, hourly.wind_direction_10m)),
       pressure: Math.round(sampleAt(date, hourly, hourly.surface_pressure)),
       visibilityKm: Math.round((visibilityM / 1000) * 10) / 10,
-      uvIndex: Math.round(uv * 10) / 10,
+      uvIndex: noonAq.uvIndex ?? Math.round(forecastUv * 10) / 10,
+      aqi: noonAq.aqi,
+      aqiScale: noonAq.aqiScale,
+      pm25: noonAq.pm25,
+      pollen: noonAq.pollen,
+      pollenType: noonAq.pollenType,
       isDay: true,
       hourly: overview,
       series,

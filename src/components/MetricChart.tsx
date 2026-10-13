@@ -66,14 +66,19 @@ export function MetricChart({
   }
 
   return (
-    <div className={cn("flex w-full min-h-0 flex-1 flex-col", className)}>
-      <div className="mb-1 flex justify-between text-[10px] tabular-nums text-black/35 dark:text-white/35">
+    <div
+      className={cn(
+        "grid w-full min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-x-2 gap-y-1",
+        className,
+      )}
+    >
+      <div className="flex flex-col justify-between py-0.5 text-right text-[10px] leading-none tabular-nums text-black/35 dark:text-white/35">
         <span>{maxLabel}</span>
         <span>{minLabel}</span>
       </div>
       <svg
         viewBox="0 0 100 56"
-        className="min-h-[9rem] w-full flex-1 overflow-visible"
+        className="min-h-[9rem] h-full w-full overflow-visible"
         preserveAspectRatio="none"
       >
         <path d={area} fill={accent} opacity="0.12" />
@@ -87,7 +92,8 @@ export function MetricChart({
           vectorEffect="non-scaling-stroke"
         />
       </svg>
-      <div className="mt-1 flex justify-between text-[10px] text-black/35 dark:text-white/35">
+      <div aria-hidden className="col-start-1" />
+      <div className="flex justify-between text-[10px] text-black/35 dark:text-white/35">
         {labels.map((l) => (
           <span key={l.time}>{formatHour(l.time)}</span>
         ))}

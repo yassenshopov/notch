@@ -1,6 +1,15 @@
 import { AnimatePresence, motion } from "motion/react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useSettings } from "../config/settings-store"
+import {
+  aqiCategory,
+  formatAqi,
+  formatPollen,
+  formatUv,
+  POLLEN_TYPE_LABEL,
+  pollenCategory,
+  uvCategory,
+} from "../lib/air-quality"
 import type { DayForecast, WeatherMetric, WeatherSnapshot } from "../lib/weather"
 import {
   cn,
@@ -28,6 +37,8 @@ const METRICS: { id: WeatherMetric; label: string }[] = [
   { id: "pressure", label: "Pressure" },
   { id: "visibility", label: "Visibility" },
   { id: "uv", label: "UV index" },
+  { id: "aqi", label: "Air quality" },
+  { id: "pollen", label: "Pollen" },
 ]
 
 export function WeatherPanel({ data }: Props) {
@@ -68,7 +79,7 @@ export function WeatherPanel({ data }: Props) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
             transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.8 }}
-            className="flex h-full flex-col"
+            className="notch-scroll h-full"
           >
             <DayBody
               day={day}
@@ -164,12 +175,16 @@ function DayBody({
       case "visibility":
         return `${day.visibilityKm} km`
       case "uv":
-        return String(day.uvIndex)
+        return formatUv(day.uvIndex)
+      case "aqi":
+        return formatAqi(day.aqi, day.aqiScale)
+      case "pollen":
+        return formatPollen(day.pollen, day.pollenType)
     }
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex min-h-full flex-col">
       <header className="mb-1 flex shrink-0 items-start justify-between gap-3 pr-10">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold tracking-tight">{locationLabel}</p>
@@ -218,7 +233,12 @@ function DayBody({
                 ) : null}
               </div>
 
-              <div className="mt-auto flex justify-between gap-1 pb-1 pt-6">
+              <AirGlance
+                day={day}
+                onSelect={(id) => onToggleMetric(id)}
+              />
+
+              <div className="mt-auto flex justify-between gap-1 pb-1 pt-4">
                 {day.hourly.map((h) => (
                   <div key={h.time} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                     <span className="text-[10px] text-black/40 dark:text-white/40">
@@ -281,6 +301,14 @@ function MetricHero({
         return series.map((p) => ({ time: p.time, value: p.visibilityKm }))
       case "uv":
         return series.map((p) => ({ time: p.time, value: p.uvIndex }))
+      case "aqi":
+        return series
+          .filter((p) => p.aqi != null)
+          .map((p) => ({ time: p.time, value: p.aqi as number }))
+      case "pollen":
+        return series
+          .filter((p) => p.pollen != null)
+          .map((p) => ({ time: p.time, value: p.pollen as number }))
       default:
         return []
     }
@@ -300,10 +328,23 @@ function MetricHero({
         return `${Math.round(v * 10) / 10} km`
       case "uv":
         return String(Math.round(v * 10) / 10)
+      case "aqi":
+        return String(Math.round(v))
+      case "pollen":
+        return String(Math.round(v * 10) / 10)
       default:
         return String(Math.round(v))
     }
   }
+
+  const subtitle =
+    metric === "uv"
+      ? uvCategory(day.uvIndex)
+      : metric === "aqi" && day.aqi != null
+        ? aqiCategory(day.aqi, day.aqiScale)
+        : metric === "pollen" && day.pollen != null
+          ? pollenCategory(day.pollen)
+          : null
 
   return (
     <div className="flex h-full flex-col">
@@ -319,21 +360,110 @@ function MetricHero({
               </span>
               <WindArrow degrees={day.windDegrees} className="size-7" />
             </p>
+          ) : metric === "aqi" ? (
+            <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
+              {day.aqi != null ? day.aqi : "—"}
+            </p>
+          ) : metric === "pollen" ? (
+            <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
+              {day.pollen != null ? Math.round(day.pollen) : "—"}
+            </p>
+          ) : metric === "uv" ? (
+            <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
+              {day.uvIndex}
+            </p>
           ) : (
             <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
               {value}
             </p>
           )}
+          {subtitle ? (
+            <p className="mt-1.5 text-[12px] font-medium text-black/45 dark:text-white/45">
+              {subtitle}
+              {metric === "aqi" ? (
+                <span className="text-black/30 dark:text-white/30">
+                  {" "}
+                  · {day.aqiScale === "us" ? "US AQI" : "EAQI"}
+                  {day.pm25 != null ? ` · PM2.5 ${day.pm25}` : ""}
+                </span>
+              ) : null}
+              {metric === "pollen" && day.pollenType ? (
+                <span className="text-black/30 dark:text-white/30">
+                  {" "}
+                  · {POLLEN_TYPE_LABEL[day.pollenType]}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
         </div>
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
         {metric === "sunrise" || metric === "sunset" ? (
           <SunPath sunrise={day.sunrise} sunset={day.sunset} mode={metric} />
-        ) : (
+        ) : chartPoints.length > 0 ? (
           <MetricChart points={chartPoints} formatValue={formatValue} className="h-full" />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[12px] text-black/35 dark:text-white/35">
+            {metric === "pollen"
+              ? "Pollen data is Europe-only (seasonal)"
+              : "No series for this day"}
+          </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function AirGlance({
+  day,
+  onSelect,
+}: {
+  day: DayForecast
+  onSelect: (id: WeatherMetric) => void
+}) {
+  const chips: { id: WeatherMetric; label: string; value: string }[] = [
+    {
+      id: "aqi",
+      label: "AQI",
+      value:
+        day.aqi != null ? `${day.aqi} ${aqiCategory(day.aqi, day.aqiScale)}` : "—",
+    },
+    {
+      id: "uv",
+      label: "UV",
+      value: `${day.uvIndex} ${uvCategory(day.uvIndex)}`,
+    },
+    {
+      id: "pollen",
+      label: "Pollen",
+      value:
+        day.pollen == null
+          ? "—"
+          : day.pollen <= 0
+            ? "None"
+            : pollenCategory(day.pollen),
+    },
+  ]
+
+  return (
+    <div className="mt-3 flex gap-1.5">
+      {chips.map((chip) => (
+        <button
+          key={chip.id}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onSelect(chip.id)
+          }}
+          className="min-w-0 flex-1 rounded-xl bg-black/[0.04] px-2 py-1.5 text-left transition-colors hover:bg-black/[0.07] dark:bg-white/[0.06] dark:hover:bg-white/[0.1]"
+        >
+          <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-black/40 dark:text-white/40">
+            {chip.label}
+          </p>
+          <p className="truncate text-[11px] font-semibold tracking-tight">{chip.value}</p>
+        </button>
+      ))}
     </div>
   )
 }
