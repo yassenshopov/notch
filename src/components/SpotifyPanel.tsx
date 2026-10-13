@@ -146,16 +146,6 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
               >
                 {track.artists}
               </p>
-              {track.album ? (
-                <p
-                  className={cn(
-                    "mt-1 truncate text-[12px]",
-                    themed ? "text-[color:var(--sp-subtle)]" : "text-black/30 dark:text-white/30",
-                  )}
-                >
-                  {track.album}
-                </p>
-              ) : null}
             </div>
           </motion.div>
         </AnimatePresence>

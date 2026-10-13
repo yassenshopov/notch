@@ -1,11 +1,12 @@
 @import "tailwindcss";
+@import "@fontsource-variable/outfit";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-@font-face {
-  font-family: "Geist";
-  src: local("Geist"), local("Inter");
-  font-display: swap;
+@theme {
+  --font-sans:
+    "Outfit Variable", "Outfit", "Segoe UI Variable", "Segoe UI", system-ui,
+    -apple-system, sans-serif;
 }
 
 html,
@@ -16,13 +17,7 @@ body,
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family:
-    "Geist",
-    "Segoe UI Variable",
-    "Segoe UI",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
@@ -30,12 +25,29 @@ body,
 
 * {
   box-sizing: border-box;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none; /* Firefox — still scrollable */
   -ms-overflow-style: none; /* IE/Edge legacy */
 }
 
 *::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Electron */
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/* Smooth, scrollbar-free panels (Settings, Weather, …) */
+.notch-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.notch-scroll::-webkit-scrollbar {
+  display: none;
   width: 0;
   height: 0;
 }
@@ -45,12 +57,12 @@ body {
 }
 
 /*
- * Dynamic-Island style top scoops.
- * Radial gradient paints a smooth concave corner that meets the
- * screen edge flush — no box-shadow sizing mismatches.
+ * Apple Dynamic Island–style top scoops.
+ * Small concave ears (~10px) blend the pill into the top edge;
+ * radial gradient keeps the join flush without box-shadow hacks.
  */
 .notch-fold {
-  --ear: 18px;
+  --ear: 10px;
   /* Nudge 1px under the screen edge to hide subpixel gaps on Windows */
   margin-top: -1px;
   padding-top: 1px;
@@ -63,14 +75,18 @@ body {
   height: var(--ear);
   pointer-events: none;
   z-index: 3;
+  transition: width 0.58s cubic-bezier(0.32, 0.72, 0, 1),
+    height 0.58s cubic-bezier(0.32, 0.72, 0, 1),
+    left 0.58s cubic-bezier(0.32, 0.72, 0, 1),
+    right 0.58s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .notch-ear--left {
   left: calc(var(--ear) * -1);
   background: radial-gradient(
     circle at 0 100%,
-    transparent calc(var(--ear) - 0.5px),
-    var(--notch-fill, #111) calc(var(--ear) - 0.25px)
+    transparent calc(var(--ear) - 0.4px),
+    var(--notch-fill, #111) calc(var(--ear) - 0.15px)
   );
 }
 
@@ -78,8 +94,8 @@ body {
   right: calc(var(--ear) * -1);
   background: radial-gradient(
     circle at 100% 100%,
-    transparent calc(var(--ear) - 0.5px),
-    var(--notch-fill, #111) calc(var(--ear) - 0.25px)
+    transparent calc(var(--ear) - 0.4px),
+    var(--notch-fill, #111) calc(var(--ear) - 0.15px)
   );
 }
 
@@ -132,4 +148,144 @@ body {
   50% {
     transform: scaleY(1);
   }
+}
+
+/* Compact battery — collapsed notch */
+.battery__fill {
+  transition: width 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.battery--low {
+  color: #f5a524;
+}
+
+.battery--critical {
+  color: #f31260;
+  animation: battery-critical-pulse 1.4s ease-in-out infinite;
+}
+
+.battery--charging .battery__fill {
+  opacity: 0.85;
+}
+
+.battery--charging .battery__shimmer {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: battery-shine 1.6s ease-in-out infinite;
+}
+
+.battery--charging .battery__bolt {
+  animation: battery-bolt-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes battery-shine {
+  0% {
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+}
+
+@keyframes battery-bolt-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes battery-critical-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Quick controls sliders */
+.notch-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 14%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.notch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  border: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, currentColor 12%, transparent);
+  cursor: grab;
+}
+
+.notch-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  border: none;
+  cursor: grab;
+}
+
+.notch-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 14%, transparent);
+}
+
+/* Quick controls sliders */
+.notch-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 14%, transparent);
+  outline: none;
+  cursor: pointer;
+}
+
+.notch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  border: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, currentColor 12%, transparent);
+  cursor: grab;
+}
+
+.notch-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  border: none;
+  cursor: grab;
+}
+
+.notch-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 14%, transparent);
 }
