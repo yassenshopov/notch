@@ -1,6 +1,8 @@
-import { useState, type ReactNode } from "react"
-import type { ThemeMode } from "../config/settings"
+import { AnimatePresence, LayoutGroup, motion } from "motion/react"
+import { useId, useState, type ReactNode } from "react"
+import type { ClockFormat, ThemeMode } from "../config/settings"
 import { resetSettings, updateSettings, useSettings } from "../config/settings-store"
+import { ISLAND_EASE } from "../lib/island-motion"
 import { cn } from "../lib/utils"
 
 type Props = {
@@ -42,15 +44,96 @@ export function SettingsPanel({
 
   return (
     <div
-      className="flex h-full flex-col overflow-y-auto overflow-x-hidden pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="notch-scroll flex h-full flex-col pr-1"
       onClick={(e) => e.stopPropagation()}
     >
       <header className="mb-5">
         <p className="text-[15px] font-semibold tracking-tight">Settings</p>
         <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-          Knobs for weather, Spotify, look & feel.
+          Island faces, weather, Spotify & feel.
         </p>
       </header>
+
+      <Section title="Island">
+        <Row label="Rotate">
+          <Segmented
+            value={String(s.island.rotateIntervalMs)}
+            options={[
+              { value: "3000", label: "3s" },
+              { value: "5000", label: "5s" },
+              { value: "8000", label: "8s" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: { ...s.island, rotateIntervalMs: Number(v) },
+              })
+            }
+          />
+        </Row>
+        <Row label="Weather">
+          <Segmented
+            value={s.island.faces.weather ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, weather: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Battery">
+          <Segmented
+            value={s.island.faces.battery ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, battery: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Clock">
+          <Segmented
+            value={s.island.faces.clock ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, clock: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Time">
+          <Segmented
+            value={s.clock.format}
+            options={[
+              { value: "24h", label: "24h" },
+              { value: "12h", label: "12h" },
+            ]}
+            onChange={(format) =>
+              void updateSettings({ clock: { format: format as ClockFormat } })
+            }
+          />
+        </Row>
+      </Section>
 
       <Section title="Weather">
         <Row label="Temperature">
@@ -101,32 +184,53 @@ export function SettingsPanel({
             }}
           />
         </Row>
-        {s.location.mode === "manual" ? (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <Field
-              label="Label"
-              value={manualLabel}
-              onChange={setManualLabel}
-              onBlur={() => saveManual()}
-              className="col-span-2"
-            />
-            <Field
-              label="Lat"
-              value={manualLat}
-              onChange={setManualLat}
-              onBlur={() => saveManual()}
-            />
-            <Field
-              label="Lon"
-              value={manualLon}
-              onChange={setManualLon}
-              onBlur={() => saveManual()}
-            />
-          </div>
-        ) : null}
+        <AnimatePresence initial={false}>
+          {s.location.mode === "manual" ? (
+            <motion.div
+              key="manual-location"
+              initial={{ opacity: 0, height: 0, y: -6 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -6 }}
+              transition={{ duration: 0.32, ease: ISLAND_EASE }}
+              className="overflow-hidden"
+            >
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Field
+                  label="Label"
+                  value={manualLabel}
+                  onChange={setManualLabel}
+                  onBlur={() => saveManual()}
+                  className="col-span-2"
+                />
+                <Field
+                  label="Lat"
+                  value={manualLat}
+                  onChange={setManualLat}
+                  onBlur={() => saveManual()}
+                />
+                <Field
+                  label="Lon"
+                  value={manualLon}
+                  onChange={setManualLon}
+                  onBlur={() => saveManual()}
+                />
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </Section>
 
-      <Section title="Appearance">
+      <Section title="App">
+        <Row label="Launch at login">
+          <Segmented
+            value={s.launchAtLogin ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) => void updateSettings({ launchAtLogin: v === "on" })}
+          />
+        </Row>
         <Row label="Theme">
           <Segmented
             value={s.theme}
@@ -138,49 +242,7 @@ export function SettingsPanel({
             onChange={(theme) => void updateSettings({ theme: theme as ThemeMode })}
           />
         </Row>
-      </Section>
-
-      <Section title="Spotify">
-        <Row label="Poll">
-          <Segmented
-            value={String(s.spotify.pollIntervalMs)}
-            options={[
-              { value: "2000", label: "2s" },
-              { value: "4000", label: "4s" },
-              { value: "8000", label: "8s" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({ spotify: { ...s.spotify, pollIntervalMs: Number(v) } })
-            }
-          />
-        </Row>
-        <div className="mt-3">
-          {!spotifyConfigured ? (
-            <p className="text-[12px] text-black/45 dark:text-white/45">
-              Add Spotify keys to <span className="font-medium">.env</span> first.
-            </p>
-          ) : spotifyConnected ? (
-            <button
-              type="button"
-              onClick={onDisconnectSpotify}
-              className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
-            >
-              Disconnect Spotify
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onConnectSpotify}
-              className="rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white dark:bg-white dark:text-[#111]"
-            >
-              {connecting ? "Waiting…" : "Connect Spotify"}
-            </button>
-          )}
-        </div>
-      </Section>
-
-      <Section title="Motion">
-        <Row label="Feel">
+        <Row label="Motion">
           <Segmented
             value={
               s.motion.stiffness >= 420 ? "snappy" : s.motion.stiffness <= 280 ? "soft" : "balanced"
@@ -200,6 +262,66 @@ export function SettingsPanel({
             }}
           />
         </Row>
+      </Section>
+
+      <Section title="Spotify">
+        <Row label="Poll">
+          <Segmented
+            value={String(s.spotify.pollIntervalMs)}
+            options={[
+              { value: "2000", label: "2s" },
+              { value: "4000", label: "4s" },
+              { value: "8000", label: "8s" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({ spotify: { ...s.spotify, pollIntervalMs: Number(v) } })
+            }
+          />
+        </Row>
+        <div className="mt-3">
+          <AnimatePresence mode="wait" initial={false}>
+            {!spotifyConfigured ? (
+              <motion.p
+                key="spotify-unconfigured"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                className="text-[12px] text-black/45 dark:text-white/45"
+              >
+                Add Spotify keys to <span className="font-medium">.env</span> first.
+              </motion.p>
+            ) : spotifyConnected ? (
+              <motion.button
+                key="spotify-disconnect"
+                type="button"
+                onClick={onDisconnectSpotify}
+                initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                whileTap={{ scale: 0.97 }}
+                className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
+              >
+                Disconnect Spotify
+              </motion.button>
+            ) : (
+              <motion.button
+                key="spotify-connect"
+                type="button"
+                onClick={onConnectSpotify}
+                initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                whileTap={{ scale: 0.97 }}
+                className="rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white dark:bg-white dark:text-[#111]"
+              >
+                {connecting ? "Waiting…" : "Connect Spotify"}
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
       </Section>
 
       <div className="mt-auto pt-4 pb-1">
@@ -244,24 +366,47 @@ function Segmented<T extends string>({
   options: { value: T; label: string }[]
   onChange: (value: T) => void
 }) {
+  const id = useId()
+  const { motion: feel } = useSettings()
+  const pillTransition = {
+    type: "spring" as const,
+    stiffness: feel.stiffness,
+    damping: feel.damping,
+    mass: feel.mass,
+  }
+
   return (
-    <div className="flex rounded-full bg-black/5 p-0.5 dark:bg-white/10">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-            value === opt.value
-              ? "bg-[#111] text-white dark:bg-white dark:text-[#111]"
-              : "text-black/45 dark:text-white/45",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
+    <LayoutGroup id={id}>
+      <div className="relative flex rounded-full bg-black/5 p-0.5 dark:bg-white/10">
+        {options.map((opt) => {
+          const selected = value === opt.value
+          return (
+            <motion.button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              whileTap={{ scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 520, damping: 28, mass: 0.55 }}
+              className={cn(
+                "relative rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors duration-200",
+                selected
+                  ? "text-white dark:text-[#111]"
+                  : "text-black/45 dark:text-white/45",
+              )}
+            >
+              {selected ? (
+                <motion.span
+                  layoutId={`${id}-pill`}
+                  className="absolute inset-0 rounded-full bg-[#111] dark:bg-white"
+                  transition={pillTransition}
+                />
+              ) : null}
+              <span className="relative z-10">{opt.label}</span>
+            </motion.button>
+          )
+        })}
+      </div>
+    </LayoutGroup>
   )
 }
 
