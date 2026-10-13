@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: "Geist";
+  src: local("Geist"), local("Inter");
+  font-display: swap;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family:
+    "Geist",
+    "Segoe UI Variable",
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Electron */
+  width: 0;
+  height: 0;
+}
+
+body {
+  background: transparent !important;
+}
+
+/*
+ * Dynamic-Island style top scoops.
+ * Radial gradient paints a smooth concave corner that meets the
+ * screen edge flush — no box-shadow sizing mismatches.
+ */
+.notch-fold {
+  --ear: 18px;
+  /* Nudge 1px under the screen edge to hide subpixel gaps on Windows */
+  margin-top: -1px;
+  padding-top: 1px;
+}
+
+.notch-ear {
+  position: absolute;
+  top: 0;
+  width: var(--ear);
+  height: var(--ear);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.notch-ear--left {
+  left: calc(var(--ear) * -1);
+  background: radial-gradient(
+    circle at 0 100%,
+    transparent calc(var(--ear) - 0.5px),
+    var(--notch-fill, #111) calc(var(--ear) - 0.25px)
+  );
+}
+
+.notch-ear--right {
+  right: calc(var(--ear) * -1);
+  background: radial-gradient(
+    circle at 100% 100%,
+    transparent calc(var(--ear) - 0.5px),
+    var(--notch-fill, #111) calc(var(--ear) - 0.25px)
+  );
+}
+
+/* Mini equalizer — collapsed notch when Spotify is playing */
+.eq-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+
+.eq-bars span {
+  display: block;
+  width: 2.5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+  transform-origin: bottom;
+  animation: eq-bounce 0.85s ease-in-out infinite;
+}
+
+.eq-bars span:nth-child(1) {
+  height: 40%;
+  animation-delay: 0s;
+}
+.eq-bars span:nth-child(2) {
+  height: 75%;
+  animation-delay: 0.15s;
+}
+.eq-bars span:nth-child(3) {
+  height: 55%;
+  animation-delay: 0.3s;
+}
+.eq-bars span:nth-child(4) {
+  height: 90%;
+  animation-delay: 0.45s;
+}
+
+.eq-bars--paused span {
+  animation: none;
+  height: 35%;
+  opacity: 0.45;
+}
+
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
