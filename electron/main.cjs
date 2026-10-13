@@ -4,19 +4,35 @@ require("dotenv").config({ path: path.join(__dirname, "../.env") })
 const { app, BrowserWindow, screen, ipcMain } = require("electron")
 const spotify = require("./spotify.cjs")
 const settingsStore = require("./settings-store.cjs")
+const systemControls = require("./system-controls.cjs")
+
+// Hide native Chromium scrollbars; wheel / trackpad scrolling still works
+app.commandLine.appendSwitch("hide-scrollbars")
 
 const isDev = !app.isPackaged
 
-/** Collapsed shell — just big enough for the pill + ears */
-const EAR_PAD = 36
-const SHELL = {
-  width: 400 + EAR_PAD * 2 + 40,
-  height: 600 + 24,
+// Avoid a second instance on login / double-click
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
 }
+
+/** Horizontal room for concave ears beyond the pill */
+const EAR_PAD = 36
+/** Default collapsed content size (renderer overrides via set-expanded) */
+const COLLAPSED = { width: 152, height: 34 }
 
 let mainWindow = null
 /** Prevent blur-from-expand-resize from immediately collapsing */
 let ignoreBlurUntil = 0
+let lastContentSize = { ...COLLAPSED }
 
 function centerTop(width, height) {
   const display = screen.getPrimaryDisplay()
@@ -29,8 +45,17 @@ function centerTop(width, height) {
   }
 }
 
+/** Tight shell around the pill — avoids a huge transparent hit-target */
+function collapsedShellBounds(contentW = lastContentSize.width, contentH = lastContentSize.height) {
+  lastContentSize = {
+    width: Math.max(40, Number(contentW) || COLLAPSED.width),
+    height: Math.max(24, Number(contentH) || COLLAPSED.height),
+  }
+  return centerTop(lastContentSize.width + EAR_PAD * 2, lastContentSize.height + 16)
+}
+
 function createWindow() {
-  const bounds = centerTop(SHELL.width, SHELL.height)
+  const bounds = collapsedShellBounds()
 
   mainWindow = new BrowserWindow({
     ...bounds,
@@ -55,7 +80,8 @@ function createWindow() {
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   mainWindow.setAlwaysOnTop(true, "screen-saver")
-  mainWindow.setIgnoreMouseEvents(true, { forward: true })
+  // Collapsed shell is pill-sized — keep it fully clickable (no passthrough)
+  mainWindow.setIgnoreMouseEvents(false)
 
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173")
@@ -79,23 +105,32 @@ function createWindow() {
 
 ipcMain.handle("notch:set-passthrough", (_event, pass) => {
   if (!mainWindow) return
-  // Only used while collapsed — expanded mode owns mouse capture via set-expanded
-  mainWindow.setIgnoreMouseEvents(Boolean(pass), { forward: true })
+  // Expanded overlay must stay interactive; ignore passthrough requests then
+  if (!pass) {
+    mainWindow.setIgnoreMouseEvents(false)
+    return
+  }
+  // Only allow click-through while we still use a large shell (legacy); collapsed
+  // pill window should never ignore mouse or clicks never reach the UI.
 })
 
 ipcMain.handle("notch:reposition", () => {
   if (!mainWindow) return
-  mainWindow.setBounds(centerTop(SHELL.width, SHELL.height), false)
+  mainWindow.setBounds(collapsedShellBounds(), false)
+  mainWindow.setIgnoreMouseEvents(false)
 })
 
 ipcMain.handle("notch:set-expanded", (_event, payload) => {
   if (!mainWindow) return
   const expanded = typeof payload === "object" ? payload.expanded : payload
+  const contentW = typeof payload === "object" ? payload.width : undefined
+  const contentH = typeof payload === "object" ? payload.height : undefined
 
   if (expanded) {
     // Full-display overlay so any outside click can dismiss.
-    // Pill stays visually centered via flex — no animation snap.
-    ignoreBlurUntil = Date.now() + 400
+    // Grow the shell *before* the renderer morphs the pill — never animate
+    // inside a shrinking/jumping window (that’s what felt snappy).
+    ignoreBlurUntil = Date.now() + 900
     const display = screen.getPrimaryDisplay()
     mainWindow.setBounds(display.bounds, false)
     mainWindow.setIgnoreMouseEvents(false)
@@ -104,8 +139,9 @@ ipcMain.handle("notch:set-expanded", (_event, payload) => {
     return
   }
 
-  mainWindow.setBounds(centerTop(SHELL.width, SHELL.height), false)
-  mainWindow.setIgnoreMouseEvents(true, { forward: true })
+  // Collapsed shell — renderer only calls this AFTER the morph finishes
+  mainWindow.setBounds(collapsedShellBounds(contentW, contentH), false)
+  mainWindow.setIgnoreMouseEvents(false)
 })
 
 ipcMain.handle("spotify:status", async () => {
@@ -133,18 +169,84 @@ ipcMain.handle("spotify:action", async (_event, action) => {
   return spotify.playbackAction(action)
 })
 
+function resolveLaunchAtLogin(saved) {
+  return saved?.launchAtLogin !== undefined ? Boolean(saved.launchAtLogin) : true
+}
+
+function syncLaunchAtLogin(enabled = resolveLaunchAtLogin(settingsStore.readSettings())) {
+  const openAtLogin = Boolean(enabled)
+  // Packaged: register the built app. Dev: register Electron with this project path.
+  if (app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin })
+  } else {
+    const appPath = path.resolve(process.argv[1] || ".")
+    app.setLoginItemSettings({
+      openAtLogin,
+      path: process.execPath,
+      args: [appPath],
+    })
+  }
+}
+
 ipcMain.handle("settings:get", () => settingsStore.readSettings())
-ipcMain.handle("settings:set", (_event, partial) => settingsStore.writeSettings(partial))
-ipcMain.handle("settings:reset", () => settingsStore.resetSettings())
+ipcMain.handle("settings:set", (_event, partial) => {
+  const next = settingsStore.writeSettings(partial)
+  if (partial && Object.prototype.hasOwnProperty.call(partial, "launchAtLogin")) {
+    syncLaunchAtLogin(resolveLaunchAtLogin(next))
+  }
+  return next
+})
+ipcMain.handle("settings:reset", () => {
+  const next = settingsStore.resetSettings()
+  syncLaunchAtLogin(true)
+  return next
+})
 
-app.whenReady().then(() => {
-  createWindow()
+ipcMain.handle("controls:status", async () => {
+  try {
+    return await systemControls.getStatus()
+  } catch (err) {
+    return {
+      platform: process.platform,
+      supported: false,
+      volume: 50,
+      muted: false,
+      micMuted: false,
+      brightness: null,
+      brightnessSupported: false,
+      playback: [],
+      bluetooth: [],
+      error: err instanceof Error ? err.message : "controls_error",
+    }
+  }
+})
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+ipcMain.handle("controls:set-volume", async (_event, level) => systemControls.setVolume(level))
+ipcMain.handle("controls:set-muted", async (_event, muted) => systemControls.setMuted(muted))
+ipcMain.handle("controls:set-mic-muted", async (_event, muted) =>
+  systemControls.setMicMuted(muted),
+)
+ipcMain.handle("controls:set-brightness", async (_event, level) =>
+  systemControls.setBrightness(level),
+)
+ipcMain.handle("controls:set-playback", async (_event, id) =>
+  systemControls.setDefaultPlayback(id),
+)
+ipcMain.handle("controls:set-bluetooth", async (_event, payload) =>
+  systemControls.setBluetoothConnected(payload?.id, payload?.connected),
+)
+
+if (gotLock) {
+  app.whenReady().then(() => {
+    syncLaunchAtLogin()
+    createWindow()
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
   })
-})
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit()
-})
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit()
+  })
+}

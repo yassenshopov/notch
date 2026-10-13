@@ -1,0 +1,5 @@
+SoundVolumeCommandLine (svcl.exe) is freeware by Nir Sofer (NirSoft).
+https://www.nirsoft.net/utils/sound_volume_command_line.html
+
+Bundled for Windows audio controls in Notch. See NirSoft license terms
+for redistribution of their utilities.

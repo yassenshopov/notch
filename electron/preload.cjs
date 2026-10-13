@@ -21,4 +21,14 @@ contextBridge.exposeInMainWorld("notch", {
     set: (partial) => ipcRenderer.invoke("settings:set", partial),
     reset: () => ipcRenderer.invoke("settings:reset"),
   },
+  controls: {
+    status: () => ipcRenderer.invoke("controls:status"),
+    setVolume: (level) => ipcRenderer.invoke("controls:set-volume", level),
+    setMuted: (muted) => ipcRenderer.invoke("controls:set-muted", muted),
+    setMicMuted: (muted) => ipcRenderer.invoke("controls:set-mic-muted", muted),
+    setBrightness: (level) => ipcRenderer.invoke("controls:set-brightness", level),
+    setPlayback: (id) => ipcRenderer.invoke("controls:set-playback", id),
+    setBluetooth: (id, connected) =>
+      ipcRenderer.invoke("controls:set-bluetooth", { id, connected }),
+  },
 })
