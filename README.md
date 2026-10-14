@@ -81,7 +81,7 @@ src/
 - `.env` is gitignored — never commit Spotify secrets
 - Weather uses Open-Meteo (free, no key) and Fluent Emoji Flat icons bundled as a trimmed JSON set
 - The overlay uses mouse passthrough with forwarding so only the notch UI receives clicks
-- **Launch at login** is on by default (Windows startup via Electron login items); toggle it in Settings → App
+- **Launch at login** is on by default (Windows startup via Electron login items); toggle it in Settings → App. Login launches the last `npm run build` output (`dist/`), not the Vite dev server — run `npm run build` after UI changes if you rely on auto-start.
 
 ## License
 

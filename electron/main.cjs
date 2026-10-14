@@ -9,7 +9,12 @@ const systemControls = require("./system-controls.cjs")
 // Hide native Chromium scrollbars; wheel / trackpad scrolling still works
 app.commandLine.appendSwitch("hide-scrollbars")
 
-const isDev = !app.isPackaged
+// Only use the Vite server when `npm run dev` sets ELECTRON_DEV.
+// Login / `npm start` launch Electron unpackaged but must load dist — otherwise
+// ready-to-show never paints (localhost:5173 is down) and the notch looks "missing".
+const isDev =
+  !app.isPackaged &&
+  (process.env.ELECTRON_DEV === "1" || process.env.ELECTRON_DEV === "true")
 
 // Avoid a second instance on login / double-click
 const gotLock = app.requestSingleInstanceLock()
@@ -83,11 +88,29 @@ function createWindow() {
   // Collapsed shell is pill-sized — keep it fully clickable (no passthrough)
   mainWindow.setIgnoreMouseEvents(false)
 
+  const distIndex = path.join(__dirname, "../dist/index.html")
+
   if (isDev) {
-    mainWindow.loadURL("http://localhost:5173")
+    mainWindow.loadURL("http://localhost:5173").catch((err) => {
+      console.error("[notch] Vite load failed, falling back to dist:", err)
+      mainWindow?.loadFile(distIndex)
+    })
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"))
+    mainWindow.loadFile(distIndex).catch((err) => {
+      console.error("[notch] Failed to load UI. Run `npm run build` first.", err)
+    })
   }
+
+  mainWindow.webContents.on("did-fail-load", (_event, code, desc, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return // -3 = aborted
+    console.error("[notch] did-fail-load", { code, desc, url })
+    if (isDev && url.startsWith("http://localhost:5173")) {
+      mainWindow?.loadFile(distIndex)
+      return
+    }
+    // Still show the shell so a blank transparent window isn't left hanging invisible
+    mainWindow?.show()
+  })
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show()
@@ -175,11 +198,12 @@ function resolveLaunchAtLogin(saved) {
 
 function syncLaunchAtLogin(enabled = resolveLaunchAtLogin(settingsStore.readSettings())) {
   const openAtLogin = Boolean(enabled)
-  // Packaged: register the built app. Dev: register Electron with this project path.
+  // Packaged: register the built app. Unpackaged: register Electron pointing at the
+  // project root (loads dist via main.cjs — do not pass ELECTRON_DEV here).
   if (app.isPackaged) {
     app.setLoginItemSettings({ openAtLogin })
   } else {
-    const appPath = path.resolve(process.argv[1] || ".")
+    const appPath = app.getAppPath()
     app.setLoginItemSettings({
       openAtLogin,
       path: process.execPath,
