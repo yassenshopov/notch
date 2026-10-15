@@ -7,6 +7,7 @@ export type TemperatureUnit = "celsius" | "fahrenheit"
 export type ThemeMode = "system" | "light" | "dark"
 export type WindSpeedUnit = "kmh" | "mph" | "ms"
 export type ClockFormat = "24h" | "12h"
+export type ChartStyle = "line" | "bar"
 export type IslandFace = "weather" | "battery" | "clock"
 
 export type LocationConfig =
@@ -22,6 +23,9 @@ export type AppSettings = {
   windSpeedUnit: WindSpeedUnit
   location: LocationConfig
   theme: ThemeMode
+  charts: {
+    style: ChartStyle
+  }
   /** Collapsed pill — one face at a time, then rotate */
   island: {
     /** How long each face stays before the next */
@@ -73,6 +77,9 @@ export const defaultSettings: AppSettings = {
   windSpeedUnit: "kmh",
   location: { mode: "auto" },
   theme: "system",
+  charts: {
+    style: "bar",
+  },
   island: {
     rotateIntervalMs: 5_000,
     faces: {

@@ -7,6 +7,7 @@ import {
   openCursorUrl,
   type CursorStatus,
 } from "../lib/cursor"
+import { useSettings } from "../config/settings-store"
 import { cn, formatShortDate } from "../lib/utils"
 import { CursorModelBars } from "./CursorModelBars"
 import { MetricChart } from "./MetricChart"
@@ -14,6 +15,7 @@ import { MetricChart } from "./MetricChart"
 type Props = {
   status: CursorStatus
   loading: boolean
+  analyticsLoading?: boolean
   onRefresh: () => void
 }
 
@@ -116,7 +118,8 @@ function UsageBar({
   )
 }
 
-export function CursorPanel({ status, loading, onRefresh }: Props) {
+export function CursorPanel({ status, loading, analyticsLoading, onRefresh }: Props) {
+  const settings = useSettings()
   if (status.error === "no_electron") {
     return (
       <EmptyState
@@ -157,12 +160,18 @@ export function CursorPanel({ status, loading, onRefresh }: Props) {
   const daily = analytics?.dailySpend ?? []
   const cloud = status.cloud
 
+  const hasAnalytics =
+    Boolean(analytics?.tokenTotals) ||
+    Boolean(analytics?.models?.length) ||
+    Boolean(analytics?.recentEvents?.length) ||
+    Boolean(cloud?.agents?.length)
+
   return (
     <div
-      className="notch-scroll flex h-full flex-col gap-4 pr-1 pb-1"
+      className="flex h-full min-h-0 flex-col"
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="flex items-start justify-between gap-3 pr-6">
+      <header className="mb-3 flex shrink-0 items-start justify-between gap-3 pr-6">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[15px] font-semibold tracking-tight">Cursor</p>
@@ -197,6 +206,7 @@ export function CursorPanel({ status, loading, onRefresh }: Props) {
         </button>
       </header>
 
+      <div className="notch-scroll min-h-0 flex-1 flex flex-col gap-4 pr-1">
       {billing?.isUnlimited ? (
         <Section title="Plan">
           <p className="text-[13px] leading-relaxed text-black/55 dark:text-white/55">
@@ -232,6 +242,14 @@ export function CursorPanel({ status, loading, onRefresh }: Props) {
         </Section>
       ) : null}
 
+      {analyticsLoading && !hasAnalytics ? (
+        <Section title="Usage details">
+          <p className="text-[12px] text-black/45 dark:text-white/45">
+            Loading charts, models, and cloud agents…
+          </p>
+        </Section>
+      ) : null}
+
       {analytics?.tokenTotals ? (
         <Section
           title="Tokens this cycle"
@@ -251,6 +269,7 @@ export function CursorPanel({ status, loading, onRefresh }: Props) {
           {daily.length > 1 ? (
             <MetricChart
               points={daily}
+              variant={settings.charts.style}
               className="min-h-[7.5rem]"
               accent="currentColor"
               formatValue={(v) => formatCursorCents(v)}
@@ -333,13 +352,23 @@ export function CursorPanel({ status, loading, onRefresh }: Props) {
         </Section>
       ) : null}
 
+      {!analyticsLoading && !hasAnalytics && status.connected ? (
+        <Section title="Usage details">
+          <p className="text-[12px] text-black/45 dark:text-white/45">
+            Couldn’t load analytics. Tap refresh or fully quit and restart Notch (Electron must
+            reload the main process).
+          </p>
+        </Section>
+      ) : null}
+      </div>
+
       <button
         type="button"
         onClick={(e) => {
           e.stopPropagation()
           void openCursorDashboard()
         }}
-        className="mt-auto flex w-full items-center justify-center gap-2 rounded-2xl border border-black/[0.08] bg-black/[0.03] py-2.5 text-[13px] font-medium text-black/65 transition-colors hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65 dark:hover:bg-white/[0.07]"
+        className="mt-2 flex w-full shrink-0 items-center justify-center gap-2 rounded-2xl border border-black/[0.08] bg-black/[0.03] py-2.5 text-[13px] font-medium text-black/65 transition-colors hover:bg-black/[0.06] dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65 dark:hover:bg-white/[0.07]"
       >
         Open Cursor dashboard
         <ExternalLink className="size-3.5 opacity-60" />

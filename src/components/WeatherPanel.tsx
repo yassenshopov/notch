@@ -284,6 +284,7 @@ function MetricHero({
   unit: "celsius" | "fahrenheit"
   windLabel: string
 }) {
+  const settings = useSettings()
   const title = METRICS.find((m) => m.id === metric)?.label ?? metric
 
   const chartPoints = useMemo(() => {
@@ -402,7 +403,12 @@ function MetricHero({
         {metric === "sunrise" || metric === "sunset" ? (
           <SunPath sunrise={day.sunrise} sunset={day.sunset} mode={metric} />
         ) : chartPoints.length > 0 ? (
-          <MetricChart points={chartPoints} formatValue={formatValue} className="h-full" />
+          <MetricChart
+            points={chartPoints}
+            variant={settings.charts.style}
+            formatValue={formatValue}
+            className="h-full"
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-[12px] text-black/35 dark:text-white/35">
             {metric === "pollen"

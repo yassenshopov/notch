@@ -1,6 +1,6 @@
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 import { useId, useState, type ReactNode } from "react"
-import type { ClockFormat, ThemeMode } from "../config/settings"
+import type { ChartStyle, ClockFormat, ThemeMode } from "../config/settings"
 import { resetSettings, updateSettings, useSettings } from "../config/settings-store"
 import { ISLAND_EASE } from "../lib/island-motion"
 import { cn } from "../lib/utils"
@@ -130,6 +130,21 @@ export function SettingsPanel({
             ]}
             onChange={(format) =>
               void updateSettings({ clock: { format: format as ClockFormat } })
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="Charts">
+        <Row label="Style">
+          <Segmented
+            value={s.charts.style}
+            options={[
+              { value: "bar", label: "Bars" },
+              { value: "line", label: "Line" },
+            ]}
+            onChange={(style) =>
+              void updateSettings({ charts: { style: style as ChartStyle } })
             }
           />
         </Row>

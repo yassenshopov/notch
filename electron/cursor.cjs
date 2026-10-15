@@ -5,7 +5,7 @@ const os = require("os")
 const DASHBOARD_ORIGIN = "https://cursor.com"
 const API_ORIGIN = "https://api.cursor.com"
 const FILTERED_PAGE_SIZE = 1000
-const FILTERED_MAX_PAGES = 6
+const FILTERED_MAX_PAGES = 3
 
 /** @returns {string | null} */
 function stateDbPath() {
@@ -316,8 +316,52 @@ function buildPlanPayload(summary) {
   }
 }
 
+async function getUsageAnalytics() {
+  const cookie = resolveSessionCookie()
+  if (!cookie) return null
+
+  try {
+    const [me, summary, cloud] = await Promise.all([
+      dashboardGet(cookie, "/api/auth/me"),
+      dashboardGet(cookie, "/api/usage-summary"),
+      fetchCloudAgents(),
+    ])
+
+    const cycleStart = summary.billingCycleStart ?? null
+    const cycleEnd = summary.billingCycleEnd ?? null
+    if (!cycleStart || !cycleEnd) {
+      return { limits: { overageBlocked: null }, analytics: null, cloud }
+    }
+
+    const [aggregations, limitData, filtered] = await Promise.all([
+      fetchModelAggregations(cookie, me, cycleStart, cycleEnd),
+      fetchHardLimit(cookie, me, cycleStart, cycleEnd),
+      fetchFilteredEvents(cookie, me, cycleStart, cycleEnd).catch(() => ({
+        events: [],
+        totalCount: 0,
+        sampled: 0,
+      })),
+    ])
+
+    return {
+      limits: limitData,
+      analytics: {
+        models: aggregations.models,
+        tokenTotals: aggregations.totals,
+        dailySpend: bucketDailyCents(filtered.events),
+        recentEvents: mapRecentEvents(filtered.events),
+        eventsInCycle: filtered.totalCount,
+        eventsSampled: filtered.sampled,
+      },
+      cloud,
+    }
+  } catch {
+    return null
+  }
+}
+
 async function getUsageSummary(options = {}) {
-  const detailed = options.detailed !== false
+  const detailed = options.detailed === true
   const cookie = resolveSessionCookie()
   if (!cookie) {
     return {
@@ -394,5 +438,6 @@ async function getUsageSummary(options = {}) {
 
 module.exports = {
   getUsageSummary,
+  getUsageAnalytics,
   resolveSessionCookie,
 }

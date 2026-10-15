@@ -335,13 +335,21 @@ ipcMain.handle("spotify:action", async (_event, action) => {
 
 ipcMain.handle("cursor:status", async () => {
   try {
-    return await cursor.getUsageSummary({ detailed: true })
+    return await cursor.getUsageSummary({ detailed: false })
   } catch (err) {
     return {
       connected: false,
       error: "cursor_error",
       message: err instanceof Error ? err.message : "cursor_error",
     }
+  }
+})
+
+ipcMain.handle("cursor:analytics", async () => {
+  try {
+    return await cursor.getUsageAnalytics()
+  } catch {
+    return null
   }
 })
 

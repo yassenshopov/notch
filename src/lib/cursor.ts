@@ -98,6 +98,12 @@ export type CursorStatus = {
   message?: string
 }
 
+export type CursorAnalyticsPayload = {
+  limits?: CursorStatus["limits"]
+  analytics?: CursorStatus["analytics"]
+  cloud?: CursorStatus["cloud"]
+}
+
 export async function fetchCursorStatus(): Promise<CursorStatus> {
   const bridge = window.notch?.cursor
   if (!bridge) {
@@ -108,6 +114,12 @@ export async function fetchCursorStatus(): Promise<CursorStatus> {
     }
   }
   return bridge.status()
+}
+
+export async function fetchCursorAnalytics(): Promise<CursorAnalyticsPayload | null> {
+  const bridge = window.notch?.cursor
+  if (!bridge?.analytics) return null
+  return bridge.analytics()
 }
 
 export async function openCursorDashboard(): Promise<void> {

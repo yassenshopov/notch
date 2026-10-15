@@ -69,6 +69,7 @@ interface NotchBridge {
   platform: string
   cursor: {
     status: () => Promise<CursorBridgeStatus>
+    analytics: () => Promise<import("./lib/cursor").CursorAnalyticsPayload | null>
     openDashboard: () => Promise<void>
     openUrl: (url: string) => Promise<void>
   }

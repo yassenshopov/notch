@@ -106,6 +106,7 @@ export function Notch() {
   const {
     status: cursorStatus,
     loading: cursorLoading,
+    analyticsLoading: cursorAnalyticsLoading,
     refresh: refreshCursor,
   } = useCursor(expanded && activePanel === "cursor")
 
@@ -489,7 +490,7 @@ export function Notch() {
                       }),
                     }}
                     transition={panelTransition}
-                    className="absolute inset-0 flex flex-col"
+                    className="absolute inset-0 flex min-h-0 flex-col"
                   >
                     {activePanel === "settings" ? (
                       <SettingsPanel
@@ -508,6 +509,7 @@ export function Notch() {
                       <CursorPanel
                         status={cursorStatus}
                         loading={cursorLoading}
+                        analyticsLoading={cursorAnalyticsLoading}
                         onRefresh={() => void refreshCursor()}
                       />
                     ) : activePanel === "controls" ? (

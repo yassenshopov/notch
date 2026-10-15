@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("notch", {
   },
   cursor: {
     status: () => ipcRenderer.invoke("cursor:status"),
+    analytics: () => ipcRenderer.invoke("cursor:analytics"),
     openDashboard: () => ipcRenderer.invoke("cursor:open-dashboard"),
     openUrl: (url) => ipcRenderer.invoke("cursor:open-url", url),
   },

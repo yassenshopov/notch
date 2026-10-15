@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { useSettings } from "../config/settings-store"
-import { fetchCursorStatus, type CursorStatus } from "../lib/cursor"
+import {
+  fetchCursorAnalytics,
+  fetchCursorStatus,
+  type CursorStatus,
+} from "../lib/cursor"
 
 const idle: CursorStatus = {
   connected: false,
@@ -11,15 +15,31 @@ export function useCursor(active = true) {
   const settings = useSettings()
   const [status, setStatus] = useState<CursorStatus>(idle)
   const [loading, setLoading] = useState(true)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
-      const next = await fetchCursorStatus()
-      setStatus(next)
+      const quick = await fetchCursorStatus()
+      setStatus(quick)
+      setLoading(false)
+
+      if (!quick.connected) return
+
+      setAnalyticsLoading(true)
+      const extra = await fetchCursorAnalytics()
+      if (extra) {
+        setStatus((prev) => ({
+          ...prev,
+          limits: extra.limits ?? prev.limits,
+          analytics: extra.analytics ?? prev.analytics,
+          cloud: extra.cloud ?? prev.cloud,
+        }))
+      }
     } catch {
       setStatus({ ...idle, error: "cursor_error", message: "Could not load Cursor usage." })
-    } finally {
       setLoading(false)
+    } finally {
+      setAnalyticsLoading(false)
     }
   }, [])
 
@@ -31,5 +51,5 @@ export function useCursor(active = true) {
     return () => window.clearInterval(id)
   }, [active, refresh, settings.cursor.pollIntervalMs])
 
-  return { status, loading, refresh }
+  return { status, loading, analyticsLoading, refresh }
 }
