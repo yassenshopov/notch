@@ -42,6 +42,8 @@ type ControlsBluetoothDevice = {
   status?: string
 }
 
+type CursorBridgeStatus = import("./lib/cursor").CursorStatus
+
 type ControlsBridgeStatus = {
   platform: string
   supported: boolean
@@ -65,6 +67,11 @@ interface NotchBridge {
   reposition: () => Promise<void>
   onBlur: (cb: () => void) => () => void
   platform: string
+  cursor: {
+    status: () => Promise<CursorBridgeStatus>
+    openDashboard: () => Promise<void>
+    openUrl: (url: string) => Promise<void>
+  }
   spotify: {
     status: () => Promise<SpotifyBridgeStatus>
     connect: () => Promise<SpotifyBridgeStatus>

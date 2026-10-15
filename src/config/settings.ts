@@ -43,6 +43,12 @@ export type AppSettings = {
   spotify: {
     pollIntervalMs: number
   }
+  cursor: {
+    pollIntervalMs: number
+    /** Tray tooltip + balloon when included usage crosses this % */
+    usageWarningPercent: number
+    trayPollIntervalMs: number
+  }
   expanded: {
     width: number
     height: number
@@ -86,6 +92,11 @@ export const defaultSettings: AppSettings = {
   },
   spotify: {
     pollIntervalMs: 4_000,
+  },
+  cursor: {
+    pollIntervalMs: 5 * 60 * 1000,
+    usageWarningPercent: 85,
+    trayPollIntervalMs: 10 * 60 * 1000,
   },
   expanded: {
     width: 380,

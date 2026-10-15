@@ -9,6 +9,7 @@ Frameless Electron overlay, click-through outside the pill, expands from the top
 - **Weather-first pill** — temperature, condition icon (Fluent Emoji), and quick metrics from [Open-Meteo](https://open-meteo.com/) (no API key)
 - **Location** — resolved via IP geolocation; override latitude/longitude in settings
 - **Spotify now playing** — equalizer in the collapsed pill while music is playing; full now-playing panel when expanded (album art tint, play/pause, skip)
+- **Cursor usage** — included-plan usage, per-model charts, cloud agents, tray usage alerts, and cycle stats from your signed-in Cursor desktop session
 - **Theme** — light / dark / system, toggled from the pill
 - **Settings** — units, refresh interval, location, Spotify connect/disconnect — persisted in Electron `userData`
 - **Click-outside dismiss** — expands to a transparent fullscreen shell so outside clicks collapse the notch
@@ -50,6 +51,10 @@ SPOTIFY_REDIRECT_URI=http://127.0.0.1:43110/callback
 
 Without Spotify credentials, weather and settings still work; the Spotify row simply won’t connect.
 
+### Cursor usage
+
+Notch reads the same dashboard data as [cursor.com/settings](https://cursor.com/settings) using your **Cursor IDE login** on this machine (from `state.vscdb`). A `CURSOR_API_KEY` in `.env` is for the Cloud Agents API only — it does not expose plan usage. Optional overrides: `CURSOR_SESSION_TOKEN` or `CURSOR_ACCESS_TOKEN` in `.env` (see `.env.example`). On Windows, Python on `PATH` is used to read the local state DB without loading the whole file into memory.
+
 ## Develop
 
 ```bash
@@ -82,6 +87,7 @@ src/
 - Weather uses Open-Meteo (free, no key) and Fluent Emoji Flat icons bundled as a trimmed JSON set
 - The overlay uses mouse passthrough with forwarding so only the notch UI receives clicks
 - **Launch at login** is on by default (Windows startup via Electron login items); toggle it in Settings → App. Login launches the last `npm run build` output (`dist/`), not the Vite dev server — run `npm run build` after UI changes if you rely on auto-start.
+- **System tray** — Notch stays out of the taskbar; use the tray icon (Show / Quit). A **Notch** Start Menu shortcut is created on launch so you can pin it to the taskbar and start the app when it’s down.
 
 ## License
 

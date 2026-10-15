@@ -6,6 +6,7 @@ type Point = { time: string; value: number }
 type Props = {
   points: Point[]
   formatValue?: (v: number) => string
+  formatTime?: (iso: string) => string
   className?: string
   accent?: string
 }
@@ -13,6 +14,7 @@ type Props = {
 export function MetricChart({
   points,
   formatValue = (v) => String(Math.round(v)),
+  formatTime = formatHour,
   className,
   accent = "currentColor",
 }: Props) {
@@ -51,6 +53,8 @@ export function MetricChart({
       maxLabel: formatValue(max),
     }
   }, [points, formatValue])
+
+  const timeLabel = formatTime
 
   if (points.length === 0) {
     return (
@@ -95,7 +99,7 @@ export function MetricChart({
       <div aria-hidden className="col-start-1" />
       <div className="flex justify-between text-[10px] text-black/35 dark:text-white/35">
         {labels.map((l) => (
-          <span key={l.time}>{formatHour(l.time)}</span>
+          <span key={l.time}>{timeLabel(l.time)}</span>
         ))}
       </div>
     </div>

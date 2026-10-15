@@ -1,13 +1,24 @@
 const path = require("path")
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
 
-const { app, BrowserWindow, screen, ipcMain } = require("electron")
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  nativeImage,
+  screen,
+  shell,
+  ipcMain,
+} = require("electron")
 const spotify = require("./spotify.cjs")
+const cursor = require("./cursor.cjs")
 const settingsStore = require("./settings-store.cjs")
 const systemControls = require("./system-controls.cjs")
 
 // Hide native Chromium scrollbars; wheel / trackpad scrolling still works
 app.commandLine.appendSwitch("hide-scrollbars")
+app.setAppUserModelId("com.yassenshopov.notch")
 
 // Only use the Vite server when `npm run dev` sets ELECTRON_DEV.
 // Login / `npm start` launch Electron unpackaged but must load dist — otherwise
@@ -16,18 +27,8 @@ const isDev =
   !app.isPackaged &&
   (process.env.ELECTRON_DEV === "1" || process.env.ELECTRON_DEV === "true")
 
-// Avoid a second instance on login / double-click
-const gotLock = app.requestSingleInstanceLock()
-if (!gotLock) {
-  app.quit()
-} else {
-  app.on("second-instance", () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
-  })
-}
+const APP_ICON = path.join(__dirname, "assets", "icon.ico")
+const TRAY_ICON = path.join(__dirname, "assets", "tray.png")
 
 /** Horizontal room for concave ears beyond the pill */
 const EAR_PAD = 36
@@ -35,9 +36,33 @@ const EAR_PAD = 36
 const COLLAPSED = { width: 152, height: 34 }
 
 let mainWindow = null
+let tray = null
+let cursorTrayWarned = false
+let cursorTrayTimer = null
 /** Prevent blur-from-expand-resize from immediately collapsing */
 let ignoreBlurUntil = 0
 let lastContentSize = { ...COLLAPSED }
+
+function showNotch() {
+  if (!mainWindow) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.setAlwaysOnTop(true, "screen-saver")
+  mainWindow.focus()
+}
+
+// Avoid a second instance on login / double-click / taskbar pin
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on("second-instance", () => {
+    showNotch()
+  })
+}
 
 function centerTop(width, height) {
   const display = screen.getPrimaryDisplay()
@@ -126,6 +151,122 @@ function createWindow() {
   })
 }
 
+function createTray() {
+  if (tray) return
+
+  let image = nativeImage.createFromPath(TRAY_ICON)
+  if (image.isEmpty()) image = nativeImage.createFromPath(APP_ICON)
+  if (process.platform === "win32") {
+    image = image.resize({ width: 16, height: 16 })
+  }
+
+  tray = new Tray(image)
+  tray.setToolTip("Notch")
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show Notch", click: () => showNotch() },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => {
+          tray?.destroy()
+          tray = null
+          app.quit()
+        },
+      },
+    ]),
+  )
+  tray.on("click", () => showNotch())
+  tray.on("double-click", () => showNotch())
+}
+
+const DEFAULT_CURSOR_TRAY = {
+  usageWarningPercent: 85,
+  trayPollIntervalMs: 10 * 60 * 1000,
+}
+
+function readCursorTraySettings() {
+  const saved = settingsStore.readSettings()?.cursor ?? {}
+  return {
+    usageWarningPercent:
+      typeof saved.usageWarningPercent === "number"
+        ? saved.usageWarningPercent
+        : DEFAULT_CURSOR_TRAY.usageWarningPercent,
+    trayPollIntervalMs:
+      typeof saved.trayPollIntervalMs === "number"
+        ? saved.trayPollIntervalMs
+        : DEFAULT_CURSOR_TRAY.trayPollIntervalMs,
+  }
+}
+
+async function syncCursorTray() {
+  if (!tray) return
+  const { usageWarningPercent } = readCursorTraySettings()
+  const status = await cursor.getUsageSummary({ detailed: false })
+  if (!status.connected || !status.usage) {
+    tray.setToolTip("Notch")
+    return
+  }
+
+  const pct = Math.round(status.usage.totalPercentUsed)
+  tray.setToolTip(`Notch · Cursor ${pct}% used`)
+
+  if (pct >= usageWarningPercent) {
+    if (!cursorTrayWarned && process.platform === "win32") {
+      const icon = nativeImage.createFromPath(APP_ICON)
+      tray.displayBalloon?.({
+        title: "Cursor usage",
+        content: `${pct}% of your included usage this billing cycle.`,
+        icon: icon.isEmpty() ? undefined : icon,
+      })
+    }
+    cursorTrayWarned = true
+  } else if (pct < usageWarningPercent - 5) {
+    cursorTrayWarned = false
+  }
+}
+
+function startCursorTrayPoll() {
+  if (cursorTrayTimer) return
+  const { trayPollIntervalMs } = readCursorTraySettings()
+  void syncCursorTray()
+  cursorTrayTimer = setInterval(() => void syncCursorTray(), trayPollIntervalMs)
+}
+
+/** Start Menu entry so Notch can be pinned to the taskbar and launched when down */
+function ensureStartMenuShortcut() {
+  if (process.platform !== "win32") return
+  try {
+    const fs = require("fs")
+    const shortcutPath = path.join(
+      app.getPath("appData"),
+      "Microsoft",
+      "Windows",
+      "Start Menu",
+      "Programs",
+      "Notch.lnk",
+    )
+    const appPath = app.getAppPath()
+    const details = {
+      target: process.execPath,
+      cwd: app.isPackaged ? path.dirname(process.execPath) : appPath,
+      description: "Notch desktop overlay",
+      appUserModelId: "com.yassenshopov.notch",
+      icon: APP_ICON,
+      iconIndex: 0,
+    }
+    if (!app.isPackaged) {
+      details.args = appPath
+    }
+    // `replace` fails when the .lnk is missing; create or update instead
+    const op = fs.existsSync(shortcutPath) ? "update" : "create"
+    const ok = shell.writeShortcutLink(shortcutPath, op, details)
+    if (!ok) console.error("[notch] writeShortcutLink returned false:", op, shortcutPath)
+  } catch (err) {
+    console.error("[notch] Failed to write Start Menu shortcut:", err)
+  }
+}
+
 ipcMain.handle("notch:set-passthrough", (_event, pass) => {
   if (!mainWindow) return
   // Expanded overlay must stay interactive; ignore passthrough requests then
@@ -190,6 +331,28 @@ ipcMain.handle("spotify:disconnect", () => spotify.disconnect())
 
 ipcMain.handle("spotify:action", async (_event, action) => {
   return spotify.playbackAction(action)
+})
+
+ipcMain.handle("cursor:status", async () => {
+  try {
+    return await cursor.getUsageSummary({ detailed: true })
+  } catch (err) {
+    return {
+      connected: false,
+      error: "cursor_error",
+      message: err instanceof Error ? err.message : "cursor_error",
+    }
+  }
+})
+
+ipcMain.handle("cursor:open-dashboard", async () => {
+  await shell.openExternal("https://cursor.com/dashboard?tab=usage")
+})
+
+ipcMain.handle("cursor:open-url", async (_event, url) => {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url)
+  }
 })
 
 function resolveLaunchAtLogin(saved) {
@@ -263,6 +426,9 @@ ipcMain.handle("controls:set-bluetooth", async (_event, payload) =>
 if (gotLock) {
   app.whenReady().then(() => {
     syncLaunchAtLogin()
+    ensureStartMenuShortcut()
+    createTray()
+    startCursorTrayPoll()
     createWindow()
 
     app.on("activate", () => {
@@ -270,7 +436,9 @@ if (gotLock) {
     })
   })
 
+  // Stay alive in the tray if the overlay window is closed
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit()
+    if (process.platform === "darwin") return
+    if (!tray) app.quit()
   })
 }

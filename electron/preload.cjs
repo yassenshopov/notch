@@ -21,6 +21,11 @@ contextBridge.exposeInMainWorld("notch", {
     set: (partial) => ipcRenderer.invoke("settings:set", partial),
     reset: () => ipcRenderer.invoke("settings:reset"),
   },
+  cursor: {
+    status: () => ipcRenderer.invoke("cursor:status"),
+    openDashboard: () => ipcRenderer.invoke("cursor:open-dashboard"),
+    openUrl: (url) => ipcRenderer.invoke("cursor:open-url", url),
+  },
   controls: {
     status: () => ipcRenderer.invoke("controls:status"),
     setVolume: (level) => ipcRenderer.invoke("controls:set-volume", level),

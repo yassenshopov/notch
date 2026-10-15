@@ -31,24 +31,27 @@ import type { IslandFace } from "../config/settings"
 import { useAlbumPalette } from "../hooks/useAlbumPalette"
 import { useBattery } from "../hooks/useBattery"
 import { formatIslandTime, useClock } from "../hooks/useClock"
+import { useCursor } from "../hooks/useCursor"
 import { useIslandRotation } from "../hooks/useIslandRotation"
 import { useOccasionalSmile } from "../hooks/useOccasionalSmile"
 import { BatteryIndicator } from "./BatteryIndicator"
 import { BotSmile } from "./BotSmile"
 import { ControlsPanel } from "./ControlsPanel"
+import { CursorPanel } from "./CursorPanel"
 import { EqualizerBars } from "./EqualizerBars"
 import { SettingsPanel } from "./SettingsPanel"
 import { SpotifyPanel } from "./SpotifyPanel"
 import { WeatherIcon } from "./WeatherIcon"
 import { WeatherPanel } from "./WeatherPanel"
 
-type Panel = "weather" | "spotify" | "controls" | "settings"
+type Panel = "weather" | "spotify" | "cursor" | "controls" | "settings"
 
 const PANEL_ORDER: Record<Panel, number> = {
   weather: 0,
   spotify: 1,
-  controls: 2,
-  settings: 3,
+  cursor: 2,
+  controls: 3,
+  settings: 4,
 }
 
 /** Icon button size (size-9) + gap-1.5 — keeps the drop aligned to each slot */
@@ -99,6 +102,12 @@ export function Notch() {
     if (panelOverride) return panelOverride
     return playing ? "spotify" : "weather"
   }, [panelOverride, playing])
+
+  const {
+    status: cursorStatus,
+    loading: cursorLoading,
+    refresh: refreshCursor,
+  } = useCursor(expanded && activePanel === "cursor")
 
   const prevActivePanel = useRef(activePanel)
   const panelDirRef = useRef(0)
@@ -495,6 +504,12 @@ export function Notch() {
                         }}
                         onDisconnectSpotify={() => void disconnect()}
                       />
+                    ) : activePanel === "cursor" ? (
+                      <CursorPanel
+                        status={cursorStatus}
+                        loading={cursorLoading}
+                        onRefresh={() => void refreshCursor()}
+                      />
                     ) : activePanel === "controls" ? (
                       <ControlsPanel active={expanded && activePanel === "controls"} />
                     ) : activePanel === "spotify" ? (
@@ -610,6 +625,14 @@ function PanelRail({
         onClick={() => onSelect("spotify")}
       >
         <Icon icon="simple-icons:spotify" className="size-4" aria-hidden />
+      </IconTab>
+      <IconTab
+        label="Cursor"
+        active={active === "cursor"}
+        themed={themed}
+        onClick={() => onSelect("cursor")}
+      >
+        <Icon icon="simple-icons:cursor" className="size-4" aria-hidden />
       </IconTab>
       <IconTab
         label="Controls"
