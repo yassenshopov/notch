@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+declare module "country-flag-icons/react/3x2" {
+  import type { FC, SVGProps } from "react"
+  const flags: Record<string, FC<SVGProps<SVGSVGElement>>>
+  export default flags
+}
+
 interface BatteryManager extends EventTarget {
   charging: boolean
   chargingTime: number
@@ -44,6 +50,10 @@ type ControlsBluetoothDevice = {
 
 type CursorBridgeStatus = import("./lib/cursor").CursorStatus
 
+type MarketQuote = import("./lib/markets").MarketQuote
+type MarketsSnapshot = import("./lib/markets").MarketsSnapshot
+type GitHubBridgeStatus = import("./lib/github").GitHubStatus
+
 type ControlsBridgeStatus = {
   platform: string
   supported: boolean
@@ -68,8 +78,8 @@ interface NotchBridge {
   onBlur: (cb: () => void) => () => void
   platform: string
   cursor: {
-    status: () => Promise<CursorBridgeStatus>
-    analytics: () => Promise<import("./lib/cursor").CursorAnalyticsPayload | null>
+    status: (options?: { force?: boolean }) => Promise<CursorBridgeStatus>
+    analytics: (options?: { force?: boolean }) => Promise<import("./lib/cursor").CursorAnalyticsPayload | null>
     openDashboard: () => Promise<void>
     openUrl: (url: string) => Promise<void>
   }
@@ -78,11 +88,34 @@ interface NotchBridge {
     connect: () => Promise<SpotifyBridgeStatus>
     disconnect: () => Promise<SpotifyBridgeStatus>
     action: (action: "play" | "pause" | "next" | "previous") => Promise<SpotifyBridgeStatus>
+    lyrics: (query: {
+      trackName: string
+      artistName: string
+      albumName?: string
+      durationMs?: number
+    }) => Promise<{
+      found: boolean
+      instrumental?: boolean
+      plainLyrics?: string | null
+      syncedLyrics?: string | null
+      error?: string
+    }>
   }
   settings: {
     get: () => Promise<Record<string, unknown>>
     set: (partial: Record<string, unknown>) => Promise<Record<string, unknown>>
     reset: () => Promise<Record<string, unknown>>
+  }
+  markets: {
+    snapshot: (watchlist?: import("./config/settings").MarketWatchItem[]) => Promise<MarketsSnapshot>
+    chart: (
+      quote: Pick<MarketQuote, "id" | "symbol" | "type">,
+      range: import("./lib/markets").MarketChartRange,
+    ) => Promise<import("./lib/markets").MarketChartSeries>
+  }
+  github: {
+    status: (options?: { force?: boolean }) => Promise<GitHubBridgeStatus>
+    openUrl: (url: string) => Promise<void>
   }
   controls: {
     status: () => Promise<ControlsBridgeStatus>

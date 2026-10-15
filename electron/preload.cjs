@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("notch", {
     connect: () => ipcRenderer.invoke("spotify:connect"),
     disconnect: () => ipcRenderer.invoke("spotify:disconnect"),
     action: (action) => ipcRenderer.invoke("spotify:action", action),
+    lyrics: (query) => ipcRenderer.invoke("spotify:lyrics", query),
   },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
@@ -22,10 +23,18 @@ contextBridge.exposeInMainWorld("notch", {
     reset: () => ipcRenderer.invoke("settings:reset"),
   },
   cursor: {
-    status: () => ipcRenderer.invoke("cursor:status"),
-    analytics: () => ipcRenderer.invoke("cursor:analytics"),
+    status: (options) => ipcRenderer.invoke("cursor:status", options),
+    analytics: (options) => ipcRenderer.invoke("cursor:analytics", options),
     openDashboard: () => ipcRenderer.invoke("cursor:open-dashboard"),
     openUrl: (url) => ipcRenderer.invoke("cursor:open-url", url),
+  },
+  markets: {
+    snapshot: (watchlist) => ipcRenderer.invoke("markets:snapshot", watchlist),
+    chart: (quote, range) => ipcRenderer.invoke("markets:chart", quote, range),
+  },
+  github: {
+    status: (options) => ipcRenderer.invoke("github:status", options),
+    openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
   },
   controls: {
     status: () => ipcRenderer.invoke("controls:status"),

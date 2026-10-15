@@ -15,7 +15,7 @@ function deepMerge<T extends Record<string, unknown>>(base: T, patch: Partial<T>
   const out = { ...base }
   for (const key of Object.keys(patch) as (keyof T)[]) {
     const value = patch[key]
-    if (value === undefined) continue
+    if (value === undefined || value === null) continue
     const existing = base[key]
     if (
       value &&

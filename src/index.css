@@ -29,6 +29,10 @@ body,
   -ms-overflow-style: none; /* IE/Edge legacy */
 }
 
+button:not(:disabled) {
+  cursor: pointer;
+}
+
 *::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Electron */
   width: 0;

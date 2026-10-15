@@ -3,16 +3,33 @@
  * and are merged at runtime via the settings store.
  */
 
+import { DEFAULT_WEATHER_LOCATION } from "./default-location"
+
 export type TemperatureUnit = "celsius" | "fahrenheit"
 export type ThemeMode = "system" | "light" | "dark"
 export type WindSpeedUnit = "kmh" | "mph" | "ms"
 export type ClockFormat = "24h" | "12h"
 export type ChartStyle = "line" | "bar"
-export type IslandFace = "weather" | "battery" | "clock"
+export type IslandFace = "weather" | "battery" | "clock" | "markets" | "github"
+
+export type MarketWatchItem = {
+  id: string
+  symbol: string
+  name?: string
+  type: "crypto" | "stock"
+}
+
+export type TimerSession = import("../lib/timers").TimerSession
 
 export type LocationConfig =
   | { mode: "auto" }
-  | { mode: "manual"; latitude: number; longitude: number; label: string }
+  | {
+      mode: "manual"
+      latitude: number
+      longitude: number
+      label: string
+      countryCode: string
+    }
 
 export type AppSettings = {
   appName: string
@@ -34,18 +51,61 @@ export type AppSettings = {
       weather: boolean
       battery: boolean
       clock: boolean
+      markets: boolean
+      github: boolean
     }
   }
   clock: {
     format: ClockFormat
   }
+  timers: {
+    soundEnabled: boolean
+    pomodoro: {
+      workMs: number
+      shortBreakMs: number
+      longBreakMs: number
+      longEvery: number
+    }
+    session: TimerSession
+  }
+  markets: {
+    pollIntervalMs: number
+    watchlist: MarketWatchItem[]
+  }
+  github: {
+    pollIntervalMs: number
+  }
   collapsed: {
     width: number
     height: number
     musicExtraWidth: number
+    /** Extra width when a live activity label is showing */
+    activityExtraWidth: number
+    /** Extra width when a countdown timer is showing */
+    timerExtraWidth: number
+    /** Extra width when the GitHub contribution mini-heatmap is showing */
+    githubExtraWidth: number
+  }
+  /** Transient collapsed-pill alerts (rain soon, Cursor usage, …) */
+  liveActivities: {
+    enabled: boolean
+    /** How long each activity stays before rotating to the next */
+    dwellMs: number
+    weather: {
+      enabled: boolean
+      minPrecipProbability: number
+      lookaheadMinutes: number
+    }
+    cursor: {
+      enabled: boolean
+      /** Hide cursor-usage live activity (and tray balloon) until this timestamp */
+      snoozedUntilMs: number
+    }
   }
   spotify: {
     pollIntervalMs: number
+    /** Synced lyrics in the Now Playing panel (LRCLIB) */
+    showLyrics: boolean
   }
   cursor: {
     pollIntervalMs: number
@@ -75,7 +135,10 @@ export const defaultSettings: AppSettings = {
   refreshIntervalMs: 10 * 60 * 1000,
   temperatureUnit: "celsius",
   windSpeedUnit: "kmh",
-  location: { mode: "auto" },
+  location: {
+    mode: "manual",
+    ...DEFAULT_WEATHER_LOCATION,
+  },
   theme: "system",
   charts: {
     style: "bar",
@@ -86,19 +149,69 @@ export const defaultSettings: AppSettings = {
       weather: true,
       battery: true,
       clock: true,
+      markets: true,
+      github: true,
     },
   },
   clock: {
     format: "24h",
+  },
+  timers: {
+    soundEnabled: true,
+    pomodoro: {
+      workMs: 25 * 60_000,
+      shortBreakMs: 5 * 60_000,
+      longBreakMs: 15 * 60_000,
+      longEvery: 4,
+    },
+    session: {
+      kind: "idle",
+      phase: "countdown",
+      label: "",
+      endsAt: null,
+      startedAt: null,
+      elapsedMs: 0,
+      pomodoroRound: 1,
+      segmentMs: 0,
+    },
+  },
+  markets: {
+    pollIntervalMs: 90_000,
+    watchlist: [
+      { id: "bitcoin", symbol: "BTC", name: "Bitcoin", type: "crypto" },
+      { id: "ethereum", symbol: "ETH", name: "Ethereum", type: "crypto" },
+      { id: "aapl", symbol: "AAPL", name: "Apple", type: "stock" },
+    ],
+  },
+  github: {
+    pollIntervalMs: 120_000,
   },
   collapsed: {
     // Apple compact Dynamic Island is ~126×36pt; stay close
     width: 126,
     height: 36,
     musicExtraWidth: 52,
+    activityExtraWidth: 108,
+    /** Extra width when a countdown timer is showing */
+    timerExtraWidth: 40,
+    githubExtraWidth: 52,
+  },
+  liveActivities: {
+    enabled: true,
+    dwellMs: 8_000,
+    weather: {
+      enabled: true,
+      minPrecipProbability: 50,
+      lookaheadMinutes: 180,
+    },
+    cursor: {
+      enabled: true,
+      snoozedUntilMs: 0,
+    },
   },
   spotify: {
     pollIntervalMs: 4_000,
+    showLyrics: true,
   },
   cursor: {
     pollIntervalMs: 5 * 60 * 1000,

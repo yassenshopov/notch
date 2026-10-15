@@ -1,8 +1,10 @@
-import { AnimatePresence, LayoutGroup, motion } from "motion/react"
-import { useId, useState, type ReactNode } from "react"
-import type { ChartStyle, ClockFormat, ThemeMode } from "../config/settings"
+import { AnimatePresence, motion } from "motion/react"
+import { useEffect, useState, type ReactNode } from "react"
+import { DEFAULT_WEATHER_LOCATION } from "../config/default-location"
+import type { ChartStyle, ClockFormat, MarketWatchItem, ThemeMode } from "../config/settings"
 import { resetSettings, updateSettings, useSettings } from "../config/settings-store"
 import { ISLAND_EASE } from "../lib/island-motion"
+import { CRYPTO_IDS } from "../lib/market-assets"
 import { cn } from "../lib/utils"
 
 type Props = {
@@ -30,14 +32,25 @@ export function SettingsPanel({
   const [manualLon, setManualLon] = useState(
     s.location.mode === "manual" ? String(s.location.longitude) : "",
   )
+  const [manualCountry, setManualCountry] = useState(
+    s.location.mode === "manual"
+      ? s.location.countryCode ?? DEFAULT_WEATHER_LOCATION.countryCode
+      : DEFAULT_WEATHER_LOCATION.countryCode,
+  )
 
-  const saveManual = (label = manualLabel, lat = manualLat, lon = manualLon) => {
+  const saveManual = (
+    label = manualLabel,
+    lat = manualLat,
+    lon = manualLon,
+    countryCode = manualCountry,
+  ) => {
     void updateSettings({
       location: {
         mode: "manual",
-        latitude: Number(lat) || 0,
-        longitude: Number(lon) || 0,
-        label: label || "Custom",
+        latitude: Number(lat) || DEFAULT_WEATHER_LOCATION.latitude,
+        longitude: Number(lon) || DEFAULT_WEATHER_LOCATION.longitude,
+        label: label || DEFAULT_WEATHER_LOCATION.label,
+        countryCode: countryCode.trim().toUpperCase().slice(0, 2) || DEFAULT_WEATHER_LOCATION.countryCode,
       },
     })
   }
@@ -121,15 +134,106 @@ export function SettingsPanel({
             }
           />
         </Row>
-        <Row label="Time">
+        <Row label="Markets">
           <Segmented
-            value={s.clock.format}
+            value={s.island.faces.markets ? "on" : "off"}
             options={[
-              { value: "24h", label: "24h" },
-              { value: "12h", label: "12h" },
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
             ]}
-            onChange={(format) =>
-              void updateSettings({ clock: { format: format as ClockFormat } })
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, markets: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="GitHub">
+          <Segmented
+            value={s.island.faces.github ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, github: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="Live activities">
+        <Row label="Alerts">
+          <Segmented
+            value={s.liveActivities.enabled ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                liveActivities: { ...s.liveActivities, enabled: v === "on" },
+              })
+            }
+          />
+        </Row>
+        <Row label="Rotate">
+          <Segmented
+            value={String(s.liveActivities.dwellMs)}
+            options={[
+              { value: "6000", label: "6s" },
+              { value: "8000", label: "8s" },
+              { value: "12000", label: "12s" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                liveActivities: { ...s.liveActivities, dwellMs: Number(v) },
+              })
+            }
+          />
+        </Row>
+        <Row label="Rain soon">
+          <Segmented
+            value={s.liveActivities.weather.enabled ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                liveActivities: {
+                  ...s.liveActivities,
+                  weather: {
+                    ...s.liveActivities.weather,
+                    enabled: v === "on",
+                  },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Cursor usage">
+          <Segmented
+            value={s.liveActivities.cursor.enabled ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                liveActivities: {
+                  ...s.liveActivities,
+                  cursor: { ...s.liveActivities.cursor, enabled: v === "on" },
+                },
+              })
             }
           />
         </Row>
@@ -194,7 +298,12 @@ export function SettingsPanel({
               if (mode === "auto") {
                 void updateSettings({ location: { mode: "auto" } })
               } else {
-                saveManual()
+                const { label, latitude, longitude, countryCode } = DEFAULT_WEATHER_LOCATION
+                setManualLabel(label)
+                setManualLat(String(latitude))
+                setManualLon(String(longitude))
+                setManualCountry(countryCode)
+                saveManual(label, String(latitude), String(longitude), countryCode)
               }
             }}
           />
@@ -229,6 +338,13 @@ export function SettingsPanel({
                   onChange={setManualLon}
                   onBlur={() => saveManual()}
                 />
+                <Field
+                  label="Country"
+                  value={manualCountry}
+                  onChange={(v) => setManualCountry(v.toUpperCase().slice(0, 2))}
+                  onBlur={() => saveManual()}
+                  className="col-span-2"
+                />
               </div>
             </motion.div>
           ) : null}
@@ -257,6 +373,18 @@ export function SettingsPanel({
             onChange={(theme) => void updateSettings({ theme: theme as ThemeMode })}
           />
         </Row>
+        <Row label="Time">
+          <Segmented
+            value={s.clock.format}
+            options={[
+              { value: "24h", label: "24h" },
+              { value: "12h", label: "12h" },
+            ]}
+            onChange={(format) =>
+              void updateSettings({ clock: { format: format as ClockFormat } })
+            }
+          />
+        </Row>
         <Row label="Motion">
           <Segmented
             value={
@@ -279,7 +407,65 @@ export function SettingsPanel({
         </Row>
       </Section>
 
+      <Section title="Markets">
+        <WatchlistField
+          value={s.markets.watchlist.map((w) => w.symbol).join(", ")}
+          onSave={(raw) => {
+            const items = parseWatchlist(raw)
+            void updateSettings({ markets: { ...s.markets, watchlist: items } })
+          }}
+        />
+        <Row label="Refresh">
+          <Segmented
+            value={String(s.markets.pollIntervalMs)}
+            options={[
+              { value: "60000", label: "1m" },
+              { value: "90000", label: "1.5m" },
+              { value: "180000", label: "3m" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({ markets: { ...s.markets, pollIntervalMs: Number(v) } })
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="GitHub">
+        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+          Set <span className="font-medium">GITHUB_TOKEN</span> in{" "}
+          <span className="font-medium">.env</span> (classic PAT with{" "}
+          <span className="font-medium">notifications</span> scope) and restart Notch.
+        </p>
+        <Row label="Refresh">
+          <Segmented
+            value={String(s.github.pollIntervalMs)}
+            options={[
+              { value: "60000", label: "1m" },
+              { value: "120000", label: "2m" },
+              { value: "300000", label: "5m" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({ github: { ...s.github, pollIntervalMs: Number(v) } })
+            }
+          />
+        </Row>
+      </Section>
+
       <Section title="Spotify">
+        <Row label="Lyrics">
+          <Segmented
+            value={(s.spotify.showLyrics ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                spotify: { ...s.spotify, showLyrics: v === "on" },
+              })
+            }
+          />
+        </Row>
         <Row label="Poll">
           <Segmented
             value={String(s.spotify.pollIntervalMs)}
@@ -381,47 +567,78 @@ function Segmented<T extends string>({
   options: { value: T; label: string }[]
   onChange: (value: T) => void
 }) {
-  const id = useId()
-  const { motion: feel } = useSettings()
-  const pillTransition = {
-    type: "spring" as const,
-    stiffness: feel.stiffness,
-    damping: feel.damping,
-    mass: feel.mass,
-  }
-
   return (
-    <LayoutGroup id={id}>
-      <div className="relative flex rounded-full bg-black/5 p-0.5 dark:bg-white/10">
-        {options.map((opt) => {
-          const selected = value === opt.value
-          return (
-            <motion.button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              whileTap={{ scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 520, damping: 28, mass: 0.55 }}
-              className={cn(
-                "relative rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors duration-200",
-                selected
-                  ? "text-white dark:text-[#111]"
-                  : "text-black/45 dark:text-white/45",
-              )}
-            >
-              {selected ? (
-                <motion.span
-                  layoutId={`${id}-pill`}
-                  className="absolute inset-0 rounded-full bg-[#111] dark:bg-white"
-                  transition={pillTransition}
-                />
-              ) : null}
-              <span className="relative z-10">{opt.label}</span>
-            </motion.button>
-          )
-        })}
-      </div>
-    </LayoutGroup>
+    <div className="relative flex rounded-full bg-black/5 p-0.5 dark:bg-white/10">
+      {options.map((opt) => {
+        const selected = value === opt.value
+        return (
+          <motion.button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            whileTap={{ scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 520, damping: 28, mass: 0.55 }}
+            className={cn(
+              "relative rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors duration-200",
+              selected
+                ? "bg-[#111] text-white dark:bg-white dark:text-[#111]"
+                : "text-black/45 dark:text-white/45",
+            )}
+          >
+            {opt.label}
+          </motion.button>
+        )
+      })}
+    </div>
+  )
+}
+
+function parseWatchlist(raw: string): MarketWatchItem[] {
+  const parts = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+  const out: MarketWatchItem[] = []
+  for (const symbol of parts) {
+    const cryptoKey = symbol.replace(/-USD$/i, "")
+    const coinId = CRYPTO_IDS[cryptoKey] ?? CRYPTO_IDS[symbol]
+    if (coinId) {
+      out.push({ id: coinId, symbol, type: "crypto" })
+    } else {
+      out.push({
+        id: symbol.toLowerCase(),
+        symbol,
+        type: "stock",
+      })
+    }
+  }
+  return out
+}
+
+function WatchlistField({ value, onSave }: { value: string; onSave: (raw: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => {
+    setDraft(value)
+  }, [value])
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[13px] font-medium">Watchlist</span>
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => onSave(draft)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur()
+          }
+        }}
+        placeholder="BTC, ETH, AAPL"
+        className="rounded-xl border border-black/10 bg-transparent px-3 py-2 text-[13px] outline-none focus:border-black/30 dark:border-white/15"
+      />
+      <span className="text-[11px] text-black/40 dark:text-white/40">
+        Comma-separated tickers. Known crypto symbols use CoinGecko.
+      </span>
+    </label>
   )
 }
 

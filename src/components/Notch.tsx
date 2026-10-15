@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react"
-import { CloudSun, Settings, SlidersHorizontal } from "lucide-react"
+import { CloudSun, LineChart, Settings, Timer, Volume2 } from "lucide-react"
 import {
   AnimatePresence,
   motion,
@@ -15,7 +15,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react"
-import { useSettings } from "../config/settings-store"
+import { updateSettings, useSettings } from "../config/settings-store"
 import { useSpotify } from "../hooks/useSpotify"
 import { useTheme } from "../hooks/useTheme"
 import { useWeather } from "../hooks/useWeather"
@@ -33,6 +33,7 @@ import { useBattery } from "../hooks/useBattery"
 import { formatIslandTime, useClock } from "../hooks/useClock"
 import { useCursor } from "../hooks/useCursor"
 import { useIslandRotation } from "../hooks/useIslandRotation"
+import { useLiveActivities } from "../hooks/useLiveActivities"
 import { useOccasionalSmile } from "../hooks/useOccasionalSmile"
 import { BatteryIndicator } from "./BatteryIndicator"
 import { BotSmile } from "./BotSmile"
@@ -42,16 +43,37 @@ import { EqualizerBars } from "./EqualizerBars"
 import { SettingsPanel } from "./SettingsPanel"
 import { SpotifyPanel } from "./SpotifyPanel"
 import { WeatherIcon } from "./WeatherIcon"
+import { snoozeCursorUsageUntilMs } from "../lib/live-activities"
+import { LiveActivityContent } from "./LiveActivityContent"
 import { WeatherPanel } from "./WeatherPanel"
+import { ClockPanel } from "./ClockPanel"
+import { MarketsPanel } from "./MarketsPanel"
+import { GitHubPanel } from "./GitHubPanel"
+import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
+import { useTimerEngine } from "../hooks/useTimerEngine"
+import { useMarkets } from "../hooks/useMarkets"
+import { useGithub } from "../hooks/useGithub"
+import { formatQuoteChange } from "../lib/markets"
 
-type Panel = "weather" | "spotify" | "cursor" | "controls" | "settings"
+type Panel =
+  | "weather"
+  | "spotify"
+  | "cursor"
+  | "clock"
+  | "markets"
+  | "github"
+  | "controls"
+  | "settings"
 
 const PANEL_ORDER: Record<Panel, number> = {
   weather: 0,
   spotify: 1,
   cursor: 2,
-  controls: 3,
-  settings: 4,
+  clock: 3,
+  markets: 4,
+  github: 5,
+  controls: 6,
+  settings: 7,
 }
 
 /** Icon button size (size-9) + gap-1.5 — keeps the drop aligned to each slot */
@@ -75,19 +97,77 @@ export function Notch() {
   const { status, playing, connect, action, disconnect } = useSpotify()
   const battery = useBattery()
   const dark = useTheme()
-  const smiling = useOccasionalSmile(!expanded && !playing)
+  const timer = useTimerEngine()
+
+  const liveActivitiesEnabled =
+    !expanded && !playing && settings.liveActivities.enabled
+  const { current: liveActivity, cursorStatus: liveCursorStatus } = useLiveActivities({
+    active: liveActivitiesEnabled,
+    weather: data,
+  })
+
+  const dismissLiveActivity = () => {
+    if (liveActivity?.kind !== "cursor-usage") return
+    void updateSettings({
+      liveActivities: {
+        ...settings.liveActivities,
+        cursor: {
+          ...settings.liveActivities.cursor,
+          snoozedUntilMs: snoozeCursorUsageUntilMs(liveCursorStatus),
+        },
+      },
+    })
+  }
+  const smiling = useOccasionalSmile(
+    !expanded && !playing && !liveActivity && !timer.active,
+  )
 
   const batteryAvailable = battery.supported && battery.ready
+
+  const activePanel: Panel = useMemo(() => {
+    if (panelOverride) return panelOverride
+    return playing ? "spotify" : "weather"
+  }, [panelOverride, playing])
+
+  const marketsPoll =
+    (!expanded && settings.island.faces.markets) || (expanded && activePanel === "markets")
+  const githubPoll =
+    (!expanded && settings.island.faces.github) || (expanded && activePanel === "github")
+
+  const {
+    snapshot: marketsSnapshot,
+    loading: marketsLoading,
+    refreshing: marketsRefreshing,
+    refresh: refreshMarkets,
+  } = useMarkets(Boolean(marketsPoll))
+  const {
+    status: githubStatus,
+    refreshing: githubRefreshing,
+    refresh: refreshGithub,
+  } = useGithub(Boolean(githubPoll))
+
   const islandFaces = useMemo(() => {
     const faces: IslandFace[] = []
     const enabled = settings.island.faces
     if (enabled.weather && data) faces.push("weather")
     if (enabled.battery && batteryAvailable) faces.push("battery")
     if (enabled.clock) faces.push("clock")
+    if (enabled.markets && marketsSnapshot.quotes.length > 0) faces.push("markets")
+    if (enabled.github && githubStatus.connected) faces.push("github")
     return faces
-  }, [settings.island.faces, data, batteryAvailable])
+  }, [
+    settings.island.faces,
+    data,
+    batteryAvailable,
+    marketsSnapshot.quotes.length,
+    githubStatus.connected,
+    githubStatus.notifications.length,
+    githubStatus.pullRequests.length,
+  ])
 
-  const rotateEnabled = !expanded && !playing && !smiling
+  const timerShowing = !expanded && timer.active
+  const rotateEnabled =
+    !expanded && !playing && !smiling && !liveActivity && !timerShowing
   const islandFace = useIslandRotation({
     enabled: rotateEnabled,
     intervalMs: settings.island.rotateIntervalMs,
@@ -95,18 +175,22 @@ export function Notch() {
   })
   const clockNow = useClock(rotateEnabled && islandFace === "clock")
 
-  const collapsedWidth =
-    settings.collapsed.width + (playing ? settings.collapsed.musicExtraWidth : 0)
+  const githubHeatmapShowing =
+    rotateEnabled &&
+    islandFace === "github" &&
+    Boolean(githubStatus.contributions?.weeks?.length)
 
-  const activePanel: Panel = useMemo(() => {
-    if (panelOverride) return panelOverride
-    return playing ? "spotify" : "weather"
-  }, [panelOverride, playing])
+  const collapsedWidth =
+    settings.collapsed.width +
+    (playing ? settings.collapsed.musicExtraWidth : 0) +
+    (liveActivity ? settings.collapsed.activityExtraWidth : 0) +
+    (timerShowing ? settings.collapsed.timerExtraWidth : 0) +
+    (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0)
 
   const {
     status: cursorStatus,
-    loading: cursorLoading,
     analyticsLoading: cursorAnalyticsLoading,
+    refreshing: cursorRefreshing,
     refresh: refreshCursor,
   } = useCursor(expanded && activePanel === "cursor")
 
@@ -249,7 +333,10 @@ export function Notch() {
         onPointerDown={(e) => {
           // Keep presses on the panel from hitting the backdrop
           e.stopPropagation()
-          if (!expanded) void expand()
+          if (!expanded) {
+            if (liveActivity) setPanelOverride(liveActivity.panel)
+            void expand()
+          }
         }}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -364,7 +451,10 @@ export function Notch() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={islandContentOut}
-              className="relative z-10 flex h-full items-center justify-center px-4"
+              className={cn(
+                "relative z-10 flex h-full items-center justify-center",
+                liveActivity ? "px-3" : "px-4",
+              )}
             >
               {loading && !data && islandFaces.length === 0 ? (
                 <span
@@ -380,13 +470,7 @@ export function Notch() {
               ) : (
                 <span
                   className="relative flex h-full min-w-[4.5rem] items-center justify-center"
-                  style={
-                    {
-                      // Face uses notch fill as “skin”; eyes cut out in the opposite tone
-                      "--bot-eye": themedFg ? fill : dark ? "#111111" : "#f7f7f5",
-                      "--battery-bolt": fill,
-                    } as CSSProperties
-                  }
+                  style={{ "--battery-bolt": fill } as CSSProperties}
                 >
                   <AnimatePresence mode="wait" initial={false}>
                     {playing ? (
@@ -399,6 +483,26 @@ export function Notch() {
                         className="flex items-center justify-center"
                       >
                         <EqualizerBars active />
+                      </motion.span>
+                    ) : liveActivity ? (
+                      <LiveActivityContent
+                        key={liveActivity.id}
+                        activity={liveActivity}
+                        onDismiss={dismissLiveActivity}
+                      />
+                    ) : timerShowing ? (
+                      <motion.span
+                        key="timer"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-1.5"
+                      >
+                        <Timer className="size-3.5 opacity-70" strokeWidth={2} />
+                        <span className="text-[13px] font-semibold tracking-tight tabular-nums">
+                          {timer.display}
+                        </span>
                       </motion.span>
                     ) : smiling ? (
                       <motion.span
@@ -456,6 +560,44 @@ export function Notch() {
                           {formatTemp(data.temperature, unit)}
                         </span>
                       </motion.span>
+                    ) : islandFace === "markets" && marketsSnapshot.quotes[0] ? (
+                      <motion.span
+                        key="markets"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-2"
+                      >
+                        <span className="text-[12px] font-bold tracking-tight">
+                          {marketsSnapshot.quotes[0].symbol}
+                        </span>
+                        <span className="text-[12px] font-semibold tabular-nums opacity-80">
+                          {formatQuoteChange(marketsSnapshot.quotes[0].changePercent24h)}
+                        </span>
+                      </motion.span>
+                    ) : islandFace === "github" ? (
+                      <motion.span
+                        key="github"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-2"
+                      >
+                        {githubStatus.contributions?.weeks?.length ? (
+                          <GitHubContributionHeatmap
+                            weeks={githubStatus.contributions.weeks ?? []}
+                            variant="mini"
+                          />
+                        ) : (
+                          <Icon icon="simple-icons:github" className="size-3.5 opacity-75" aria-hidden />
+                        )}
+                        <span className="text-[11px] font-semibold tabular-nums opacity-80">
+                          {githubStatus.notifications.filter((n) => n.unread).length ||
+                            githubStatus.pullRequests.length}
+                        </span>
+                      </motion.span>
                     ) : null}
                   </AnimatePresence>
                 </span>
@@ -508,9 +650,25 @@ export function Notch() {
                     ) : activePanel === "cursor" ? (
                       <CursorPanel
                         status={cursorStatus}
-                        loading={cursorLoading}
                         analyticsLoading={cursorAnalyticsLoading}
+                        refreshing={cursorRefreshing}
                         onRefresh={() => void refreshCursor()}
+                      />
+                    ) : activePanel === "clock" ? (
+                      <ClockPanel />
+                    ) : activePanel === "markets" ? (
+                      <MarketsPanel
+                        snapshot={marketsSnapshot}
+                        loading={marketsLoading}
+                        refreshing={marketsRefreshing}
+                        hasWatchlist={settings.markets.watchlist.length > 0}
+                        onRefresh={() => void refreshMarkets()}
+                      />
+                    ) : activePanel === "github" ? (
+                      <GitHubPanel
+                        status={githubStatus}
+                        refreshing={githubRefreshing}
+                        onRefresh={() => void refreshGithub()}
                       />
                     ) : activePanel === "controls" ? (
                       <ControlsPanel active={expanded && activePanel === "controls"} />
@@ -637,12 +795,36 @@ function PanelRail({
         <Icon icon="simple-icons:cursor" className="size-4" aria-hidden />
       </IconTab>
       <IconTab
+        label="Clock"
+        active={active === "clock"}
+        themed={themed}
+        onClick={() => onSelect("clock")}
+      >
+        <Timer className="size-4" strokeWidth={1.75} />
+      </IconTab>
+      <IconTab
+        label="Markets"
+        active={active === "markets"}
+        themed={themed}
+        onClick={() => onSelect("markets")}
+      >
+        <LineChart className="size-4" strokeWidth={1.75} />
+      </IconTab>
+      <IconTab
+        label="GitHub"
+        active={active === "github"}
+        themed={themed}
+        onClick={() => onSelect("github")}
+      >
+        <Icon icon="simple-icons:github" className="size-4" aria-hidden />
+      </IconTab>
+      <IconTab
         label="Controls"
         active={active === "controls"}
         themed={themed}
         onClick={() => onSelect("controls")}
       >
-        <SlidersHorizontal className="size-4" strokeWidth={1.75} />
+        <Volume2 className="size-4" strokeWidth={1.75} />
       </IconTab>
       <IconTab
         label="Settings"

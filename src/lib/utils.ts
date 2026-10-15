@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { ClockFormat } from "../config/settings"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -23,18 +24,30 @@ export function formatShortDate(isoDate: string) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short" })
 }
 
-export function formatHour(iso: string) {
-  const d = new Date(iso)
-  return d.toLocaleTimeString(undefined, { hour: "numeric", hour12: true }).replace(" ", "")
+function hour12(format: ClockFormat) {
+  return format === "12h"
 }
 
-export function formatClock(iso: string) {
+export function formatHour(iso: string, format: ClockFormat) {
+  const d = new Date(iso)
+  return d
+    .toLocaleTimeString(undefined, { hour: "numeric", hour12: hour12(format) })
+    .replace(" ", "")
+}
+
+export function formatClock(iso: string, format: ClockFormat) {
   const d = new Date(iso)
   return d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
+    hour12: hour12(format),
   })
+}
+
+export function parseSunTime(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const ms = new Date(iso).getTime()
+  return Number.isFinite(ms) ? ms : null
 }
 
 export function windDirection(degrees: number) {

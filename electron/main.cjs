@@ -15,6 +15,8 @@ const spotify = require("./spotify.cjs")
 const cursor = require("./cursor.cjs")
 const settingsStore = require("./settings-store.cjs")
 const systemControls = require("./system-controls.cjs")
+const markets = require("./markets.cjs")
+const github = require("./github.cjs")
 
 // Hide native Chromium scrollbars; wheel / trackpad scrolling still works
 app.commandLine.appendSwitch("hide-scrollbars")
@@ -211,8 +213,11 @@ async function syncCursorTray() {
   const pct = Math.round(status.usage.totalPercentUsed)
   tray.setToolTip(`Notch · Cursor ${pct}% used`)
 
+  const snoozedUntil = settingsStore.readSettings()?.liveActivities?.cursor?.snoozedUntilMs ?? 0
+  const usageSnoozed = snoozedUntil > Date.now()
+
   if (pct >= usageWarningPercent) {
-    if (!cursorTrayWarned && process.platform === "win32") {
+    if (!usageSnoozed && !cursorTrayWarned && process.platform === "win32") {
       const icon = nativeImage.createFromPath(APP_ICON)
       tray.displayBalloon?.({
         title: "Cursor usage",
@@ -333,9 +338,23 @@ ipcMain.handle("spotify:action", async (_event, action) => {
   return spotify.playbackAction(action)
 })
 
-ipcMain.handle("cursor:status", async () => {
+ipcMain.handle("spotify:lyrics", async (_event, query) => {
   try {
-    return await cursor.getUsageSummary({ detailed: false })
+    return await spotify.fetchLyrics(query ?? {})
+  } catch (err) {
+    return {
+      found: false,
+      instrumental: false,
+      plainLyrics: null,
+      syncedLyrics: null,
+      error: err instanceof Error ? err.message : "lyrics_error",
+    }
+  }
+})
+
+ipcMain.handle("cursor:status", async (_event, options) => {
+  try {
+    return await cursor.getUsageSummary({ detailed: false, force: options?.force === true })
   } catch (err) {
     return {
       connected: false,
@@ -345,9 +364,9 @@ ipcMain.handle("cursor:status", async () => {
   }
 })
 
-ipcMain.handle("cursor:analytics", async () => {
+ipcMain.handle("cursor:analytics", async (_event, options) => {
   try {
-    return await cursor.getUsageAnalytics()
+    return await cursor.getUsageAnalytics({ force: options?.force === true })
   } catch {
     return null
   }
@@ -358,6 +377,55 @@ ipcMain.handle("cursor:open-dashboard", async () => {
 })
 
 ipcMain.handle("cursor:open-url", async (_event, url) => {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url)
+  }
+})
+
+ipcMain.handle("markets:snapshot", async (_event, watchlist) => {
+  try {
+    return await markets.snapshot(watchlist)
+  } catch (err) {
+    return {
+      quotes: [],
+      configured: true,
+      error: err instanceof Error ? err.message : "markets_error",
+    }
+  }
+})
+
+ipcMain.handle("markets:chart", async (_event, quote, range) => {
+  try {
+    return await markets.chart(quote, range)
+  } catch (err) {
+    return {
+      points: [],
+      changePercent: null,
+      high: null,
+      low: null,
+      error: err instanceof Error ? err.message : "markets_error",
+    }
+  }
+})
+
+ipcMain.handle("github:status", async (_event, options) => {
+  try {
+    return await github.status({ force: options?.force === true })
+  } catch (err) {
+    return {
+      configured: github.configured(),
+      connected: false,
+      login: null,
+      avatarUrl: null,
+      notifications: [],
+      pullRequests: [],
+      contributions: null,
+      error: err instanceof Error ? err.message : "github_error",
+    }
+  }
+})
+
+ipcMain.handle("github:open-url", async (_event, url) => {
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
     await shell.openExternal(url)
   }
