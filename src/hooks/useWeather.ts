@@ -15,10 +15,10 @@ export function useWeather(): WeatherState {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
       setError(null)
-      const snapshot = await fetchWeather()
+      const snapshot = await fetchWeather({ force })
       setData(snapshot)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load weather")
@@ -33,5 +33,5 @@ export function useWeather(): WeatherState {
     return () => window.clearInterval(id)
   }, [load, settings.refreshIntervalMs, settings.temperatureUnit, settings.windSpeedUnit, settings.location])
 
-  return { data, loading, error, refresh: () => void load() }
+  return { data, loading, error, refresh: () => void load(true) }
 }

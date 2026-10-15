@@ -5,8 +5,13 @@ import {
   type AqiScale,
   type PollenType,
 } from "./air-quality"
+import { DEFAULT_WEATHER_LOCATION } from "../config/default-location"
 import { getSettings } from "../config/settings-store"
+import { cached } from "./request-cache"
 import { normalizeWindDegrees, windDirection } from "./utils"
+
+const GEO_TTL_MS = 60 * 60_000
+const GEO_STALE_MS = 6 * 60 * 60_000
 
 export type WeatherCode =
   | "clear"
@@ -29,6 +34,7 @@ export type HourlyPoint = {
   pressure: number
   visibilityKm: number
   uvIndex: number
+  precipProbability: number
   aqi: number | null
   aqiScale: AqiScale
   pm25: number | null
@@ -69,16 +75,18 @@ export type DayForecast = {
 
 export type WeatherSnapshot = {
   locationLabel: string
+  countryCode: string
   temperature: number
   code: WeatherCode
   isDay: boolean
   days: DayForecast[]
+  /** Hourly points from the current hour forward (for live activities) */
+  upcomingHours: HourlyPoint[]
   fetchedAt: number
 }
 
 export type WeatherMetric =
-  | "sunrise"
-  | "sunset"
+  | "daylight"
   | "feelsLike"
   | "wind"
   | "humidity"
@@ -92,6 +100,7 @@ type GeoResult = {
   latitude: number
   longitude: number
   label: string
+  countryCode: string
 }
 
 type HourlyBags = {
@@ -106,6 +115,7 @@ type HourlyBags = {
   wind_speed_10m: number[]
   wind_direction_10m: number[]
   surface_pressure: number[]
+  precipitation_probability: number[]
 }
 
 function mapWeatherCode(code: number): WeatherCode {
@@ -154,6 +164,7 @@ function pointAt(hourly: HourlyBags, i: number, aq: AirQualityPayload | null): H
     pressure: Math.round(hourly.surface_pressure[i]),
     visibilityKm: Math.round(((hourly.visibility?.[i] ?? 10000) / 1000) * 10) / 10,
     uvIndex: air.uvIndex ?? forecastUv,
+    precipProbability: Math.round(hourly.precipitation_probability?.[i] ?? 0),
     aqi: air.aqi,
     aqiScale: air.aqiScale,
     pm25: air.pm25,
@@ -164,45 +175,52 @@ function pointAt(hourly: HourlyBags, i: number, aq: AirQualityPayload | null): H
   }
 }
 
-async function resolveLocation(): Promise<GeoResult> {
+async function resolveLocation(force = false): Promise<GeoResult> {
   const settings = getSettings()
   if (settings.location.mode === "manual") {
     return {
       latitude: settings.location.latitude,
       longitude: settings.location.longitude,
       label: settings.location.label,
+      countryCode:
+        settings.location.countryCode?.trim().toUpperCase() ||
+        DEFAULT_WEATHER_LOCATION.countryCode,
     }
   }
 
-  try {
-    const res = await fetch("https://ipapi.co/json/")
-    if (res.ok) {
-      const data = (await res.json()) as {
-        latitude?: number
-        longitude?: number
-        city?: string
-        country_name?: string
-        error?: boolean
-      }
-      if (!data.error && data.latitude != null && data.longitude != null) {
-        const city = data.city ?? "Unknown"
-        const country = data.country_name ?? ""
-        return {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          label: country ? `${city}, ${country}` : city,
+  return cached(
+    "weather:geo:ip",
+    { ttlMs: GEO_TTL_MS, staleMs: GEO_STALE_MS, force },
+    async () => {
+      try {
+        const res = await fetch("https://ipapi.co/json/")
+        if (res.ok) {
+          const data = (await res.json()) as {
+            latitude?: number
+            longitude?: number
+            city?: string
+            country_name?: string
+            country_code?: string
+            error?: boolean
+          }
+          if (!data.error && data.latitude != null && data.longitude != null) {
+            const city = data.city ?? "Unknown"
+            const country = data.country_name ?? ""
+            const countryCode = (data.country_code ?? "").trim().toUpperCase()
+            return {
+              latitude: data.latitude,
+              longitude: data.longitude,
+              label: country ? `${city}, ${country}` : city,
+              countryCode: countryCode || DEFAULT_WEATHER_LOCATION.countryCode,
+            }
+          }
         }
+      } catch {
+        // fall through
       }
-    }
-  } catch {
-    // fall through
-  }
-
-  return {
-    latitude: 52.52,
-    longitude: 13.41,
-    label: "Berlin, Germany",
-  }
+      return { ...DEFAULT_WEATHER_LOCATION }
+    },
+  )
 }
 
 function dayIndices(day: string, times: string[]) {
@@ -244,6 +262,20 @@ function pickSeriesHours(indices: number[]): number[] {
   return out
 }
 
+function pickUpcomingHourIndices(
+  indices: number[],
+  times: string[],
+  nowMs: number,
+  maxHours: number,
+): number[] {
+  const startMs = nowMs - 30 * 60 * 1000
+  const endMs = nowMs + maxHours * 60 * 60 * 1000
+  return indices.filter((i) => {
+    const t = new Date(times[i]).getTime()
+    return t >= startMs && t <= endMs
+  })
+}
+
 function sampleAt(day: string, hourly: HourlyBags, values: number[], hour = 12): number {
   const idx = hourly.time.findIndex((t) => dateKey(t) === day && new Date(t).getHours() === hour)
   if (idx >= 0) return values[idx]
@@ -251,12 +283,11 @@ function sampleAt(day: string, hourly: HourlyBags, values: number[], hour = 12):
   return any >= 0 ? values[any] : 0
 }
 
-export async function fetchWeather(): Promise<WeatherSnapshot> {
-  const settings = getSettings()
-  const loc = await resolveLocation()
-  const tempUnit = settings.temperatureUnit
-  const windUnit = settings.windSpeedUnit
+function weatherCacheKey(loc: GeoResult, tempUnit: string, windUnit: string) {
+  return `weather:${loc.latitude.toFixed(3)},${loc.longitude.toFixed(3)}:${tempUnit}:${windUnit}`
+}
 
+async function fetchWeatherUncached(loc: GeoResult, tempUnit: string, windUnit: string): Promise<WeatherSnapshot> {
   const params = new URLSearchParams({
     latitude: String(loc.latitude),
     longitude: String(loc.longitude),
@@ -281,6 +312,7 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
       "wind_speed_10m",
       "wind_direction_10m",
       "surface_pressure",
+      "precipitation_probability",
     ].join(","),
     daily: ["weather_code", "temperature_2m_max", "temperature_2m_min", "sunrise", "sunset"].join(
       ",",
@@ -384,13 +416,34 @@ export async function fetchWeather(): Promise<WeatherSnapshot> {
   })
 
   const today = days.find((d) => d.isToday) ?? days[0]
+  const todayDate = today.date
+  const todayIndices = dayIndices(todayDate, hourly.time)
+  const upcomingIdx = pickUpcomingHourIndices(todayIndices, hourly.time, nowMs, 24)
+  const upcomingHours = upcomingIdx.map((idx) => pointAt(hourly, idx, air))
 
   return {
     locationLabel: loc.label,
+    countryCode: loc.countryCode,
     temperature: today.temperature,
     code: today.code,
     isDay: today.isDay,
     days,
+    upcomingHours,
     fetchedAt: Date.now(),
   }
+}
+
+export async function fetchWeather(options?: { force?: boolean }): Promise<WeatherSnapshot> {
+  const settings = getSettings()
+  const loc = await resolveLocation(options?.force === true)
+  const tempUnit = settings.temperatureUnit
+  const windUnit = settings.windSpeedUnit
+  const ttlMs = Math.max(60_000, settings.refreshIntervalMs)
+  const staleMs = ttlMs * 2
+
+  return cached(
+    weatherCacheKey(loc, tempUnit, windUnit),
+    { ttlMs, staleMs, force: options?.force === true },
+    () => fetchWeatherUncached(loc, tempUnit, windUnit),
+  )
 }

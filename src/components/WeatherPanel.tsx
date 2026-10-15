@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import type { ClockFormat } from "../config/settings"
 import { useSettings } from "../config/settings-store"
 import {
   aqiCategory,
@@ -19,6 +20,7 @@ import {
   formatShortDate,
   formatTemp,
 } from "../lib/utils"
+import { CountryFlag } from "./CountryFlag"
 import { MetricChart } from "./MetricChart"
 import { SunPath } from "./SunPath"
 import { WeatherIcon } from "./WeatherIcon"
@@ -29,8 +31,7 @@ type Props = {
 }
 
 const METRICS: { id: WeatherMetric; label: string }[] = [
-  { id: "sunrise", label: "Sunrise" },
-  { id: "sunset", label: "Sunset" },
+  { id: "daylight", label: "Sunrise & sunset" },
   { id: "feelsLike", label: "Feels like" },
   { id: "wind", label: "Wind" },
   { id: "humidity", label: "Humidity" },
@@ -79,15 +80,19 @@ export function WeatherPanel({ data }: Props) {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
             transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.8 }}
-            className="notch-scroll h-full"
+            className="notch-scroll flex h-full min-h-0 flex-col"
           >
             <DayBody
               day={day}
               locationLabel={data.locationLabel}
+              countryCode={data.countryCode}
               unit={unit}
               windUnit={settings.windSpeedUnit}
+              clockFormat={settings.clock.format}
               metric={metric}
               onToggleMetric={toggleMetric}
+              previousSunset={data.days[selectedIndex - 1]?.sunset ?? null}
+              nextSunrise={data.days[selectedIndex + 1]?.sunrise ?? null}
             />
           </motion.div>
         </AnimatePresence>
@@ -133,17 +138,25 @@ export function WeatherPanel({ data }: Props) {
 function DayBody({
   day,
   locationLabel,
+  countryCode,
   unit,
   windUnit,
+  clockFormat,
   metric,
   onToggleMetric,
+  previousSunset,
+  nextSunrise,
 }: {
   day: DayForecast
   locationLabel: string
+  countryCode: string
   unit: "celsius" | "fahrenheit"
   windUnit: "kmh" | "mph" | "ms"
+  clockFormat: ClockFormat
   metric: WeatherMetric | null
   onToggleMetric: (id: WeatherMetric) => void
+  previousSunset: string | null
+  nextSunrise: string | null
 }) {
   const dateLabel = day.isToday
     ? formatDateLong(new Date())
@@ -153,10 +166,8 @@ function DayBody({
 
   const metricValue = (id: WeatherMetric): ReactNode => {
     switch (id) {
-      case "sunrise":
-        return formatClock(day.sunrise)
-      case "sunset":
-        return formatClock(day.sunset)
+      case "daylight":
+        return `${formatClock(day.sunrise, clockFormat)} – ${formatClock(day.sunset, clockFormat)}`
       case "feelsLike":
         return formatTemp(day.feelsLike, unit)
       case "wind":
@@ -180,6 +191,8 @@ function DayBody({
         return formatAqi(day.aqi, day.aqiScale)
       case "pollen":
         return formatPollen(day.pollen, day.pollenType)
+      default:
+        return "—"
     }
   }
 
@@ -187,7 +200,10 @@ function DayBody({
     <div className="flex min-h-full flex-col">
       <header className="mb-1 flex shrink-0 items-start justify-between gap-3 pr-10">
         <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold tracking-tight">{locationLabel}</p>
+          <p className="flex min-w-0 items-center gap-2 text-[15px] font-semibold tracking-tight">
+            <CountryFlag code={countryCode} className="h-3 w-[1.125rem]" />
+            <span className="truncate">{locationLabel}</span>
+          </p>
           <p className="mt-0.5 text-[12px] text-black/45 dark:text-white/45">{dateLabel}</p>
         </div>
         <WeatherIcon code={day.code} isDay={day.isDay} className="mt-0.5 size-7" />
@@ -203,7 +219,7 @@ function DayBody({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-              className="absolute inset-0 flex flex-col"
+              className="absolute inset-0 flex min-h-0 flex-col overflow-hidden"
             >
               <MetricHero
                 day={day}
@@ -211,6 +227,8 @@ function DayBody({
                 value={metricValue(metric)}
                 unit={unit}
                 windLabel={windLabel}
+                previousSunset={previousSunset}
+                nextSunrise={nextSunrise}
               />
             </motion.div>
           ) : (
@@ -242,7 +260,7 @@ function DayBody({
                 {day.hourly.map((h) => (
                   <div key={h.time} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                     <span className="text-[10px] text-black/40 dark:text-white/40">
-                      {formatHour(h.time)}
+                      {formatHour(h.time, clockFormat)}
                     </span>
                     <WeatherIcon code={h.code} isDay={h.isDay} className="size-5" />
                     <span className="text-[12px] font-semibold tabular-nums">
@@ -271,23 +289,32 @@ function DayBody({
   )
 }
 
+function isDaylightMetric(metric: WeatherMetric | string) {
+  return metric === "daylight" || metric === "sunrise" || metric === "sunset"
+}
+
 function MetricHero({
   day,
   metric,
   value,
   unit,
   windLabel,
+  previousSunset,
+  nextSunrise,
 }: {
   day: DayForecast
   metric: WeatherMetric
   value: ReactNode
   unit: "celsius" | "fahrenheit"
   windLabel: string
+  previousSunset: string | null
+  nextSunrise: string | null
 }) {
   const settings = useSettings()
   const title = METRICS.find((m) => m.id === metric)?.label ?? metric
 
   const chartPoints = useMemo(() => {
+    if (isDaylightMetric(metric)) return []
     const series = day.series.length > 0 ? day.series : day.hourly
     switch (metric) {
       case "feelsLike":
@@ -338,14 +365,19 @@ function MetricHero({
     }
   }
 
+  const chartStyle = settings.charts?.style ?? "line"
+  const clockFormat = settings.clock.format
+
   const subtitle =
-    metric === "uv"
-      ? uvCategory(day.uvIndex)
-      : metric === "aqi" && day.aqi != null
-        ? aqiCategory(day.aqi, day.aqiScale)
-        : metric === "pollen" && day.pollen != null
-          ? pollenCategory(day.pollen)
-          : null
+    isDaylightMetric(metric)
+      ? `${formatClock(day.sunrise, clockFormat)} rise · ${formatClock(day.sunset, clockFormat)} set`
+      : metric === "uv"
+        ? uvCategory(day.uvIndex)
+        : metric === "aqi" && day.aqi != null
+          ? aqiCategory(day.aqi, day.aqiScale)
+          : metric === "pollen" && day.pollen != null
+            ? pollenCategory(day.pollen)
+            : null
 
   return (
     <div className="flex h-full flex-col">
@@ -372,6 +404,10 @@ function MetricHero({
           ) : metric === "uv" ? (
             <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
               {day.uvIndex}
+            </p>
+          ) : isDaylightMetric(metric) ? (
+            <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
+              {formatDaylightDuration(day.sunrise, day.sunset)}
             </p>
           ) : (
             <p className="mt-1 truncate text-[34px] font-bold leading-none tracking-tight tabular-nums">
@@ -400,13 +436,20 @@ function MetricHero({
       </div>
 
       <div className="mt-4 min-h-0 flex-1">
-        {metric === "sunrise" || metric === "sunset" ? (
-          <SunPath sunrise={day.sunrise} sunset={day.sunset} mode={metric} />
+        {isDaylightMetric(metric) ? (
+          <SunPath
+            sunrise={day.sunrise}
+            sunset={day.sunset}
+            isToday={day.isToday}
+            previousSunset={previousSunset}
+            nextSunrise={nextSunrise}
+          />
         ) : chartPoints.length > 0 ? (
           <MetricChart
             points={chartPoints}
-            variant={settings.charts.style}
+            variant={chartStyle}
             formatValue={formatValue}
+            formatTime={(iso) => formatHour(iso, clockFormat)}
             className="h-full"
           />
         ) : (
@@ -419,6 +462,17 @@ function MetricHero({
       </div>
     </div>
   )
+}
+
+function formatDaylightDuration(sunrise: string, sunset: string): string {
+  const rise = new Date(sunrise).getTime()
+  const setMs = new Date(sunset).getTime()
+  if (!Number.isFinite(rise) || !Number.isFinite(setMs)) return "—"
+  const ms = Math.max(0, setMs - rise)
+  const totalMinutes = Math.round(ms / 60_000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
 }
 
 function AirGlance({
