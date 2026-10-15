@@ -283,6 +283,41 @@ function disconnect() {
   return { connected: false, configured: isConfigured(), isPlaying: false, track: null }
 }
 
+const LRC_USER_AGENT = "notch/0.1 (https://github.com/yassenshopov/notch)"
+
+async function fetchLyrics({ trackName, artistName, albumName, durationMs }) {
+  if (!trackName || !artistName) {
+    return { found: false, instrumental: false, plainLyrics: null, syncedLyrics: null }
+  }
+
+  const durationSec = Math.round((durationMs || 0) / 1000)
+  const params = new URLSearchParams({
+    track_name: trackName,
+    artist_name: artistName,
+  })
+  if (albumName) params.set("album_name", albumName)
+  if (durationSec > 0) params.set("duration", String(durationSec))
+
+  const res = await fetch(`https://lrclib.net/api/get?${params}`, {
+    headers: { "User-Agent": LRC_USER_AGENT },
+  })
+
+  if (res.status === 404) {
+    return { found: false, instrumental: false, plainLyrics: null, syncedLyrics: null }
+  }
+  if (!res.ok) {
+    throw new Error(`Lyrics request failed (${res.status})`)
+  }
+
+  const data = await res.json()
+  return {
+    found: true,
+    instrumental: Boolean(data.instrumental),
+    plainLyrics: data.plainLyrics ?? null,
+    syncedLyrics: data.syncedLyrics ?? null,
+  }
+}
+
 module.exports = {
   isConfigured,
   isConnected,
@@ -290,4 +325,5 @@ module.exports = {
   playbackAction,
   startAuth,
   disconnect,
+  fetchLyrics,
 }

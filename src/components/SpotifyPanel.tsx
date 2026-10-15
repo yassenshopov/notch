@@ -1,10 +1,13 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import type { CSSProperties, ReactNode } from "react"
+import { useSettings } from "../config/settings-store"
+import { useSpotifyLyrics } from "../hooks/useSpotifyLyrics"
 import type { AlbumPalette } from "../lib/album-color"
 import { formatMs, type SpotifyStatus } from "../lib/spotify"
 import { cn } from "../lib/utils"
 import { EqualizerBars } from "./EqualizerBars"
+import { SpotifyLyrics } from "./SpotifyLyrics"
 
 type Props = {
   status: SpotifyStatus
@@ -15,6 +18,16 @@ type Props = {
 }
 
 export function SpotifyPanel({ status, onAction, onConnect, connecting, palette }: Props) {
+  const settings = useSettings()
+  const showLyrics = settings.spotify.showLyrics ?? true
+  const track = status.track
+  const duration = status.durationMs ?? 0
+  const { lyrics, loading: lyricsLoading } = useSpotifyLyrics({
+    enabled: showLyrics && status.connected && Boolean(track),
+    track,
+    durationMs: duration,
+  })
+
   if (!status.configured) {
     return (
       <EmptyState
@@ -50,12 +63,10 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
     )
   }
 
-  if (!status.track) {
+  if (!track) {
     return <EmptyState title="Spotify" body="Nothing playing right now." />
   }
 
-  const { track } = status
-  const duration = status.durationMs ?? 0
   const progress = Math.min(duration, status.progressMs ?? 0)
   const pct = duration > 0 ? (progress / duration) * 100 : 0
   const themed = Boolean(palette)
@@ -71,8 +82,8 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
     : undefined
 
   return (
-    <div className="flex h-full flex-col pb-2" style={style}>
-      <header className="flex items-center justify-between gap-3 pr-10">
+    <div className="flex h-full min-h-0 flex-col pb-2" style={style}>
+      <header className="flex shrink-0 items-center justify-between gap-3 pr-10">
         <p
           className={cn(
             "text-[11px] font-semibold uppercase tracking-[0.16em]",
@@ -98,7 +109,12 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
         )}
       </header>
 
-      <div className="mt-5 flex flex-1 flex-col items-center">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col items-center",
+          showLyrics ? "mt-3" : "mt-5",
+        )}
+      >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={track.id}
@@ -106,11 +122,12 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 360, damping: 32, mass: 0.8 }}
-            className="flex w-full flex-col items-center"
+            className="flex w-full shrink-0 flex-col items-center"
           >
             <div
               className={cn(
-                "relative aspect-square w-[72%] max-w-[220px] overflow-hidden rounded-[28px]",
+                "relative aspect-square overflow-hidden rounded-[28px]",
+                showLyrics ? "w-[56%] max-w-[168px]" : "w-[72%] max-w-[220px]",
                 themed ? "bg-black/20" : "bg-black/5 dark:bg-white/10",
               )}
             >
@@ -134,13 +151,23 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
               )}
             </div>
 
-            <div className="mt-6 w-full min-w-0 px-1 text-center">
-              <p className="truncate text-[22px] font-semibold leading-tight tracking-tight">
+            <div
+              className={cn(
+                "w-full min-w-0 px-1 text-center",
+                showLyrics ? "mt-3" : "mt-6",
+              )}
+            >
+              <p
+                className={cn(
+                  "truncate font-semibold leading-tight tracking-tight",
+                  showLyrics ? "text-[18px]" : "text-[22px]",
+                )}
+              >
                 {track.name}
               </p>
               <p
                 className={cn(
-                  "mt-1.5 truncate text-[14px]",
+                  "mt-1 truncate text-[14px]",
                   themed ? "text-[color:var(--sp-muted)]" : "text-black/50 dark:text-white/50",
                 )}
               >
@@ -150,7 +177,16 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
           </motion.div>
         </AnimatePresence>
 
-        <div className="mt-auto w-full pt-8">
+        {showLyrics ? (
+          <SpotifyLyrics
+            lyrics={lyrics}
+            loading={lyricsLoading}
+            progressMs={progress}
+            themed={themed}
+          />
+        ) : null}
+
+        <div className={cn("mt-auto w-full shrink-0", showLyrics ? "pt-3" : "pt-8")}>
           <div
             className={cn(
               "h-[3px] overflow-hidden rounded-full",
