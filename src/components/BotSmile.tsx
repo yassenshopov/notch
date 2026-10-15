@@ -5,57 +5,96 @@ type Props = {
   className?: string
 }
 
-/** Tiny Grok-ish bot smile — cute rounded face for occasional notch winks. */
+const STROKE = 2
+const EASE = [0.22, 1, 0.36, 1] as const
+
+const faceVariants = {
+  idle: {},
+  smile: {
+    transition: { delayChildren: 0.04, staggerChildren: 0.05 },
+  },
+}
+
+/**
+ * Minimal Grok-style face — two vertical eye lines that ease into brows
+ * while a short smile draws in (occasional notch wink).
+ */
 export function BotSmile({ className }: Props) {
   return (
     <motion.svg
-      viewBox="0 0 32 32"
-      className={cn("size-[15px]", className)}
+      viewBox="0 0 24 24"
+      className={cn("size-4 text-current", className)}
       aria-hidden
-      initial={false}
-      animate={{ rotate: [0, -6, 6, -3, 0] }}
-      transition={{ duration: 0.7, ease: "easeInOut" }}
+      variants={faceVariants}
+      initial="idle"
+      animate="smile"
     >
-      {/* soft head */}
-      <rect x="4" y="5" width="24" height="22" rx="11" fill="currentColor" opacity="0.92" />
-      {/* antenna */}
-      <circle cx="16" cy="3.5" r="1.6" fill="currentColor" opacity="0.7" />
-      <path
-        d="M16 5 V8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        opacity="0.55"
-      />
-      {/* eyes — blink-friendly ellipses */}
-      <motion.ellipse
-        cx="11.2"
-        cy="14.2"
-        rx="1.7"
-        ry="2.1"
-        fill="var(--bot-eye, #f7f7f5)"
-        animate={{ scaleY: [1, 1, 0.15, 1, 1] }}
-        transition={{ duration: 0.7, times: [0, 0.35, 0.45, 0.55, 1] }}
-      />
-      <motion.ellipse
-        cx="20.8"
-        cy="14.2"
-        rx="1.7"
-        ry="2.1"
-        fill="var(--bot-eye, #f7f7f5)"
-        animate={{ scaleY: [1, 1, 0.15, 1, 1] }}
-        transition={{ duration: 0.7, times: [0, 0.35, 0.45, 0.55, 1] }}
-      />
-      {/* cheek dots */}
-      <circle cx="8.2" cy="17.8" r="1.2" fill="#ff8fab" opacity="0.85" />
-      <circle cx="23.8" cy="17.8" r="1.2" fill="#ff8fab" opacity="0.85" />
-      {/* smile */}
-      <path
-        d="M11.5 19.5 C13.2 22.2, 18.8 22.2, 20.5 19.5"
+      {/* Left eye — vertical line */}
+      <motion.path
+        d="M 8 10.5 V 14.5"
         fill="none"
-        stroke="var(--bot-eye, #f7f7f5)"
-        strokeWidth="1.8"
+        stroke="currentColor"
+        strokeWidth={STROKE}
         strokeLinecap="round"
+        variants={{
+          idle: { opacity: 1 },
+          smile: { opacity: 0 },
+        }}
+        transition={{ duration: 0.28, ease: EASE }}
+      />
+      {/* Left brow */}
+      <motion.path
+        d="M 6 12 Q 8 8.75 10 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        variants={{
+          idle: { opacity: 0, pathLength: 0.4 },
+          smile: { opacity: 1, pathLength: 1 },
+        }}
+        transition={{ duration: 0.34, ease: EASE, delay: 0.06 }}
+      />
+
+      {/* Right eye — vertical line */}
+      <motion.path
+        d="M 16 10.5 V 14.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        variants={{
+          idle: { opacity: 1 },
+          smile: { opacity: 0 },
+        }}
+        transition={{ duration: 0.28, ease: EASE }}
+      />
+      {/* Right brow */}
+      <motion.path
+        d="M 14 12 Q 16 8.75 18 12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        variants={{
+          idle: { opacity: 0, pathLength: 0.4 },
+          smile: { opacity: 1, pathLength: 1 },
+        }}
+        transition={{ duration: 0.34, ease: EASE, delay: 0.06 }}
+      />
+
+      {/* Smile */}
+      <motion.path
+        d="M 7.5 16.25 Q 12 19.25 16.5 16.25"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        strokeLinecap="round"
+        variants={{
+          idle: { opacity: 0, pathLength: 0 },
+          smile: { opacity: 0.92, pathLength: 1 },
+        }}
+        transition={{ duration: 0.36, ease: EASE, delay: 0.14 }}
       />
     </motion.svg>
   )
