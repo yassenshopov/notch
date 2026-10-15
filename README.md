@@ -8,8 +8,9 @@ Frameless Electron overlay, click-through outside the pill, expands from the top
 
 - **Weather-first pill** — temperature, condition icon (Fluent Emoji), and quick metrics from [Open-Meteo](https://open-meteo.com/) (no API key)
 - **Location** — resolved via IP geolocation; override latitude/longitude in settings
-- **Spotify now playing** — equalizer in the collapsed pill while music is playing; full now-playing panel when expanded (album art tint, play/pause, skip)
+- **Spotify now playing** — equalizer in the collapsed pill while music is playing; full now-playing panel when expanded (album art tint, synced lyrics via [LRCLIB](https://lrclib.net), play/pause, skip)
 - **Cursor usage** — included-plan usage, per-model charts, cloud agents, tray usage alerts, and cycle stats from your signed-in Cursor desktop session
+- **Live activities** — transient collapsed-pill alerts (rain soon, Cursor usage threshold) with priority over island rotation; tap to open the related panel
 - **Theme** — light / dark / system, toggled from the pill
 - **Settings** — units, refresh interval, location, Spotify connect/disconnect — persisted in Electron `userData`
 - **Click-outside dismiss** — expands to a transparent fullscreen shell so outside clicks collapse the notch
