@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import type { ClockFormat } from "../config/settings"
+import { formatClock } from "../lib/utils"
 
 /** Live clock — ticks every second while enabled. */
 export function useClock(enabled = true) {
@@ -16,10 +17,5 @@ export function useClock(enabled = true) {
 }
 
 export function formatIslandTime(date: Date, format: ClockFormat) {
-  const hour12 = format === "12h"
-  return date.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12,
-  })
+  return formatClock(date.toISOString(), format)
 }
