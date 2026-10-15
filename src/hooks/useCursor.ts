@@ -16,17 +16,19 @@ export function useCursor(active = true) {
   const [status, setStatus] = useState<CursorStatus>(idle)
   const [loading, setLoading] = useState(true)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force = false) => {
+    if (force) setRefreshing(true)
     try {
-      const quick = await fetchCursorStatus()
+      const quick = await fetchCursorStatus({ force })
       setStatus(quick)
       setLoading(false)
 
       if (!quick.connected) return
 
       setAnalyticsLoading(true)
-      const extra = await fetchCursorAnalytics()
+      const extra = await fetchCursorAnalytics({ force })
       if (extra) {
         setStatus((prev) => ({
           ...prev,
@@ -40,6 +42,7 @@ export function useCursor(active = true) {
       setLoading(false)
     } finally {
       setAnalyticsLoading(false)
+      if (force) setRefreshing(false)
     }
   }, [])
 
@@ -51,5 +54,5 @@ export function useCursor(active = true) {
     return () => window.clearInterval(id)
   }, [active, refresh, settings.cursor.pollIntervalMs])
 
-  return { status, loading, analyticsLoading, refresh }
+  return { status, loading, analyticsLoading, refreshing, refresh: () => void refresh(true) }
 }

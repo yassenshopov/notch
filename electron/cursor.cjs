@@ -1,6 +1,13 @@
 const { spawnSync } = require("child_process")
 const path = require("path")
 const os = require("os")
+const { createSmartCache } = require("./smart-cache.cjs")
+
+const cache = createSmartCache()
+const SUMMARY_TTL_MS = 90_000
+const SUMMARY_STALE_MS = 5 * 60_000
+const ANALYTICS_TTL_MS = 5 * 60_000
+const ANALYTICS_STALE_MS = 30 * 60_000
 
 const DASHBOARD_ORIGIN = "https://cursor.com"
 const API_ORIGIN = "https://api.cursor.com"
@@ -316,12 +323,11 @@ function buildPlanPayload(summary) {
   }
 }
 
-async function getUsageAnalytics() {
+async function fetchUsageAnalytics() {
   const cookie = resolveSessionCookie()
   if (!cookie) return null
 
-  try {
-    const [me, summary, cloud] = await Promise.all([
+  const [me, summary, cloud] = await Promise.all([
       dashboardGet(cookie, "/api/auth/me"),
       dashboardGet(cookie, "/api/usage-summary"),
       fetchCloudAgents(),
@@ -343,25 +349,38 @@ async function getUsageAnalytics() {
       })),
     ])
 
-    return {
-      limits: limitData,
-      analytics: {
-        models: aggregations.models,
-        tokenTotals: aggregations.totals,
-        dailySpend: bucketDailyCents(filtered.events),
-        recentEvents: mapRecentEvents(filtered.events),
-        eventsInCycle: filtered.totalCount,
-        eventsSampled: filtered.sampled,
-      },
-      cloud,
-    }
+  return {
+    limits: limitData,
+    analytics: {
+      models: aggregations.models,
+      tokenTotals: aggregations.totals,
+      dailySpend: bucketDailyCents(filtered.events),
+      recentEvents: mapRecentEvents(filtered.events),
+      eventsInCycle: filtered.totalCount,
+      eventsSampled: filtered.sampled,
+    },
+    cloud,
+  }
+}
+
+async function getUsageAnalytics(options = {}) {
+  const force = options.force === true
+  const cookie = resolveSessionCookie()
+  if (!cookie) return null
+
+  try {
+    return await cache.get("cursor:analytics", {
+      ttlMs: ANALYTICS_TTL_MS,
+      staleMs: ANALYTICS_STALE_MS,
+      force,
+      fetcher: fetchUsageAnalytics,
+    })
   } catch {
     return null
   }
 }
 
-async function getUsageSummary(options = {}) {
-  const detailed = options.detailed === true
+async function fetchUsageSummaryCore(detailed) {
   const cookie = resolveSessionCookie()
   if (!cookie) {
     return {
@@ -373,8 +392,7 @@ async function getUsageSummary(options = {}) {
     }
   }
 
-  try {
-    const [me, summary, cloud] = await Promise.all([
+  const [me, summary, cloud] = await Promise.all([
       dashboardGet(cookie, "/api/auth/me"),
       dashboardGet(cookie, "/api/usage-summary"),
       detailed ? fetchCloudAgents() : Promise.resolve(null),
@@ -407,21 +425,35 @@ async function getUsageSummary(options = {}) {
       }
     }
 
-    return {
-      connected: true,
-      configured: true,
-      user: {
-        email: me.email ?? null,
-        name: me.name ?? null,
-      },
-      billing: core.billing,
-      usage: core.usage,
-      onDemand: core.onDemand,
-      messages: core.messages,
-      limits,
-      analytics,
-      cloud: cloud ?? undefined,
-    }
+  return {
+    connected: true,
+    configured: true,
+    user: {
+      email: me.email ?? null,
+      name: me.name ?? null,
+    },
+    billing: core.billing,
+    usage: core.usage,
+    onDemand: core.onDemand,
+    messages: core.messages,
+    limits,
+    analytics,
+    cloud: cloud ?? undefined,
+  }
+}
+
+async function getUsageSummary(options = {}) {
+  const detailed = options.detailed === true
+  const force = options.force === true
+  const cacheKey = detailed ? "cursor:summary:detailed" : "cursor:summary"
+
+  try {
+    return await cache.get(cacheKey, {
+      ttlMs: SUMMARY_TTL_MS,
+      staleMs: SUMMARY_STALE_MS,
+      force,
+      fetcher: () => fetchUsageSummaryCore(detailed),
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : "cursor_error"
     const needsAuth = message.includes("401") || message.includes("not_authenticated")

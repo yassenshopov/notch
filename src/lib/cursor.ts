@@ -104,7 +104,7 @@ export type CursorAnalyticsPayload = {
   cloud?: CursorStatus["cloud"]
 }
 
-export async function fetchCursorStatus(): Promise<CursorStatus> {
+export async function fetchCursorStatus(options?: { force?: boolean }): Promise<CursorStatus> {
   const bridge = window.notch?.cursor
   if (!bridge) {
     return {
@@ -113,13 +113,15 @@ export async function fetchCursorStatus(): Promise<CursorStatus> {
       message: "Run Notch with Electron (npm run dev), not the browser.",
     }
   }
-  return bridge.status()
+  return bridge.status(options)
 }
 
-export async function fetchCursorAnalytics(): Promise<CursorAnalyticsPayload | null> {
+export async function fetchCursorAnalytics(options?: {
+  force?: boolean
+}): Promise<CursorAnalyticsPayload | null> {
   const bridge = window.notch?.cursor
   if (!bridge?.analytics) return null
-  return bridge.analytics()
+  return bridge.analytics(options)
 }
 
 export async function openCursorDashboard(): Promise<void> {

@@ -14,8 +14,8 @@ import { MetricChart } from "./MetricChart"
 
 type Props = {
   status: CursorStatus
-  loading: boolean
   analyticsLoading?: boolean
+  refreshing: boolean
   onRefresh: () => void
 }
 
@@ -118,7 +118,7 @@ function UsageBar({
   )
 }
 
-export function CursorPanel({ status, loading, analyticsLoading, onRefresh }: Props) {
+export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }: Props) {
   const settings = useSettings()
   if (status.error === "no_electron") {
     return (
@@ -140,13 +140,14 @@ export function CursorPanel({ status, loading, analyticsLoading, onRefresh }: Pr
         action={
           <button
             type="button"
+            disabled={refreshing}
             onClick={(e) => {
               e.stopPropagation()
               onRefresh()
             }}
-            className="rounded-full bg-[#111] px-5 py-2.5 text-[13px] font-semibold text-white dark:bg-white dark:text-[#111]"
+            className="rounded-full bg-[#111] px-5 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-[#111]"
           >
-            {loading ? "Checking…" : "Retry"}
+            {refreshing ? "Checking…" : "Retry"}
           </button>
         }
       />
@@ -196,13 +197,14 @@ export function CursorPanel({ status, loading, analyticsLoading, onRefresh }: Pr
         <button
           type="button"
           aria-label="Refresh usage"
+          disabled={refreshing}
           onClick={(e) => {
             e.stopPropagation()
             onRefresh()
           }}
-          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-black/[0.07] bg-black/[0.03] text-black/50 transition-colors hover:bg-black/[0.06] hover:text-black/75 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/[0.08] dark:hover:text-white/80"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-black/[0.07] bg-black/[0.03] text-black/50 transition-colors hover:bg-black/[0.06] hover:text-black/75 disabled:pointer-events-none disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/[0.08] dark:hover:text-white/80"
         >
-          <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+          <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
         </button>
       </header>
 
