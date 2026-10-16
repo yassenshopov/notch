@@ -10,6 +10,7 @@ const idle: GitHubStatus = {
   notifications: [],
   pullRequests: [],
   contributions: null,
+  todayBreakdown: null,
 }
 
 export function useGithub(active = true) {

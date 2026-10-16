@@ -11,7 +11,9 @@ type Props = {
 }
 
 export function LiveActivityContent({ activity, onDismiss }: Props) {
-  const dismissible = activity.kind === "cursor-usage" && onDismiss != null
+  const dismissible =
+    (activity.kind === "cursor-usage" || activity.kind === "weather-precip") &&
+    onDismiss != null
 
   return (
     <motion.span
@@ -46,7 +48,11 @@ export function LiveActivityContent({ activity, onDismiss }: Props) {
       {dismissible ? (
         <button
           type="button"
-          aria-label="Dismiss Cursor usage reminder"
+          aria-label={
+            activity.kind === "weather-precip"
+              ? "Dismiss rain alert"
+              : "Dismiss Cursor usage reminder"
+          }
           className={cn(
             "ml-0.5 flex size-5 shrink-0 items-center justify-center rounded-full",
             "opacity-60 transition-opacity hover:opacity-100",

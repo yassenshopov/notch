@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react"
-import { CloudSun, LineChart, Settings, Timer, Volume2 } from "lucide-react"
+import { CalendarDays, CloudSun, LineChart, Settings, Timer, Volume2, Wind } from "lucide-react"
 import {
   AnimatePresence,
   motion,
@@ -26,7 +26,7 @@ import {
   islandContentOut,
   islandMorph,
 } from "../lib/island-motion"
-import { cn, formatTemp } from "../lib/utils"
+import { cn, formatHour, formatTemp } from "../lib/utils"
 import type { IslandFace } from "../config/settings"
 import { useAlbumPalette } from "../hooks/useAlbumPalette"
 import { useBattery } from "../hooks/useBattery"
@@ -43,7 +43,7 @@ import { EqualizerBars } from "./EqualizerBars"
 import { SettingsPanel } from "./SettingsPanel"
 import { SpotifyPanel } from "./SpotifyPanel"
 import { WeatherIcon } from "./WeatherIcon"
-import { snoozeCursorUsageUntilMs } from "../lib/live-activities"
+import { snoozeCursorUsageUntilMs, snoozeWeatherPrecipActivity } from "../lib/live-activities"
 import { LiveActivityContent } from "./LiveActivityContent"
 import { WeatherPanel } from "./WeatherPanel"
 import { ClockPanel } from "./ClockPanel"
@@ -53,27 +53,30 @@ import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
 import { useTimerEngine } from "../hooks/useTimerEngine"
 import { useMarkets } from "../hooks/useMarkets"
 import { useGithub } from "../hooks/useGithub"
+import { todayContributionCount } from "../lib/github"
 import { formatQuoteChange } from "../lib/markets"
+import { nextEvent } from "../lib/calendar"
+import { panelForCollapsedTap, type NotchPanel } from "../lib/panel-routing"
+import { useMediaSession } from "../hooks/useMediaSession"
+import { useCalendar } from "../hooks/useCalendar"
+import { AirQualityPanel } from "./AirQualityPanel"
+import { CalendarPanel } from "./CalendarPanel"
+import { BrowserMediaPanel } from "./BrowserMediaPanel"
 
-type Panel =
-  | "weather"
-  | "spotify"
-  | "cursor"
-  | "clock"
-  | "markets"
-  | "github"
-  | "controls"
-  | "settings"
+type Panel = NotchPanel
 
 const PANEL_ORDER: Record<Panel, number> = {
   weather: 0,
   spotify: 1,
-  cursor: 2,
-  clock: 3,
-  markets: 4,
-  github: 5,
-  controls: 6,
-  settings: 7,
+  media: 2,
+  cursor: 3,
+  clock: 4,
+  markets: 5,
+  github: 6,
+  air: 7,
+  calendar: 8,
+  controls: 9,
+  settings: 10,
 }
 
 /** Icon button size (size-9) + gap-1.5 — keeps the drop aligned to each slot */
@@ -95,39 +98,70 @@ export function Notch() {
   const settings = useSettings()
   const { data, loading, error, refresh } = useWeather()
   const { status, playing, connect, action, disconnect } = useSpotify()
+  const mediaPoll = !expanded && !playing && settings.media.enabled
+  const {
+    status: mediaStatus,
+    showing: browserMediaShowing,
+    playing: browserMediaPlaying,
+    action: mediaAction,
+  } = useMediaSession(mediaPoll)
   const battery = useBattery()
   const dark = useTheme()
   const timer = useTimerEngine()
 
+  const calendarPoll =
+    Boolean(settings.calendar.icsUrl.trim()) &&
+    ((!expanded && (settings.island.faces.calendar ?? true)) ||
+      (expanded && panelOverride === "calendar"))
+  const {
+    snapshot: calendarSnapshot,
+    ready: calendarReady,
+    refreshing: calendarRefreshing,
+    refresh: refreshCalendar,
+  } = useCalendar(calendarPoll)
+
   const liveActivitiesEnabled =
-    !expanded && !playing && settings.liveActivities.enabled
+    !expanded && !playing && !browserMediaShowing && settings.liveActivities.enabled
   const { current: liveActivity, cursorStatus: liveCursorStatus } = useLiveActivities({
     active: liveActivitiesEnabled,
     weather: data,
   })
 
   const dismissLiveActivity = () => {
-    if (liveActivity?.kind !== "cursor-usage") return
-    void updateSettings({
-      liveActivities: {
-        ...settings.liveActivities,
-        cursor: {
-          ...settings.liveActivities.cursor,
-          snoozedUntilMs: snoozeCursorUsageUntilMs(liveCursorStatus),
+    if (!liveActivity) return
+    if (liveActivity.kind === "cursor-usage") {
+      void updateSettings({
+        liveActivities: {
+          ...settings.liveActivities,
+          cursor: {
+            ...settings.liveActivities.cursor,
+            snoozedUntilMs: snoozeCursorUsageUntilMs(liveCursorStatus),
+          },
         },
-      },
-    })
+      })
+      return
+    }
+    if (liveActivity.kind === "weather-precip") {
+      void updateSettings({
+        liveActivities: {
+          ...settings.liveActivities,
+          weather: snoozeWeatherPrecipActivity(settings, liveActivity.id),
+        },
+      })
+    }
   }
   const smiling = useOccasionalSmile(
-    !expanded && !playing && !liveActivity && !timer.active,
+    !expanded && !playing && !browserMediaShowing && !liveActivity && !timer.active,
   )
 
   const batteryAvailable = battery.supported && battery.ready
 
   const activePanel: Panel = useMemo(() => {
     if (panelOverride) return panelOverride
-    return playing ? "spotify" : "weather"
-  }, [panelOverride, playing])
+    if (playing) return "spotify"
+    if (browserMediaShowing) return "media"
+    return "weather"
+  }, [panelOverride, playing, browserMediaShowing])
 
   const marketsPoll =
     (!expanded && settings.island.faces.markets) || (expanded && activePanel === "markets")
@@ -142,6 +176,7 @@ export function Notch() {
   } = useMarkets(Boolean(marketsPoll))
   const {
     status: githubStatus,
+    loading: githubLoading,
     refreshing: githubRefreshing,
     refresh: refreshGithub,
   } = useGithub(Boolean(githubPoll))
@@ -154,6 +189,10 @@ export function Notch() {
     if (enabled.clock) faces.push("clock")
     if (enabled.markets && marketsSnapshot.quotes.length > 0) faces.push("markets")
     if (enabled.github && githubStatus.connected) faces.push("github")
+    const today = data?.days.find((d) => d.isToday)
+    if ((enabled.air ?? true) && today && (today.aqi != null || today.uvIndex > 0))
+      faces.push("air")
+    if ((enabled.calendar ?? true) && calendarReady) faces.push("calendar")
     return faces
   }, [
     settings.island.faces,
@@ -163,11 +202,17 @@ export function Notch() {
     githubStatus.connected,
     githubStatus.notifications.length,
     githubStatus.pullRequests.length,
+    calendarReady,
   ])
 
   const timerShowing = !expanded && timer.active
   const rotateEnabled =
-    !expanded && !playing && !smiling && !liveActivity && !timerShowing
+    !expanded &&
+    !playing &&
+    !browserMediaShowing &&
+    !smiling &&
+    !liveActivity &&
+    !timerShowing
   const islandFace = useIslandRotation({
     enabled: rotateEnabled,
     intervalMs: settings.island.rotateIntervalMs,
@@ -180,9 +225,17 @@ export function Notch() {
     islandFace === "github" &&
     Boolean(githubStatus.contributions?.weeks?.length)
 
+  const calendarNext = useMemo(
+    () => nextEvent(calendarSnapshot.events),
+    [calendarSnapshot.events],
+  )
+
   const collapsedWidth =
     settings.collapsed.width +
-    (playing ? settings.collapsed.musicExtraWidth : 0) +
+    (playing || (browserMediaShowing && browserMediaPlaying)
+      ? settings.collapsed.musicExtraWidth
+      : 0) +
+    (browserMediaShowing && !browserMediaPlaying ? 36 : 0) +
     (liveActivity ? settings.collapsed.activityExtraWidth : 0) +
     (timerShowing ? settings.collapsed.timerExtraWidth : 0) +
     (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0)
@@ -214,6 +267,7 @@ export function Notch() {
   )
 
   const prevPlaying = useRef(playing)
+  const prevBrowserMedia = useRef(browserMediaShowing)
   const expandedRef = useRef(expanded)
   expandedRef.current = expanded
   /** Bumps on each expand/collapse so late async expand can’t reopen */
@@ -252,6 +306,12 @@ export function Notch() {
     prevPlaying.current = playing
     setPanelOverride((current) => (current === "settings" ? current : null))
   }, [playing])
+
+  useEffect(() => {
+    if (prevBrowserMedia.current === browserMediaShowing) return
+    prevBrowserMedia.current = browserMediaShowing
+    setPanelOverride((current) => (current === "settings" ? current : null))
+  }, [browserMediaShowing])
 
   // Drive the Electron shell from shellExpanded — never shrink it mid-morph.
   useEffect(() => {
@@ -334,7 +394,14 @@ export function Notch() {
           // Keep presses on the panel from hitting the backdrop
           e.stopPropagation()
           if (!expanded) {
-            if (liveActivity) setPanelOverride(liveActivity.panel)
+            const panel = panelForCollapsedTap({
+              spotifyPlaying: playing,
+              browserMediaActive: browserMediaShowing,
+              liveActivity,
+              timerShowing,
+              islandFace,
+            })
+            setPanelOverride(panel)
             void expand()
           }
         }}
@@ -484,6 +551,30 @@ export function Notch() {
                       >
                         <EqualizerBars active />
                       </motion.span>
+                    ) : browserMediaShowing ? (
+                      <motion.span
+                        key="browser-media"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-2"
+                      >
+                        {mediaStatus.isYoutube ? (
+                          <Icon
+                            icon="simple-icons:youtube"
+                            className="size-3.5 text-[#FF0000]"
+                            aria-hidden
+                          />
+                        ) : null}
+                        {browserMediaPlaying ? (
+                          <EqualizerBars active />
+                        ) : (
+                          <span className="max-w-[7rem] truncate text-[11px] font-semibold">
+                            {mediaStatus.title || "Paused"}
+                          </span>
+                        )}
+                      </motion.span>
                     ) : liveActivity ? (
                       <LiveActivityContent
                         key={liveActivity.id}
@@ -594,8 +685,37 @@ export function Notch() {
                           <Icon icon="simple-icons:github" className="size-3.5 opacity-75" aria-hidden />
                         )}
                         <span className="text-[11px] font-semibold tabular-nums opacity-80">
-                          {githubStatus.notifications.filter((n) => n.unread).length ||
-                            githubStatus.pullRequests.length}
+                          {todayContributionCount(githubStatus.contributions?.weeks ?? [])}
+                        </span>
+                      </motion.span>
+                    ) : islandFace === "air" && data ? (
+                      <motion.span
+                        key="air"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-2"
+                      >
+                        <Wind className="size-3.5 opacity-70" strokeWidth={2} />
+                        <span className="text-[12px] font-semibold tabular-nums">
+                          {data.days.find((d) => d.isToday)?.aqi ?? "—"}
+                        </span>
+                      </motion.span>
+                    ) : islandFace === "calendar" && calendarNext ? (
+                      <motion.span
+                        key="calendar"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex max-w-[9rem] items-center justify-center gap-1.5"
+                      >
+                        <CalendarDays className="size-3.5 shrink-0 opacity-70" strokeWidth={2} />
+                        <span className="truncate text-[11px] font-semibold">
+                          {calendarNext.allDay
+                            ? "All day"
+                            : formatHour(calendarNext.start, settings.clock.format)}
                         </span>
                       </motion.span>
                     ) : null}
@@ -667,8 +787,22 @@ export function Notch() {
                     ) : activePanel === "github" ? (
                       <GitHubPanel
                         status={githubStatus}
+                        loading={githubLoading}
                         refreshing={githubRefreshing}
                         onRefresh={() => void refreshGithub()}
+                      />
+                    ) : activePanel === "air" && data ? (
+                      <AirQualityPanel data={data} />
+                    ) : activePanel === "calendar" ? (
+                      <CalendarPanel
+                        snapshot={calendarSnapshot}
+                        refreshing={calendarRefreshing}
+                        onRefresh={() => void refreshCalendar(true)}
+                      />
+                    ) : activePanel === "media" ? (
+                      <BrowserMediaPanel
+                        status={mediaStatus}
+                        onAction={(a) => void mediaAction(a)}
                       />
                     ) : activePanel === "controls" ? (
                       <ControlsPanel active={expanded && activePanel === "controls"} />
@@ -785,6 +919,30 @@ function PanelRail({
         onClick={() => onSelect("spotify")}
       >
         <Icon icon="simple-icons:spotify" className="size-4" aria-hidden />
+      </IconTab>
+      <IconTab
+        label="YouTube"
+        active={active === "media"}
+        themed={themed}
+        onClick={() => onSelect("media")}
+      >
+        <Icon icon="simple-icons:youtube" className="size-4" aria-hidden />
+      </IconTab>
+      <IconTab
+        label="Air quality"
+        active={active === "air"}
+        themed={themed}
+        onClick={() => onSelect("air")}
+      >
+        <Wind className="size-4" strokeWidth={1.75} />
+      </IconTab>
+      <IconTab
+        label="Calendar"
+        active={active === "calendar"}
+        themed={themed}
+        onClick={() => onSelect("calendar")}
+      >
+        <CalendarDays className="size-4" strokeWidth={1.75} />
       </IconTab>
       <IconTab
         label="Cursor"

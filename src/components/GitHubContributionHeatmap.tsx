@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import type { GitHubContributionDay, GitHubContributionWeek } from "../lib/github"
+import { contributionLevelClass, formatContributionCount, maxContributionCount } from "../lib/github"
 import { cn } from "../lib/utils"
 
 type Props = {
@@ -53,14 +54,6 @@ function buildIsoWeekColumns(weeks: GitHubContributionWeek[], weekCount: number)
   return sorted.slice(-weekCount)
 }
 
-function levelClass(count: number) {
-  if (count <= 0) return "bg-black/[0.07] dark:bg-white/10"
-  if (count <= 2) return "bg-black/25 dark:bg-white/28"
-  if (count <= 5) return "bg-black/40 dark:bg-white/44"
-  if (count <= 9) return "bg-black/58 dark:bg-white/62"
-  return "bg-black/78 dark:bg-white/82"
-}
-
 function formatDayHeading(date: string) {
   const d = new Date(`${date}T12:00:00`)
   return d.toLocaleDateString(undefined, {
@@ -78,12 +71,6 @@ function formatDayShort(date: string) {
     month: "short",
     day: "numeric",
   })
-}
-
-function contributionCopy(count: number) {
-  if (count === 0) return "No contributions"
-  if (count === 1) return "1 contribution"
-  return `${count} contributions`
 }
 
 type HoverState = {
@@ -131,7 +118,7 @@ function HeatmapTooltip({
           variant === "mini" ? "text-[9px]" : "text-[11px]",
         )}
       >
-        {contributionCopy(day.count)}
+        {formatContributionCount(day.count)}
       </span>
     </div>
   )
@@ -149,6 +136,8 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
     if (!list.length) return []
     return buildIsoWeekColumns(list, weekCount)
   }, [weeks, weekCount])
+
+  const maxCount = useMemo(() => maxContributionCount(weeks ?? []), [weeks])
 
   const showTip = useCallback((day: GitHubContributionDay, el: HTMLElement) => {
     if (!day.date) return
@@ -202,7 +191,7 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
                 className={cn(
                   "rounded-[1px] transition-[box-shadow,transform]",
                   cell,
-                  isPad ? "bg-transparent" : levelClass(day.count),
+                  isPad ? "bg-transparent" : contributionLevelClass(day.count, maxCount),
                   active && "ring-1 ring-black/35 dark:ring-white/45",
                   !isPad && variant === "panel" && "cursor-crosshair",
                 )}

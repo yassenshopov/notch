@@ -31,6 +31,88 @@ export type GitHubContributions = {
   weeks: GitHubContributionWeek[]
 }
 
+export type GitHubTodayRepoContribution = {
+  repo: string
+  url: string
+  count: number
+}
+
+export type GitHubTodayBreakdown = {
+  date: string
+  repos: GitHubTodayRepoContribution[]
+  error?: string
+}
+
+export function localContributionDateKey(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+export function contributionCountForDate(
+  weeks: GitHubContributionWeek[],
+  dateKey: string,
+) {
+  for (const week of weeks) {
+    for (const day of week) {
+      if (day?.date === dateKey) return day.count ?? 0
+    }
+  }
+  return 0
+}
+
+export function todayContributionCount(weeks: GitHubContributionWeek[]) {
+  return contributionCountForDate(weeks, localContributionDateKey())
+}
+
+export function maxContributionCount(weeks: GitHubContributionWeek[]) {
+  let max = 0
+  for (const week of weeks) {
+    for (const day of week) {
+      if (day?.count > max) max = day.count
+    }
+  }
+  return max
+}
+
+/** Quartile buckets matching github.com’s contribution graph (relative to calendar max). */
+export function contributionLevel(
+  count: number,
+  maxCount: number,
+): 0 | 1 | 2 | 3 | 4 {
+  if (count <= 0) return 0
+  if (maxCount <= 0) return 0
+  if (maxCount <= 1) return 4
+  if (count >= maxCount) return 4
+  const ratio = count / maxCount
+  if (ratio <= 0.25) return 1
+  if (ratio <= 0.5) return 2
+  if (ratio <= 0.75) return 3
+  return 4
+}
+
+export function contributionLevelClass(count: number, maxCount: number) {
+  switch (contributionLevel(count, maxCount)) {
+    case 0:
+      return "bg-black/[0.07] dark:bg-white/10"
+    case 1:
+      return "bg-black/25 dark:bg-white/28"
+    case 2:
+      return "bg-black/40 dark:bg-white/44"
+    case 3:
+      return "bg-black/58 dark:bg-white/62"
+    case 4:
+      return "bg-black/78 dark:bg-white/82"
+  }
+}
+
+export function formatContributionCount(count: number) {
+  if (count === 0) return "No contributions"
+  if (count === 1) return "1 contribution"
+  return `${count} contributions`
+}
+
 export function normalizeGitHubContributions(
   raw: GitHubContributions | null | undefined,
 ): GitHubContributions | null {
@@ -52,6 +134,7 @@ export type GitHubStatus = {
   notifications: GitHubNotification[]
   pullRequests: GitHubPullRequest[]
   contributions: GitHubContributions | null
+  todayBreakdown: GitHubTodayBreakdown | null
   error?: string
   message?: string
 }
@@ -67,6 +150,7 @@ export async function fetchGitHubStatus(options?: { force?: boolean }): Promise<
       notifications: [],
       pullRequests: [],
       contributions: null,
+      todayBreakdown: null,
       error: "no_electron",
     }
   }

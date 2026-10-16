@@ -10,7 +10,14 @@ export type ThemeMode = "system" | "light" | "dark"
 export type WindSpeedUnit = "kmh" | "mph" | "ms"
 export type ClockFormat = "24h" | "12h"
 export type ChartStyle = "line" | "bar"
-export type IslandFace = "weather" | "battery" | "clock" | "markets" | "github"
+export type IslandFace =
+  | "weather"
+  | "battery"
+  | "clock"
+  | "markets"
+  | "github"
+  | "air"
+  | "calendar"
 
 export type MarketWatchItem = {
   id: string
@@ -53,7 +60,19 @@ export type AppSettings = {
       clock: boolean
       markets: boolean
       github: boolean
+      air: boolean
+      calendar: boolean
     }
+  }
+  calendar: {
+    pollIntervalMs: number
+    /** Secret ICS URL (e.g. Google Calendar → Integrate calendar) */
+    icsUrl: string
+  }
+  media: {
+    pollIntervalMs: number
+    /** Show browser / YouTube system media when Spotify is idle */
+    enabled: boolean
   }
   clock: {
     format: ClockFormat
@@ -95,6 +114,12 @@ export type AppSettings = {
       enabled: boolean
       minPrecipProbability: number
       lookaheadMinutes: number
+      /** Hide the current precip alert until this time (after dismiss or auto-snooze) */
+      snoozedUntilMs: number
+      /** Activity id that snoozedUntilMs applies to */
+      snoozedForId: string
+      /** How long to hide a precip alert before it can appear again */
+      remindAfterMs: number
     }
     cursor: {
       enabled: boolean
@@ -151,7 +176,17 @@ export const defaultSettings: AppSettings = {
       clock: true,
       markets: true,
       github: true,
+      air: true,
+      calendar: true,
     },
+  },
+  calendar: {
+    pollIntervalMs: 5 * 60 * 1000,
+    icsUrl: "",
+  },
+  media: {
+    pollIntervalMs: 2_000,
+    enabled: true,
   },
   clock: {
     format: "24h",
@@ -203,6 +238,9 @@ export const defaultSettings: AppSettings = {
       enabled: true,
       minPrecipProbability: 50,
       lookaheadMinutes: 180,
+      snoozedUntilMs: 0,
+      snoozedForId: "",
+      remindAfterMs: 30 * 60 * 1000,
     },
     cursor: {
       enabled: true,

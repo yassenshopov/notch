@@ -53,6 +53,8 @@ type CursorBridgeStatus = import("./lib/cursor").CursorStatus
 type MarketQuote = import("./lib/markets").MarketQuote
 type MarketsSnapshot = import("./lib/markets").MarketsSnapshot
 type GitHubBridgeStatus = import("./lib/github").GitHubStatus
+type MediaSessionStatus = import("./lib/media-session").MediaSessionStatus
+type CalendarSnapshot = import("./lib/calendar").CalendarSnapshot
 
 type ControlsBridgeStatus = {
   platform: string
@@ -115,6 +117,16 @@ interface NotchBridge {
   }
   github: {
     status: (options?: { force?: boolean }) => Promise<GitHubBridgeStatus>
+    openUrl: (url: string) => Promise<void>
+  }
+  media: {
+    status: () => Promise<MediaSessionStatus>
+    action: (
+      action: import("./lib/media-session").MediaSessionAction,
+    ) => Promise<MediaSessionStatus>
+  }
+  calendar: {
+    snapshot: (options?: { force?: boolean }) => Promise<CalendarSnapshot>
     openUrl: (url: string) => Promise<void>
   }
   controls: {

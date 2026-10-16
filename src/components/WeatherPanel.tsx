@@ -450,6 +450,7 @@ function MetricHero({
             variant={chartStyle}
             formatValue={formatValue}
             formatTime={(iso) => formatHour(iso, clockFormat)}
+            markNow={day.isToday}
             className="h-full"
           />
         ) : (

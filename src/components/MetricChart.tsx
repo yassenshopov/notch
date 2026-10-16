@@ -17,6 +17,32 @@ type Props = {
   className?: string
   accent?: string
   gradientId?: string
+  /** Dotted vertical line at the current time when it falls within the series. */
+  markNow?: boolean
+}
+
+function interpolateTimeX(
+  nowMs: number,
+  points: Point[],
+  xs: number[],
+): number | null {
+  if (points.length === 0 || xs.length !== points.length) return null
+  const start = new Date(points[0].time).getTime()
+  const end = new Date(points[points.length - 1].time).getTime()
+  if (!Number.isFinite(start) || !Number.isFinite(end) || nowMs < start || nowMs > end) {
+    return null
+  }
+  if (points.length === 1) return xs[0]
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const ta = new Date(points[i].time).getTime()
+    const tb = new Date(points[i + 1].time).getTime()
+    if (!Number.isFinite(ta) || !Number.isFinite(tb)) continue
+    if (nowMs < ta || nowMs > tb) continue
+    const frac = tb === ta ? 0 : (nowMs - ta) / (tb - ta)
+    return xs[i] + frac * (xs[i + 1] - xs[i])
+  }
+  return null
 }
 
 const VIEW_W = 100
@@ -30,14 +56,23 @@ export function MetricChart({
   className,
   accent = "currentColor",
   gradientId = "metric-chart-fill",
+  markNow = false,
 }: Props) {
   const clockFormat = useSettings().clock.format
   const formatTime = formatTimeProp ?? ((iso: string) => formatHour(iso, clockFormat))
   const [hovered, setHovered] = useState<number | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   useEffect(() => {
     setHovered(null)
   }, [points, variant])
+
+  useEffect(() => {
+    if (!markNow) return
+    setNowMs(Date.now())
+    const id = window.setInterval(() => setNowMs(Date.now()), 60_000)
+    return () => window.clearInterval(id)
+  }, [markNow, points])
 
   const chart = useMemo(() => {
     if (points.length === 0) {
@@ -50,6 +85,7 @@ export function MetricChart({
         minLabel: "",
         maxLabel: "",
         padY: 4,
+        nowX: null as number | null,
       }
     }
 
@@ -86,6 +122,15 @@ export function MetricChart({
         ? points.map((_, i) => i)
         : [0, Math.floor((points.length - 1) / 2), points.length - 1]
 
+    const lineXs = coords.map((c) => c.x)
+    const barXs = bars.map((b) => b.cx)
+    const nowX =
+      markNow
+        ? variant === "bar"
+          ? interpolateTimeX(nowMs, points, barXs)
+          : interpolateTimeX(nowMs, points, lineXs)
+        : null
+
     return {
       path: line,
       area: areaPath,
@@ -95,8 +140,9 @@ export function MetricChart({
       minLabel: formatValue(min),
       maxLabel: formatValue(max),
       padY,
+      nowX,
     }
-  }, [points, formatValue, variant])
+  }, [points, formatValue, variant, markNow, nowMs])
 
   const timeLabel = formatTime
 
@@ -289,6 +335,20 @@ export function MetricChart({
               ) : null}
             </>
           )}
+          {chart.nowX != null ? (
+            <line
+              x1={chart.nowX}
+              x2={chart.nowX}
+              y1={chart.padY}
+              y2={VIEW_H}
+              stroke={accent}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+              opacity="0.5"
+              vectorEffect="non-scaling-stroke"
+              pointerEvents="none"
+            />
+          ) : null}
         </svg>
       </div>
       <div aria-hidden className="col-start-1" />

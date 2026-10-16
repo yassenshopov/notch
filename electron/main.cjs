@@ -17,6 +17,8 @@ const settingsStore = require("./settings-store.cjs")
 const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
+const mediaSession = require("./media-session.cjs")
+const calendar = require("./calendar.cjs")
 
 // Hide native Chromium scrollbars; wheel / trackpad scrolling still works
 app.commandLine.appendSwitch("hide-scrollbars")
@@ -420,12 +422,66 @@ ipcMain.handle("github:status", async (_event, options) => {
       notifications: [],
       pullRequests: [],
       contributions: null,
+      todayBreakdown: null,
       error: err instanceof Error ? err.message : "github_error",
     }
   }
 })
 
 ipcMain.handle("github:open-url", async (_event, url) => {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url)
+  }
+})
+
+ipcMain.handle("media:status", async () => {
+  try {
+    return await mediaSession.getStatus()
+  } catch (err) {
+    return {
+      supported: process.platform === "win32",
+      playing: false,
+      paused: false,
+      appId: null,
+      title: null,
+      artist: null,
+      album: null,
+      isBrowser: false,
+      isYoutube: false,
+      error: err instanceof Error ? err.message : "media_error",
+    }
+  }
+})
+
+ipcMain.handle("media:action", async (_event, action) => {
+  try {
+    await mediaSession.action(action)
+    return await mediaSession.getStatus()
+  } catch (err) {
+    return {
+      supported: process.platform === "win32",
+      playing: false,
+      paused: false,
+      appId: null,
+      title: null,
+      artist: null,
+      album: null,
+      isBrowser: false,
+      isYoutube: false,
+      error: err instanceof Error ? err.message : "media_error",
+    }
+  }
+})
+
+ipcMain.handle("calendar:snapshot", async (_event, options) => {
+  try {
+    return await calendar.snapshot(options)
+  } catch (err) {
+    return { configured: false, events: [], error: "calendar_error" }
+  }
+})
+
+ipcMain.handle("calendar:open-url", async (_event, url) => {
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
     await shell.openExternal(url)
   }

@@ -46,6 +46,22 @@ function formatPrecipActivity(
   return `${name} · ${formatHour(startsAt, clockFormat)}`
 }
 
+function isWeatherPrecipSnoozed(cfg: AppSettings["liveActivities"]["weather"], activityId: string) {
+  return cfg.snoozedUntilMs > Date.now() && cfg.snoozedForId === activityId
+}
+
+export function snoozeWeatherPrecipActivity(
+  settings: AppSettings,
+  activityId: string,
+): AppSettings["liveActivities"]["weather"] {
+  const cfg = settings.liveActivities.weather
+  return {
+    ...cfg,
+    snoozedUntilMs: Date.now() + Math.max(5 * 60_000, cfg.remindAfterMs),
+    snoozedForId: activityId,
+  }
+}
+
 export function collectWeatherPrecipActivity(
   data: WeatherSnapshot,
   settings: AppSettings,
@@ -59,8 +75,10 @@ export function collectWeatherPrecipActivity(
 
   if (PRECIP_CODES.has(data.code)) {
     const point = data.upcomingHours[0]
+    const id = `weather-now-${data.code}`
+    if (isWeatherPrecipSnoozed(cfg, id)) return null
     return {
-      id: `weather-now-${data.code}`,
+      id,
       kind: "weather-precip",
       panel: "weather",
       label: formatPrecipActivity(data.code, "now", point?.time ?? "", 0, settings.clock.format),
@@ -81,8 +99,10 @@ export function collectWeatherPrecipActivity(
 
     const minutesUntil = Math.max(1, Math.round((t - nowMs) / 60_000))
     const code = wetCode ? point.code : "rain"
+    const id = `weather-soon-${point.time}`
+    if (isWeatherPrecipSnoozed(cfg, id)) return null
     return {
-      id: `weather-soon-${point.time}`,
+      id,
       kind: "weather-precip",
       panel: "weather",
       label: formatPrecipActivity(code, "soon", point.time, minutesUntil, settings.clock.format),

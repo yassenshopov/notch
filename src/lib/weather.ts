@@ -3,6 +3,7 @@ import {
   type AirQualityPayload,
   type AirQualitySample,
   type AqiScale,
+  type PollenGrains,
   type PollenType,
 } from "./air-quality"
 import { DEFAULT_WEATHER_LOCATION } from "../config/default-location"
@@ -40,6 +41,7 @@ export type HourlyPoint = {
   pm25: number | null
   pollen: number | null
   pollenType: PollenType | null
+  pollenGrains: PollenGrains
   code: WeatherCode
   isDay: boolean
 }
@@ -142,6 +144,7 @@ const emptyAq: AirQualitySample = {
   uvIndex: null,
   pollen: null,
   pollenType: null,
+  pollenGrains: {},
 }
 
 function aqAt(aq: AirQualityPayload | null, time: string): AirQualitySample {
@@ -170,6 +173,7 @@ function pointAt(hourly: HourlyBags, i: number, aq: AirQualityPayload | null): H
     pm25: air.pm25,
     pollen: air.pollen,
     pollenType: air.pollenType,
+    pollenGrains: air.pollenGrains,
     code: mapWeatherCode(hourly.weather_code[i]),
     isDay: hourly.is_day[i] === 1,
   }

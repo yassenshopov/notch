@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
-import { updateSettings, useSettings } from "../config/settings-store"
+import { getSettings, updateSettings, useSettings } from "../config/settings-store"
 import { fetchCursorStatus, type CursorStatus } from "../lib/cursor"
 import {
   collectLiveActivities,
+  snoozeWeatherPrecipActivity,
   type LiveActivity,
 } from "../lib/live-activities"
 import type { WeatherSnapshot } from "../lib/weather"
@@ -114,6 +115,21 @@ export function useLiveActivities({ active, weather }: Options) {
     activities,
     settings.liveActivities.dwellMs,
   )
+
+  useEffect(() => {
+    if (!rotateEnabled || current?.kind !== "weather-precip") return
+    const dwellMs = Math.max(3_000, settings.liveActivities.dwellMs)
+    const id = window.setTimeout(() => {
+      const latest = getSettings()
+      void updateSettings({
+        liveActivities: {
+          ...latest.liveActivities,
+          weather: snoozeWeatherPrecipActivity(latest, current.id),
+        },
+      })
+    }, dwellMs)
+    return () => window.clearTimeout(id)
+  }, [rotateEnabled, current?.id, current?.kind, settings.liveActivities.dwellMs])
 
   return { current, activities, cursorStatus: cursorEnabled ? cursor : null }
 }

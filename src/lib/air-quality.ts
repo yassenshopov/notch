@@ -10,6 +10,8 @@ export type PollenType =
   | "olive"
   | "ragweed"
 
+export type PollenGrains = Partial<Record<PollenType, number>>
+
 export type AirQualitySample = {
   aqi: number | null
   aqiScale: AqiScale
@@ -19,6 +21,8 @@ export type AirQualitySample = {
   /** Peak pollen grains/m³ across available types (Europe only) */
   pollen: number | null
   pollenType: PollenType | null
+  /** Per-type grains/m³ when Open-Meteo provides them */
+  pollenGrains: PollenGrains
 }
 
 const POLLEN_KEYS = [
@@ -90,6 +94,18 @@ function pickAqi(
   return { aqi: null, aqiScale: "european" }
 }
 
+function pollenGrainsFromFields(
+  bag: Record<string, number | null | undefined>,
+): PollenGrains {
+  const grains: PollenGrains = {}
+  for (const key of POLLEN_KEYS) {
+    const v = bag[key]
+    if (v == null || !Number.isFinite(v) || v <= 0) continue
+    grains[POLLEN_FROM_KEY[key]] = Math.round(v * 10) / 10
+  }
+  return grains
+}
+
 function pickPollen(bag: Record<string, number | null | undefined>): {
   pollen: number | null
   pollenType: PollenType | null
@@ -116,6 +132,7 @@ function pickPollen(bag: Record<string, number | null | undefined>): {
 function sampleFromFields(fields: RawCurrent): AirQualitySample {
   const { aqi, aqiScale } = pickAqi(fields.european_aqi, fields.us_aqi)
   const pollen = pickPollen(fields)
+  const pollenGrains = pollenGrainsFromFields(fields)
   return {
     aqi,
     aqiScale,
@@ -133,6 +150,7 @@ function sampleFromFields(fields: RawCurrent): AirQualitySample {
         : null,
     pollen: pollen.pollen,
     pollenType: pollen.pollenType,
+    pollenGrains,
   }
 }
 

@@ -2,14 +2,16 @@ import { ExternalLink, RefreshCw } from "lucide-react"
 import { openGitHubUrl, type GitHubStatus } from "../lib/github"
 import { cn } from "../lib/utils"
 import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
+import { GitHubTodayPanel } from "./GitHubTodayPanel"
 
 type Props = {
   status: GitHubStatus
+  loading?: boolean
   refreshing: boolean
   onRefresh: () => void
 }
 
-export function GitHubPanel({ status, refreshing, onRefresh }: Props) {
+export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
   if (!status.configured) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -62,6 +64,13 @@ export function GitHubPanel({ status, refreshing, onRefresh }: Props) {
           <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
         </button>
       </header>
+
+      <GitHubTodayPanel
+        weeks={status.contributions?.weeks ?? []}
+        breakdown={status.todayBreakdown}
+        loading={loading}
+        className="mb-4"
+      />
 
       {status.contributions?.weeks?.length ? (
         <section className="mb-4">

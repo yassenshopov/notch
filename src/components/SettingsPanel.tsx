@@ -168,6 +168,73 @@ export function SettingsPanel({
             }
           />
         </Row>
+        <Row label="Air quality">
+          <Segmented
+            value={(s.island.faces.air ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, air: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Calendar">
+          <Segmented
+            value={(s.island.faces.calendar ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, calendar: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="Calendar">
+        <Row label="ICS URL">
+          <input
+            type="url"
+            value={s.calendar?.icsUrl ?? ""}
+            placeholder="https://calendar.google.com/…/basic.ics"
+            onChange={(e) =>
+              void updateSettings({
+                calendar: { ...(s.calendar ?? { pollIntervalMs: 300_000 }), icsUrl: e.target.value },
+              })
+            }
+            className="w-full max-w-[200px] rounded-lg border border-black/10 bg-white/80 px-2 py-1 text-[11px] outline-none focus:border-black/25 dark:border-white/15 dark:bg-black/30"
+          />
+        </Row>
+      </Section>
+
+      <Section title="Browser media">
+        <Row label="YouTube / web">
+          <Segmented
+            value={(s.media?.enabled ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                media: { ...(s.media ?? { pollIntervalMs: 2000 }), enabled: v === "on" },
+              })
+            }
+          />
+        </Row>
       </Section>
 
       <Section title="Live activities">
