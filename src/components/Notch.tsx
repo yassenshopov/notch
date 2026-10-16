@@ -65,19 +65,24 @@ import { BrowserMediaPanel } from "./BrowserMediaPanel"
 
 type Panel = NotchPanel
 
-const PANEL_ORDER: Record<Panel, number> = {
-  weather: 0,
-  spotify: 1,
-  media: 2,
-  cursor: 3,
-  clock: 4,
-  markets: 5,
-  github: 6,
-  air: 7,
-  calendar: 8,
-  controls: 9,
-  settings: 10,
-}
+/** Side rail top → bottom — indicator Y and panel slide direction use this order */
+const RAIL_PANELS: Panel[] = [
+  "weather",
+  "spotify",
+  "media",
+  "air",
+  "calendar",
+  "cursor",
+  "clock",
+  "markets",
+  "github",
+  "controls",
+  "settings",
+]
+
+const PANEL_ORDER = Object.fromEntries(
+  RAIL_PANELS.map((panel, index) => [panel, index]),
+) as Record<Panel, number>
 
 /** Icon button size (size-9) + gap-1.5 — keeps the drop aligned to each slot */
 const RAIL_TAB = 36
