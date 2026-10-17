@@ -1,34 +1,53 @@
 # Notch
 
-A tiny always-on-top desktop notch for Windows — weather at a glance, Spotify when you’re playing, and a settings panel that stays out of the way until you need it.
-
-Frameless Electron overlay, click-through outside the pill, expands from the top center of the screen.
+A tiny always-on-top desktop notch for Windows — weather, music, GitHub, Strava, markets, and quick controls in a frameless Electron overlay. Click-through outside the pill; expand from the top center when you need more.
 
 ## Features
 
-- **Weather-first pill** — temperature, condition icon (Fluent Emoji), and quick metrics from [Open-Meteo](https://open-meteo.com/) (no API key)
-- **Location** — resolved via IP geolocation; override latitude/longitude in settings
-- **Spotify now playing** — equalizer in the collapsed pill while music is playing; full now-playing panel when expanded (album art tint, synced lyrics via [LRCLIB](https://lrclib.net), play/pause, skip)
-- **Cursor usage** — included-plan usage, per-model charts, cloud agents, tray usage alerts, and cycle stats from your signed-in Cursor desktop session
-- **Live activities** — transient collapsed-pill alerts (rain soon, Cursor usage threshold) with priority over island rotation; tap to open the related panel
-- **Theme** — light / dark / system, toggled from the pill
-- **Settings** — units, refresh interval, location, Spotify connect/disconnect — persisted in Electron `userData`
-- **Click-outside dismiss** — expands to a transparent fullscreen shell so outside clicks collapse the notch
+### Collapsed island
+
+Rotating **faces** (toggle each in Settings → Island): weather, battery, clock, markets, GitHub, Strava, air quality, calendar.
+
+- **Weather** — temperature, condition icon, metrics from [Open-Meteo](https://open-meteo.com/) (no API key)
+- **Spotify** — equalizer in the pill while playing; expands to full now playing (album tint, LRCLIB lyrics, transport)
+- **Browser media** — YouTube / Chromium system media when Spotify is idle (title, thumbnail via SMTC)
+- **GitHub** — notifications, today’s activity, contribution heatmap
+- **Strava** — recent activities, route map, activity calendar, route heatmap
+- **Markets** — crypto + stocks watchlist with charts
+- **Live activities** — rain soon, Cursor usage alerts on the pill with priority over rotation
+
+### Expanded panels
+
+Settings, weather detail, Spotify, GitHub, Strava, calendar, air quality, markets, Cursor usage, and **system controls** (volume, brightness, playback device, Bluetooth on Windows via bundled `svcl`).
+
+### Year wallpaper
+
+**Settings → Wallpaper** generates a white desktop background with a GitHub-style **week column** heatmap for the current year (Mon→Sun): dark = days passed, light = upcoming, orange = today. Customize colors, cell size, gap, shape, and save folder; optionally apply as the Windows desktop after each regen. PNG is written to your chosen folder (default `Pictures/Notch/year-{year}-wallpaper.png`).
+
+### Other
+
+- **Theme** — light / dark / system
+- **Location** — IP geolocation or manual lat/lon
+- **Click-outside dismiss** — transparent fullscreen shell when expanded
+- **Tray** — no taskbar button; Show / Quit from tray; Start Menu shortcut on launch
+- **Launch at login** — on by default (Settings → App)
 
 ## Stack
 
 - Electron (frameless, transparent, always-on-top)
 - React 19 + TypeScript + Vite
-- Tailwind CSS v4
-- Motion (animations)
-- Open-Meteo + ipapi.co
-- Spotify Web API (OAuth PKCE-style loopback on `127.0.0.1:43110`)
+- Tailwind CSS v4, Motion
+- Open-Meteo, ipapi.co
+- Spotify Web API (OAuth loopback `127.0.0.1:43110`)
+- GitHub REST (classic PAT)
+- Strava API (OAuth loopback `127.0.0.1:43111`)
+- Year wallpaper PNG generation (`pngjs` in the main process)
 
 ## Prerequisites
 
 - Node.js 20+
-- Windows (primary target; overlay behavior is tuned for Win32)
-- Optional: a [Spotify Developer](https://developer.spotify.com/dashboard) app for now-playing
+- Windows (primary target)
+- Optional: Spotify, GitHub, and Strava credentials (see below)
 
 ## Setup
 
@@ -38,23 +57,41 @@ cd notch
 npm install
 ```
 
+Copy `.env.example` → `.env` and fill in what you use. Restart Notch after changing `.env`.
+
 ### Spotify (optional)
 
-1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Add redirect URI: `http://127.0.0.1:43110/callback`
-3. Copy `.env.example` → `.env` and fill in:
+1. [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) app
+2. Redirect URI: `http://127.0.0.1:43110/callback`
+3. In `.env`: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REDIRECT_URI`
+
+Connect from **Settings → Spotify**.
+
+### GitHub (optional)
+
+Classic PAT with **notifications** scope:
 
 ```env
-SPOTIFY_CLIENT_ID=your_client_id
-SPOTIFY_CLIENT_SECRET=your_client_secret
-SPOTIFY_REDIRECT_URI=http://127.0.0.1:43110/callback
+GITHUB_TOKEN=ghp_...
 ```
 
-Without Spotify credentials, weather and settings still work; the Spotify row simply won’t connect.
+Restart Notch. Notifications and heatmaps use the GitHub panel / island face.
+
+### Strava (optional)
+
+1. [Strava API settings](https://www.strava.com/settings/api) — create an application
+2. Authorization callback: `http://127.0.0.1:43111/callback`
+3. In `.env`: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI`
+
+Connect from **Settings → Strava**. Optional token overrides are documented in `.env.example`.
+
+### Calendar (optional)
+
+In **Settings → Calendar**, paste a secret ICS URL (e.g. Google Calendar → Integrate calendar).
 
 ### Cursor usage
 
-Notch reads the same dashboard data as [cursor.com/settings](https://cursor.com/settings) using your **Cursor IDE login** on this machine (from `state.vscdb`). A `CURSOR_API_KEY` in `.env` is for the Cloud Agents API only — it does not expose plan usage. Optional overrides: `CURSOR_SESSION_TOKEN` or `CURSOR_ACCESS_TOKEN` in `.env` (see `.env.example`). On Windows, Python on `PATH` is used to read the local state DB without loading the whole file into memory.
+Reads dashboard-style usage from your **Cursor IDE login** on this machine (`state.vscdb`). `CURSOR_API_KEY` is for Cloud Agents only, not plan usage. See `.env.example` for optional `CURSOR_SESSION_TOKEN` / `CURSOR_ACCESS_TOKEN`.
 
 ## Develop
 
@@ -62,33 +99,33 @@ Notch reads the same dashboard data as [cursor.com/settings](https://cursor.com/
 npm run dev
 ```
 
-Starts Vite and launches Electron against `http://localhost:5173`.
+Starts Vite and Electron against `http://localhost:5173`. The main process restarts when files under `electron/` change (`nodemon`).
 
 ```bash
-npm run dev:web   # renderer only in the browser
-npm run build     # typecheck + production Vite build
+npm run dev:web   # renderer only (no IPC / wallpaper / Spotify)
+npm run build     # typecheck + Vite production build
 npm start         # Electron against dist/ (run build first)
 npm run lint
 ```
 
+Use **`npm run dev`** or **`npm start`** for wallpaper regen and OAuth — not the browser tab alone.
+
 ## Project layout
 
 ```
-electron/          Main process, preload, Spotify OAuth, settings store
+electron/          Main process, preload, OAuth bridges, year wallpaper, settings store
 src/
-  components/      Notch shell, weather / Spotify / settings panels
-  hooks/           Weather, Spotify, theme, album palette
-  lib/             API helpers, colors, utils
-  config/          Settings types + defaults
+  components/      Notch shell, panels (weather, Spotify, GitHub, Strava, …)
+  hooks/           Data polling and bridge hooks
+  lib/             API types, panel routing, year wallpaper settings helpers
+  config/          Settings types, defaults, persisted store
 ```
 
 ## Notes
 
-- `.env` is gitignored — never commit Spotify secrets
-- Weather uses Open-Meteo (free, no key) and Fluent Emoji Flat icons bundled as a trimmed JSON set
-- The overlay uses mouse passthrough with forwarding so only the notch UI receives clicks
-- **Launch at login** is on by default (Windows startup via Electron login items); toggle it in Settings → App. Login launches the last `npm run build` output (`dist/`), not the Vite dev server — run `npm run build` after UI changes if you rely on auto-start.
-- **System tray** — Notch stays out of the taskbar; use the tray icon (Show / Quit). A **Notch** Start Menu shortcut is created on launch so you can pin it to the taskbar and start the app when it’s down.
+- `.env` is gitignored — never commit tokens or client secrets
+- **Launch at login** runs the last `npm run build` output (`dist/`), not the Vite dev server — run `npm run build` after UI changes if you rely on auto-start
+- Weather icons use a trimmed Fluent Emoji Flat JSON set in the repo
 
 ## License
 
