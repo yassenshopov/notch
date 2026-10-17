@@ -37,6 +37,32 @@ export type GitHubTodayRepoContribution = {
   count: number
 }
 
+/**
+ * GitHub’s per-repo API counts raw commits (and other activity types), while the
+ * contribution calendar collapses multiple commits per day into one contribution.
+ * Scale listed repo totals down so they sum to the calendar total shown in the UI.
+ */
+export function scaleRepoCountsToTarget(
+  repos: GitHubTodayRepoContribution[],
+  targetSum: number,
+): GitHubTodayRepoContribution[] {
+  if (repos.length === 0 || targetSum <= 0) {
+    return repos.map((row) => ({ ...row, count: 0 }))
+  }
+  const listed = repos.reduce((sum, row) => sum + row.count, 0)
+  if (listed <= targetSum) return repos
+
+  let assigned = 0
+  return repos.map((row, index) => {
+    if (index === repos.length - 1) {
+      return { ...row, count: Math.max(0, targetSum - assigned) }
+    }
+    const count = Math.round((row.count * targetSum) / listed)
+    assigned += count
+    return { ...row, count }
+  })
+}
+
 export type GitHubTodayBreakdown = {
   date: string
   repos: GitHubTodayRepoContribution[]

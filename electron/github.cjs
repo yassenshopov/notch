@@ -153,6 +153,25 @@ function mergeContributionsByRepository(groups) {
   return [...map.values()].sort((a, b) => b.count - a.count)
 }
 
+/** Align per-repo totals with the contribution calendar for the same query window. */
+function scaleRepoCountsToTarget(repos, targetSum) {
+  if (!repos.length || targetSum <= 0) {
+    return repos.map((row) => ({ ...row, count: 0 }))
+  }
+  const listed = repos.reduce((sum, row) => sum + row.count, 0)
+  if (listed <= targetSum) return repos
+
+  let assigned = 0
+  return repos.map((row, index) => {
+    if (index === repos.length - 1) {
+      return { ...row, count: Math.max(0, targetSum - assigned) }
+    }
+    const count = Math.round((row.count * targetSum) / listed)
+    assigned += count
+    return { ...row, count }
+  })
+}
+
 function flattenContributionDays(contributions) {
   if (!contributions) return []
   if (Array.isArray(contributions.days) && contributions.days.length) return contributions.days
@@ -174,7 +193,7 @@ function contributionDateKeyForToday(contributions) {
 }
 
 function todayCacheKey(dateKey) {
-  return `github:today:v3:${dateKey}`
+  return `github:today:v4:${dateKey}`
 }
 
 const TODAY_BREAKDOWN_CALENDAR = `
@@ -236,14 +255,18 @@ async function fetchTodayBreakdownForRange(dateKey, range) {
   }
 
   if (!col) return { calendarCount: 0, repos: [] }
-  const repos = mergeContributionsByRepository([
-    col.commitContributionsByRepository,
-    col.pullRequestContributionsByRepository,
-    col.issueContributionsByRepository,
-    col.pullRequestReviewContributionsByRepository,
-  ])
+  const calendarCount = calendarCountForDate(col, dateKey)
+  const repos = scaleRepoCountsToTarget(
+    mergeContributionsByRepository([
+      col.commitContributionsByRepository,
+      col.pullRequestContributionsByRepository,
+      col.issueContributionsByRepository,
+      col.pullRequestReviewContributionsByRepository,
+    ]),
+    calendarCount,
+  )
   return {
-    calendarCount: calendarCountForDate(col, dateKey),
+    calendarCount,
     repos,
   }
 }

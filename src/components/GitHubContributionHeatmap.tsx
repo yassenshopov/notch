@@ -126,8 +126,8 @@ function HeatmapTooltip({
 
 export function GitHubContributionHeatmap({ weeks = [], variant, className }: Props) {
   const weekCount = variant === "mini" ? 12 : 26
-  const cell = variant === "mini" ? "size-[3px]" : "size-[9px]"
-  const gap = variant === "mini" ? "gap-[2px]" : "gap-[3px]"
+  const cell = variant === "mini" ? "size-[2px]" : "size-[9px]"
+  const gap = variant === "mini" ? "gap-px" : "gap-[3px]"
   const rootRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<HoverState | null>(null)
 
@@ -156,7 +156,13 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
   return (
     <div
       ref={rootRef}
-      className={cn("relative inline-block", className)}
+      className={cn(
+        "relative shrink-0",
+        variant === "mini"
+          ? "block leading-none -translate-y-0.5"
+          : "inline-block",
+        className,
+      )}
       onMouseLeave={() => setHover(null)}
       onClick={(e) => e.stopPropagation()}
     >
@@ -173,11 +179,22 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
         : null}
 
       <div
-        className={cn("inline-grid grid-flow-col", gap)}
-        style={{
-          gridTemplateRows: "repeat(7, min-content)",
-          gridTemplateColumns: `repeat(${columns.length}, min-content)`,
-        }}
+        className={cn(
+          variant === "mini" ? "grid grid-flow-col" : "inline-grid grid-flow-col",
+          "leading-none",
+          gap,
+        )}
+        style={
+          variant === "mini"
+            ? {
+                gridTemplateRows: "repeat(7, 2px)",
+                gridTemplateColumns: `repeat(${columns.length}, 2px)`,
+              }
+            : {
+                gridTemplateRows: "repeat(7, min-content)",
+                gridTemplateColumns: `repeat(${columns.length}, min-content)`,
+              }
+        }
         role="img"
         aria-label="Contribution activity by day"
       >

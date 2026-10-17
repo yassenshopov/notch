@@ -4,6 +4,7 @@ import {
   contributionCountForDate,
   localContributionDateKey,
   openGitHubUrl,
+  scaleRepoCountsToTarget,
 } from "../lib/github"
 import { cn } from "../lib/utils"
 
@@ -22,7 +23,11 @@ export function GitHubTodayPanel({ weeks = [], breakdown, loading, className }: 
     [weeks, todayKey],
   )
 
-  const repos = breakdown?.repos ?? []
+  const rawRepos = breakdown?.repos ?? []
+  const repos = useMemo(
+    () => scaleRepoCountsToTarget(rawRepos, total),
+    [rawRepos, total],
+  )
   const listed = useMemo(
     () => repos.reduce((sum, row) => sum + row.count, 0),
     [repos],
