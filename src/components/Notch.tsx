@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react"
-import { CalendarDays, CloudSun, LineChart, Settings, Timer, Volume2, Wind } from "lucide-react"
+import { CalendarDays, CloudSun, Leaf, LineChart, Settings, Timer, Volume2 } from "lucide-react"
 import {
   AnimatePresence,
   motion,
@@ -8,12 +8,15 @@ import {
   useVelocity,
 } from "motion/react"
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
+  type Ref,
 } from "react"
 import { updateSettings, useSettings } from "../config/settings-store"
 import { useSpotify } from "../hooks/useSpotify"
@@ -50,9 +53,12 @@ import { ClockPanel } from "./ClockPanel"
 import { MarketsPanel } from "./MarketsPanel"
 import { GitHubPanel } from "./GitHubPanel"
 import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
+import { StravaPanel } from "./StravaPanel"
+import { StravaActivityCalendar } from "./StravaActivityCalendar"
 import { useTimerEngine } from "../hooks/useTimerEngine"
 import { useMarkets } from "../hooks/useMarkets"
 import { useGithub } from "../hooks/useGithub"
+import { useStrava } from "../hooks/useStrava"
 import { todayContributionCount } from "../lib/github"
 import { formatQuoteChange } from "../lib/markets"
 import { nextEvent } from "../lib/calendar"
@@ -76,6 +82,7 @@ const RAIL_PANELS: Panel[] = [
   "clock",
   "markets",
   "github",
+  "strava",
   "controls",
   "settings",
 ]
@@ -83,11 +90,6 @@ const RAIL_PANELS: Panel[] = [
 const PANEL_ORDER = Object.fromEntries(
   RAIL_PANELS.map((panel, index) => [panel, index]),
 ) as Record<Panel, number>
-
-/** Icon button size (size-9) + gap-1.5 — keeps the drop aligned to each slot */
-const RAIL_TAB = 36
-const RAIL_GAP = 6
-const RAIL_STRIDE = RAIL_TAB + RAIL_GAP
 
 const panelTransition = {
   duration: 0.28,
@@ -100,10 +102,11 @@ export function Notch() {
   const [shellExpanded, setShellExpanded] = useState(false)
   const [panelOverride, setPanelOverride] = useState<Panel | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [stravaConnecting, setStravaConnecting] = useState(false)
   const settings = useSettings()
   const { data, loading, error, refresh } = useWeather()
   const { status, playing, connect, action, disconnect } = useSpotify()
-  const mediaPoll = !expanded && !playing && settings.media.enabled
+  const mediaPoll = settings.media.enabled && !playing
   const {
     status: mediaStatus,
     showing: browserMediaShowing,
@@ -172,6 +175,9 @@ export function Notch() {
     (!expanded && settings.island.faces.markets) || (expanded && activePanel === "markets")
   const githubPoll =
     (!expanded && settings.island.faces.github) || (expanded && activePanel === "github")
+  const stravaPoll =
+    (!expanded && (settings.island.faces.strava ?? true)) ||
+    (expanded && activePanel === "strava")
 
   const {
     snapshot: marketsSnapshot,
@@ -185,6 +191,14 @@ export function Notch() {
     refreshing: githubRefreshing,
     refresh: refreshGithub,
   } = useGithub(Boolean(githubPoll))
+  const {
+    status: stravaStatus,
+    loading: stravaLoading,
+    refreshing: stravaRefreshing,
+    refresh: refreshStrava,
+    connect: connectStrava,
+    disconnect: disconnectStrava,
+  } = useStrava(Boolean(stravaPoll))
 
   const islandFaces = useMemo(() => {
     const faces: IslandFace[] = []
@@ -194,6 +208,7 @@ export function Notch() {
     if (enabled.clock) faces.push("clock")
     if (enabled.markets && marketsSnapshot.quotes.length > 0) faces.push("markets")
     if (enabled.github && githubStatus.connected) faces.push("github")
+    if ((enabled.strava ?? true) && stravaStatus.connected) faces.push("strava")
     const today = data?.days.find((d) => d.isToday)
     if ((enabled.air ?? true) && today && (today.aqi != null || today.uvIndex > 0))
       faces.push("air")
@@ -207,6 +222,7 @@ export function Notch() {
     githubStatus.connected,
     githubStatus.notifications.length,
     githubStatus.pullRequests.length,
+    stravaStatus.connected,
     calendarReady,
   ])
 
@@ -230,6 +246,11 @@ export function Notch() {
     islandFace === "github" &&
     Boolean(githubStatus.contributions?.weeks?.length)
 
+  const stravaCalendarShowing =
+    rotateEnabled &&
+    islandFace === "strava" &&
+    Boolean(stravaStatus.calendar?.cells.length)
+
   const calendarNext = useMemo(
     () => nextEvent(calendarSnapshot.events),
     [calendarSnapshot.events],
@@ -243,7 +264,8 @@ export function Notch() {
     (browserMediaShowing && !browserMediaPlaying ? 36 : 0) +
     (liveActivity ? settings.collapsed.activityExtraWidth : 0) +
     (timerShowing ? settings.collapsed.timerExtraWidth : 0) +
-    (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0)
+    (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0) +
+    (stravaCalendarShowing ? settings.collapsed.stravaExtraWidth : 0)
 
   const {
     status: cursorStatus,
@@ -672,6 +694,27 @@ export function Notch() {
                           {formatQuoteChange(marketsSnapshot.quotes[0].changePercent24h)}
                         </span>
                       </motion.span>
+                    ) : islandFace === "strava" ? (
+                      <motion.span
+                        key="strava"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-1.5 leading-none"
+                      >
+                        {stravaStatus.calendar ? (
+                          <StravaActivityCalendar
+                            calendar={stravaStatus.calendar}
+                            variant="mini"
+                          />
+                        ) : (
+                          <Icon icon="simple-icons:strava" className="size-3.5 opacity-75" aria-hidden />
+                        )}
+                        <span className="text-[11px] font-semibold tabular-nums leading-none opacity-80">
+                          {stravaStatus.streak?.weeks ?? 0}
+                        </span>
+                      </motion.span>
                     ) : islandFace === "github" ? (
                       <motion.span
                         key="github"
@@ -679,7 +722,7 @@ export function Notch() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                        className="flex items-center justify-center gap-2"
+                        className="flex items-center justify-center gap-2 leading-none"
                       >
                         {githubStatus.contributions?.weeks?.length ? (
                           <GitHubContributionHeatmap
@@ -689,7 +732,7 @@ export function Notch() {
                         ) : (
                           <Icon icon="simple-icons:github" className="size-3.5 opacity-75" aria-hidden />
                         )}
-                        <span className="text-[11px] font-semibold tabular-nums opacity-80">
+                        <span className="text-[11px] font-semibold tabular-nums leading-none opacity-80">
                           {todayContributionCount(githubStatus.contributions?.weeks ?? [])}
                         </span>
                       </motion.span>
@@ -702,7 +745,7 @@ export function Notch() {
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         className="flex items-center justify-center gap-2"
                       >
-                        <Wind className="size-3.5 opacity-70" strokeWidth={2} />
+                        <Leaf className="size-3.5 opacity-70" strokeWidth={2} />
                         <span className="text-[12px] font-semibold tabular-nums">
                           {data.days.find((d) => d.isToday)?.aqi ?? "—"}
                         </span>
@@ -771,6 +814,16 @@ export function Notch() {
                             .finally(() => setConnecting(false))
                         }}
                         onDisconnectSpotify={() => void disconnect()}
+                        stravaConnected={stravaStatus.connected}
+                        stravaConfigured={stravaStatus.configured}
+                        stravaConnecting={stravaConnecting}
+                        onConnectStrava={() => {
+                          setStravaConnecting(true)
+                          void connectStrava()
+                            .catch(() => undefined)
+                            .finally(() => setStravaConnecting(false))
+                        }}
+                        onDisconnectStrava={() => void disconnectStrava()}
                       />
                     ) : activePanel === "cursor" ? (
                       <CursorPanel
@@ -795,6 +848,21 @@ export function Notch() {
                         loading={githubLoading}
                         refreshing={githubRefreshing}
                         onRefresh={() => void refreshGithub()}
+                      />
+                    ) : activePanel === "strava" ? (
+                      <StravaPanel
+                        status={stravaStatus}
+                        loading={stravaLoading}
+                        refreshing={stravaRefreshing}
+                        connecting={stravaConnecting}
+                        onRefresh={() => void refreshStrava()}
+                        onConnect={() => {
+                          setStravaConnecting(true)
+                          void connectStrava()
+                            .catch(() => undefined)
+                            .finally(() => setStravaConnecting(false))
+                        }}
+                        onDisconnect={() => void disconnectStrava()}
                       />
                     ) : activePanel === "air" && data ? (
                       <AirQualityPanel data={data} />
@@ -864,6 +932,50 @@ export function Notch() {
   )
 }
 
+function railTabIcon(panel: Panel) {
+  switch (panel) {
+    case "weather":
+      return <CloudSun className="size-4" strokeWidth={1.75} />
+    case "spotify":
+      return <Icon icon="simple-icons:spotify" className="size-4" aria-hidden />
+    case "media":
+      return <Icon icon="simple-icons:youtube" className="size-4" aria-hidden />
+    case "air":
+      return <Leaf className="size-4" strokeWidth={1.75} />
+    case "calendar":
+      return <CalendarDays className="size-4" strokeWidth={1.75} />
+    case "cursor":
+      return <Icon icon="simple-icons:cursor" className="size-4" aria-hidden />
+    case "clock":
+      return <Timer className="size-4" strokeWidth={1.75} />
+    case "markets":
+      return <LineChart className="size-4" strokeWidth={1.75} />
+    case "github":
+      return <Icon icon="simple-icons:github" className="size-4" aria-hidden />
+    case "strava":
+      return <Icon icon="simple-icons:strava" className="size-4" aria-hidden />
+    case "controls":
+      return <Volume2 className="size-4" strokeWidth={1.75} />
+    case "settings":
+      return <Settings className="size-4" strokeWidth={1.75} />
+  }
+}
+
+const RAIL_TAB_LABELS: Record<Panel, string> = {
+  weather: "Weather",
+  spotify: "Spotify",
+  media: "YouTube",
+  air: "Air quality",
+  calendar: "Calendar",
+  cursor: "Cursor",
+  clock: "Clock",
+  markets: "Markets",
+  github: "GitHub",
+  strava: "Strava",
+  controls: "Controls",
+  settings: "Settings",
+}
+
 function PanelRail({
   active,
   themed,
@@ -874,17 +986,38 @@ function PanelRail({
   onSelect: (panel: Panel) => void
 }) {
   const { motion: feel } = useSettings()
-  const index = PANEL_ORDER[active]
+  const navRef = useRef<HTMLElement>(null)
+  const tabRefs = useRef<Partial<Record<Panel, HTMLButtonElement>>>({})
+  const [indicatorY, setIndicatorY] = useState(0)
 
-  const y = useSpring(index * RAIL_STRIDE, {
+  const measureIndicator = useCallback(() => {
+    const tab = tabRefs.current[active]
+    const nav = navRef.current
+    if (!tab || !nav) return
+    setIndicatorY(tab.offsetTop)
+  }, [active])
+
+  useLayoutEffect(() => {
+    measureIndicator()
+  }, [measureIndicator])
+
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    if (!nav || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => measureIndicator())
+    ro.observe(nav)
+    return () => ro.disconnect()
+  }, [measureIndicator])
+
+  const y = useSpring(indicatorY, {
     stiffness: Math.round(feel.stiffness * 0.75),
     damping: Math.round(feel.damping * 0.85),
     mass: feel.mass * 1.05,
   })
 
   useEffect(() => {
-    y.set(index * RAIL_STRIDE)
-  }, [index, y])
+    y.set(indicatorY)
+  }, [indicatorY, y])
 
   const velocity = useVelocity(y)
   // Stretch into a capsule while moving; squash sideways so it reads like a drop
@@ -899,7 +1032,11 @@ function PanelRail({
   const borderRadius = useTransform(scaleY, [1, 1.72], [999, 22])
 
   return (
-    <nav className="relative flex flex-col items-center gap-1.5" aria-label="Panels">
+    <nav
+      ref={navRef}
+      className="relative flex flex-col items-center gap-1.5"
+      aria-label="Panels"
+    >
       <motion.span
         aria-hidden
         className={cn(
@@ -909,105 +1046,34 @@ function PanelRail({
         style={{ y, scaleX, scaleY, transformOrigin, borderRadius }}
       />
 
-      <IconTab
-        label="Weather"
-        active={active === "weather"}
-        themed={themed}
-        onClick={() => onSelect("weather")}
-      >
-        <CloudSun className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="Spotify"
-        active={active === "spotify"}
-        themed={themed}
-        onClick={() => onSelect("spotify")}
-      >
-        <Icon icon="simple-icons:spotify" className="size-4" aria-hidden />
-      </IconTab>
-      <IconTab
-        label="YouTube"
-        active={active === "media"}
-        themed={themed}
-        onClick={() => onSelect("media")}
-      >
-        <Icon icon="simple-icons:youtube" className="size-4" aria-hidden />
-      </IconTab>
-      <IconTab
-        label="Air quality"
-        active={active === "air"}
-        themed={themed}
-        onClick={() => onSelect("air")}
-      >
-        <Wind className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="Calendar"
-        active={active === "calendar"}
-        themed={themed}
-        onClick={() => onSelect("calendar")}
-      >
-        <CalendarDays className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="Cursor"
-        active={active === "cursor"}
-        themed={themed}
-        onClick={() => onSelect("cursor")}
-      >
-        <Icon icon="simple-icons:cursor" className="size-4" aria-hidden />
-      </IconTab>
-      <IconTab
-        label="Clock"
-        active={active === "clock"}
-        themed={themed}
-        onClick={() => onSelect("clock")}
-      >
-        <Timer className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="Markets"
-        active={active === "markets"}
-        themed={themed}
-        onClick={() => onSelect("markets")}
-      >
-        <LineChart className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="GitHub"
-        active={active === "github"}
-        themed={themed}
-        onClick={() => onSelect("github")}
-      >
-        <Icon icon="simple-icons:github" className="size-4" aria-hidden />
-      </IconTab>
-      <IconTab
-        label="Controls"
-        active={active === "controls"}
-        themed={themed}
-        onClick={() => onSelect("controls")}
-      >
-        <Volume2 className="size-4" strokeWidth={1.75} />
-      </IconTab>
-      <IconTab
-        label="Settings"
-        active={active === "settings"}
-        themed={themed}
-        onClick={() => onSelect("settings")}
-      >
-        <Settings className="size-4" strokeWidth={1.75} />
-      </IconTab>
+      {RAIL_PANELS.map((panel) => (
+        <IconTab
+          key={panel}
+          ref={(el) => {
+            if (el) tabRefs.current[panel] = el
+            else delete tabRefs.current[panel]
+          }}
+          label={RAIL_TAB_LABELS[panel]}
+          active={active === panel}
+          themed={themed}
+          onClick={() => onSelect(panel)}
+        >
+          {railTabIcon(panel)}
+        </IconTab>
+      ))}
     </nav>
   )
 }
 
 function IconTab({
+  ref,
   label,
   active,
   onClick,
   themed,
   children,
 }: {
+  ref?: Ref<HTMLButtonElement>
   label: string
   active: boolean
   onClick: () => void
@@ -1016,6 +1082,7 @@ function IconTab({
 }) {
   return (
     <motion.button
+      ref={ref}
       type="button"
       aria-label={label}
       aria-current={active ? "page" : undefined}

@@ -5,6 +5,12 @@ import type { ChartStyle, ClockFormat, MarketWatchItem, ThemeMode } from "../con
 import { resetSettings, updateSettings, useSettings } from "../config/settings-store"
 import { ISLAND_EASE } from "../lib/island-motion"
 import { CRYPTO_IDS } from "../lib/market-assets"
+import {
+  mergeYearWallpaper,
+  wallpaperFileName,
+  wallpaperOutputDirLabel,
+  type YearWallpaperShape,
+} from "../lib/year-wallpaper"
 import { cn } from "../lib/utils"
 
 type Props = {
@@ -13,6 +19,11 @@ type Props = {
   onConnectSpotify: () => void
   onDisconnectSpotify: () => void
   connecting?: boolean
+  stravaConnected: boolean
+  stravaConfigured: boolean
+  onConnectStrava: () => void
+  onDisconnectStrava: () => void
+  stravaConnecting?: boolean
 }
 
 export function SettingsPanel({
@@ -21,8 +32,21 @@ export function SettingsPanel({
   onConnectSpotify,
   onDisconnectSpotify,
   connecting,
+  stravaConnected,
+  stravaConfigured,
+  onConnectStrava,
+  onDisconnectStrava,
+  stravaConnecting,
 }: Props) {
   const s = useSettings()
+  const year = new Date().getFullYear()
+  const wallpaper = mergeYearWallpaper(s.yearWallpaper)
+  const [wallpaperBusy, setWallpaperBusy] = useState(false)
+  const [wallpaperNote, setWallpaperNote] = useState<string | null>(null)
+
+  const patchWallpaper = (patch: Partial<typeof wallpaper>) => {
+    void updateSettings({ yearWallpaper: { ...wallpaper, ...patch } })
+  }
   const [manualLabel, setManualLabel] = useState(
     s.location.mode === "manual" ? s.location.label : "",
   )
@@ -163,6 +187,23 @@ export function SettingsPanel({
                 island: {
                   ...s.island,
                   faces: { ...s.island.faces, github: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Strava">
+          <Segmented
+            value={(s.island.faces.strava ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, strava: v === "on" },
                 },
               })
             }
@@ -474,6 +515,178 @@ export function SettingsPanel({
         </Row>
       </Section>
 
+      <Section title="Wallpaper">
+        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+          {year} week heatmap (Mon→Sun). Saves{" "}
+          <span className="font-medium">{wallpaperFileName(year)}</span> to your folder below.
+        </p>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-medium">Save folder</span>
+          <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">
+            {wallpaperOutputDirLabel(wallpaper.outputDir)}
+            {!wallpaper.outputDir.trim() ? " (default)" : ""}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <motion.button
+              type="button"
+              disabled={!window.notch?.wallpaper?.pickOutputFolder}
+              onClick={() => {
+                void (async () => {
+                  const pick = window.notch?.wallpaper?.pickOutputFolder
+                  if (!pick) return
+                  const result = await pick()
+                  if (result.ok && result.path) {
+                    patchWallpaper({ outputDir: result.path })
+                  }
+                })()
+              }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.22, ease: ISLAND_EASE }}
+              className="rounded-full bg-black/5 px-3 py-1.5 text-[11px] font-semibold dark:bg-white/10"
+            >
+              Choose folder…
+            </motion.button>
+            {wallpaper.outputDir.trim() ? (
+              <button
+                type="button"
+                onClick={() => patchWallpaper({ outputDir: "" })}
+                className="rounded-full px-3 py-1.5 text-[11px] font-medium text-black/45 underline-offset-2 hover:underline dark:text-white/45"
+              >
+                Use default
+              </button>
+            ) : null}
+          </div>
+        </label>
+        <Row label="Apply">
+          <Segmented
+            value={wallpaper.applyAfterRegenerate ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) => patchWallpaper({ applyAfterRegenerate: v === "on" })}
+          />
+        </Row>
+        <Row label="Shape">
+          <Segmented
+            value={wallpaper.shape}
+            options={[
+              { value: "square", label: "Square" },
+              { value: "circle", label: "Circle" },
+            ]}
+            onChange={(v) => patchWallpaper({ shape: v as YearWallpaperShape })}
+          />
+        </Row>
+        <Row label="Cell">
+          <Segmented
+            value={String(wallpaper.cellSize)}
+            options={[
+              { value: "10", label: "S" },
+              { value: "13", label: "M" },
+              { value: "16", label: "L" },
+            ]}
+            onChange={(v) => patchWallpaper({ cellSize: Number(v) })}
+          />
+        </Row>
+        <Row label="Gap">
+          <Segmented
+            value={String(wallpaper.gap)}
+            options={[
+              { value: "4", label: "4" },
+              { value: "6", label: "6" },
+              { value: "8", label: "8" },
+            ]}
+            onChange={(v) => patchWallpaper({ gap: Number(v) })}
+          />
+        </Row>
+        {wallpaper.shape === "square" ? (
+          <Row label="Corners">
+            <Segmented
+              value={String(wallpaper.cornerRadius)}
+              options={[
+                { value: "0", label: "0" },
+                { value: "2", label: "2" },
+                { value: "4", label: "4" },
+              ]}
+              onChange={(v) => patchWallpaper({ cornerRadius: Number(v) })}
+            />
+          </Row>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <ColorField
+            label="Background"
+            value={wallpaper.backgroundColor}
+            onChange={(v) => patchWallpaper({ backgroundColor: v })}
+          />
+          <ColorField
+            label="Passed"
+            value={wallpaper.passedColor}
+            onChange={(v) => patchWallpaper({ passedColor: v })}
+          />
+          <ColorField
+            label="Upcoming"
+            value={wallpaper.futureColor}
+            onChange={(v) => patchWallpaper({ futureColor: v })}
+          />
+          <ColorField
+            label="Today"
+            value={wallpaper.todayColor}
+            onChange={(v) => patchWallpaper({ todayColor: v })}
+          />
+        </div>
+        <div className="mt-1 flex flex-col gap-2">
+          <motion.button
+            type="button"
+            disabled={wallpaperBusy || !window.notch?.wallpaper}
+            onClick={() => {
+              void (async () => {
+                const bridge = window.notch?.wallpaper
+                if (!bridge) {
+                  setWallpaperNote("Run notch with npm run dev or npm start (not the browser tab).")
+                  return
+                }
+                setWallpaperBusy(true)
+                setWallpaperNote(null)
+                try {
+                  const result = await bridge.regenerate({
+                    year,
+                    apply: wallpaper.applyAfterRegenerate,
+                    style: wallpaper,
+                  })
+                  if (!result.ok) {
+                    setWallpaperNote(result.error ?? "Could not generate wallpaper")
+                    return
+                  }
+                  let note = `${result.passed}/${result.total} days · ${result.path}`
+                  if (result.applied) {
+                    note += " · desktop updated"
+                  } else if (wallpaper.applyAfterRegenerate && result.applyError) {
+                    note += ` · apply failed: ${result.applyError}`
+                  }
+                  setWallpaperNote(note)
+                } catch (err) {
+                  const raw = err instanceof Error ? err.message : "Could not generate wallpaper"
+                  const msg = /no handler registered/i.test(raw)
+                    ? "Restart notch (quit from tray, then npm run dev) so the main process reloads."
+                    : raw
+                  setWallpaperNote(msg)
+                } finally {
+                  setWallpaperBusy(false)
+                }
+              })()
+            }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.22, ease: ISLAND_EASE }}
+            className="w-fit rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-[#111]"
+          >
+            {wallpaperBusy ? "Generating…" : `Regenerate ${year} wallpaper`}
+          </motion.button>
+          {wallpaperNote ? (
+            <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">{wallpaperNote}</p>
+          ) : null}
+        </div>
+      </Section>
+
       <Section title="Markets">
         <WatchlistField
           value={s.markets.watchlist.map((w) => w.symbol).join(", ")}
@@ -516,6 +729,74 @@ export function SettingsPanel({
             }
           />
         </Row>
+      </Section>
+
+      <Section title="Strava">
+        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+          Use your Strava API app credentials in <span className="font-medium">.env</span>{" "}
+          (<span className="font-medium">STRAVA_CLIENT_ID</span> /{" "}
+          <span className="font-medium">STRAVA_CLIENT_SECRET</span>). Set callback to{" "}
+          <span className="font-medium">http://127.0.0.1:43111/callback</span>.
+        </p>
+        <Row label="Refresh">
+          <Segmented
+            value={String(s.strava?.pollIntervalMs ?? 180_000)}
+            options={[
+              { value: "120000", label: "2m" },
+              { value: "180000", label: "3m" },
+              { value: "300000", label: "5m" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                strava: { ...(s.strava ?? { pollIntervalMs: 180_000 }), pollIntervalMs: Number(v) },
+              })
+            }
+          />
+        </Row>
+        <div className="mt-3">
+          <AnimatePresence mode="wait" initial={false}>
+            {!stravaConfigured ? (
+              <motion.p
+                key="strava-unconfigured"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                className="text-[12px] text-black/45 dark:text-white/45"
+              >
+                Add Strava keys to <span className="font-medium">.env</span> and restart.
+              </motion.p>
+            ) : stravaConnected ? (
+              <motion.button
+                key="strava-disconnect"
+                type="button"
+                onClick={onDisconnectStrava}
+                initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                whileTap={{ scale: 0.97 }}
+                className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
+              >
+                Disconnect Strava
+              </motion.button>
+            ) : (
+              <motion.button
+                key="strava-connect"
+                type="button"
+                onClick={onConnectStrava}
+                initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                whileTap={{ scale: 0.97 }}
+                className="rounded-full bg-[#fc4c02] px-4 py-2 text-[12px] font-semibold text-white"
+              >
+                {stravaConnecting ? "Waiting…" : "Connect Strava"}
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
       </Section>
 
       <Section title="Spotify">
@@ -705,6 +986,30 @@ function WatchlistField({ value, onSave }: { value: string; onSave: (raw: string
       <span className="text-[11px] text-black/40 dark:text-white/40">
         Comma-separated tickers. Known crypto symbols use CoinGecko.
       </span>
+    </label>
+  )
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+}) {
+  const normalized = /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#ffffff"
+  return (
+    <label className="flex items-center justify-between gap-2 rounded-xl border border-black/10 px-2 py-1.5 dark:border-white/15">
+      <span className="text-[11px] font-medium">{label}</span>
+      <input
+        type="color"
+        value={normalized}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-10 cursor-pointer rounded border-0 bg-transparent p-0"
+        aria-label={`${label} color`}
+      />
     </label>
   )
 }

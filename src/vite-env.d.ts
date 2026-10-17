@@ -53,6 +53,7 @@ type CursorBridgeStatus = import("./lib/cursor").CursorStatus
 type MarketQuote = import("./lib/markets").MarketQuote
 type MarketsSnapshot = import("./lib/markets").MarketsSnapshot
 type GitHubBridgeStatus = import("./lib/github").GitHubStatus
+type StravaBridgeStatus = import("./lib/strava").StravaStatus
 type MediaSessionStatus = import("./lib/media-session").MediaSessionStatus
 type CalendarSnapshot = import("./lib/calendar").CalendarSnapshot
 
@@ -119,6 +120,12 @@ interface NotchBridge {
     status: (options?: { force?: boolean }) => Promise<GitHubBridgeStatus>
     openUrl: (url: string) => Promise<void>
   }
+  strava: {
+    status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>
+    connect: () => Promise<StravaBridgeStatus>
+    disconnect: () => Promise<StravaBridgeStatus>
+    openUrl: (url: string) => Promise<void>
+  }
   media: {
     status: () => Promise<MediaSessionStatus>
     action: (
@@ -140,6 +147,29 @@ interface NotchBridge {
       id: string,
       connected: boolean,
     ) => Promise<{ id: string; connected: boolean }>
+  }
+  wallpaper: {
+    pickOutputFolder: () => Promise<
+      { ok: true; path: string } | { ok: false; canceled?: boolean }
+    >
+    regenerate: (options?: {
+      year?: number
+      apply?: boolean
+      outputPath?: string
+      style?: Record<string, unknown>
+    }) => Promise<
+      | {
+          ok: true
+          path: string
+          year: number
+          passed: number
+          total: number
+          weeks: number
+          applied: boolean
+          applyError?: string
+        }
+      | { ok: false; error: string }
+    >
   }
 }
 

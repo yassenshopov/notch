@@ -16,6 +16,7 @@ export type IslandFace =
   | "clock"
   | "markets"
   | "github"
+  | "strava"
   | "air"
   | "calendar"
 
@@ -60,6 +61,7 @@ export type AppSettings = {
       clock: boolean
       markets: boolean
       github: boolean
+      strava: boolean
       air: boolean
       calendar: boolean
     }
@@ -94,6 +96,9 @@ export type AppSettings = {
   github: {
     pollIntervalMs: number
   }
+  strava: {
+    pollIntervalMs: number
+  }
   collapsed: {
     width: number
     height: number
@@ -104,6 +109,8 @@ export type AppSettings = {
     timerExtraWidth: number
     /** Extra width when the GitHub contribution mini-heatmap is showing */
     githubExtraWidth: number
+    /** Extra width when the Strava activity mini-calendar is showing */
+    stravaExtraWidth: number
   }
   /** Transient collapsed-pill alerts (rain soon, Cursor usage, …) */
   liveActivities: {
@@ -137,6 +144,20 @@ export type AppSettings = {
     /** Tray tooltip + balloon when included usage crosses this % */
     usageWarningPercent: number
     trayPollIntervalMs: number
+  }
+  yearWallpaper: {
+    /** Set Windows desktop background after generating */
+    applyAfterRegenerate: boolean
+    backgroundColor: string
+    passedColor: string
+    futureColor: string
+    todayColor: string
+    cellSize: number
+    gap: number
+    cornerRadius: number
+    shape: "square" | "circle"
+    /** Folder for year-{year}-wallpaper.png; empty = Pictures/Notch */
+    outputDir: string
   }
   expanded: {
     width: number
@@ -176,6 +197,7 @@ export const defaultSettings: AppSettings = {
       clock: true,
       markets: true,
       github: true,
+      strava: true,
       air: true,
       calendar: true,
     },
@@ -221,6 +243,9 @@ export const defaultSettings: AppSettings = {
   github: {
     pollIntervalMs: 120_000,
   },
+  strava: {
+    pollIntervalMs: 180_000,
+  },
   collapsed: {
     // Apple compact Dynamic Island is ~126×36pt; stay close
     width: 126,
@@ -230,6 +255,7 @@ export const defaultSettings: AppSettings = {
     /** Extra width when a countdown timer is showing */
     timerExtraWidth: 40,
     githubExtraWidth: 52,
+    stravaExtraWidth: 56,
   },
   liveActivities: {
     enabled: true,
@@ -269,6 +295,18 @@ export const defaultSettings: AppSettings = {
     stiffness: 380,
     damping: 32,
     mass: 0.85,
+  },
+  yearWallpaper: {
+    applyAfterRegenerate: true,
+    backgroundColor: "#ffffff",
+    passedColor: "#373737",
+    futureColor: "#d2d2d2",
+    todayColor: "#ff5f00",
+    cellSize: 13,
+    gap: 6,
+    cornerRadius: 2,
+    shape: "square",
+    outputDir: "",
   },
 }
 

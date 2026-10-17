@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld("notch", {
     status: (options) => ipcRenderer.invoke("github:status", options),
     openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
   },
+  strava: {
+    status: (options) => ipcRenderer.invoke("strava:status", options),
+    connect: () => ipcRenderer.invoke("strava:connect"),
+    disconnect: () => ipcRenderer.invoke("strava:disconnect"),
+    openUrl: (url) => ipcRenderer.invoke("strava:open-url", url),
+  },
   media: {
     status: () => ipcRenderer.invoke("media:status"),
     action: (action) => ipcRenderer.invoke("media:action", action),
@@ -43,6 +49,10 @@ contextBridge.exposeInMainWorld("notch", {
   calendar: {
     snapshot: (options) => ipcRenderer.invoke("calendar:snapshot", options),
     openUrl: (url) => ipcRenderer.invoke("calendar:open-url", url),
+  },
+  wallpaper: {
+    regenerate: (options) => ipcRenderer.invoke("wallpaper:regenerate", options),
+    pickOutputFolder: () => ipcRenderer.invoke("wallpaper:pick-output-folder"),
   },
   controls: {
     status: () => ipcRenderer.invoke("controls:status"),

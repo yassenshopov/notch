@@ -9,6 +9,7 @@ export type NotchPanel =
   | "clock"
   | "markets"
   | "github"
+  | "strava"
   | "air"
   | "calendar"
   | "controls"
@@ -37,6 +38,8 @@ export function panelForCollapsedTap(args: {
       return "markets"
     case "github":
       return "github"
+    case "strava":
+      return "strava"
     case "air":
       return "air"
     case "calendar":

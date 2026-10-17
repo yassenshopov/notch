@@ -1,5 +1,10 @@
+const fs = require("fs")
 const path = require("path")
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
+const lifeAppEnv = path.resolve(__dirname, "../../life-app/.env")
+if (fs.existsSync(lifeAppEnv)) {
+  require("dotenv").config({ path: lifeAppEnv, override: false })
+}
 
 const {
   app,
@@ -10,13 +15,86 @@ const {
   screen,
   shell,
   ipcMain,
+  dialog,
 } = require("electron")
+const settingsStore = require("./settings-store.cjs")
+
+let yearWallpaperModule = null
+function getYearWallpaper() {
+  if (!yearWallpaperModule) {
+    yearWallpaperModule = require("./year-wallpaper.cjs")
+  }
+  return yearWallpaperModule
+}
+
+function defaultWallpaperDir() {
+  return path.join(app.getPath("pictures"), "Notch")
+}
+
+function resolveWallpaperOutputPath(year, saved = {}) {
+  const fileName = `year-${year}-wallpaper.png`
+  const dir = String(saved.outputDir ?? "").trim() || defaultWallpaperDir()
+  return path.join(dir, fileName)
+}
+
+ipcMain.handle("wallpaper:pick-output-folder", async () => {
+  const saved = settingsStore.readSettings()?.yearWallpaper ?? {}
+  const defaultPath =
+    String(saved.outputDir ?? "").trim() || defaultWallpaperDir()
+  const result = await dialog.showOpenDialog({
+    title: "Wallpaper save folder",
+    defaultPath,
+    properties: ["openDirectory", "createDirectory"],
+  })
+  if (result.canceled || !result.filePaths?.[0]) {
+    return { ok: false, canceled: true }
+  }
+  return { ok: true, path: result.filePaths[0] }
+})
+
+ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
+  try {
+    const yearWallpaper = getYearWallpaper()
+    const display = screen.getPrimaryDisplay()
+    const width = Math.round(display.bounds.width || display.size.width)
+    const height = Math.round(display.bounds.height || display.size.height)
+    const year = payload?.year ?? new Date().getFullYear()
+    const saved = settingsStore.readSettings()?.yearWallpaper ?? {}
+    const apply =
+      payload?.apply !== undefined
+        ? Boolean(payload.apply)
+        : Boolean(saved.applyAfterRegenerate ?? true)
+    const style = { ...saved, ...(payload?.style ?? {}) }
+    const outputPath =
+      payload?.outputPath ?? resolveWallpaperOutputPath(year, { ...saved, ...style })
+    const result = await yearWallpaper.regenerateYearWallpaper({
+      year,
+      width,
+      height,
+      outputPath,
+      applyPath: outputPath,
+      apply,
+      style,
+    })
+    return { ok: true, ...result }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "wallpaper_error"
+    if (/cannot find module ['"]pngjs['"]/i.test(message)) {
+      return {
+        ok: false,
+        error: "Missing pngjs — run npm install in the notch folder and restart.",
+      }
+    }
+    return { ok: false, error: message }
+  }
+})
+
 const spotify = require("./spotify.cjs")
 const cursor = require("./cursor.cjs")
-const settingsStore = require("./settings-store.cjs")
 const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
+const strava = require("./strava.cjs")
 const mediaSession = require("./media-session.cjs")
 const calendar = require("./calendar.cjs")
 
@@ -56,6 +134,13 @@ function showNotch() {
   mainWindow.show()
   mainWindow.setAlwaysOnTop(true, "screen-saver")
   mainWindow.focus()
+}
+
+function restartApp() {
+  tray?.destroy()
+  tray = null
+  app.relaunch()
+  app.exit(0)
 }
 
 // Avoid a second instance on login / double-click / taskbar pin
@@ -169,6 +254,7 @@ function createTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Show Notch", click: () => showNotch() },
+      { label: "Restart Notch", click: () => restartApp() },
       { type: "separator" },
       {
         label: "Quit",
@@ -434,6 +520,41 @@ ipcMain.handle("github:open-url", async (_event, url) => {
   }
 })
 
+ipcMain.handle("strava:status", async (_event, options) => {
+  try {
+    return await strava.status({ force: options?.force === true })
+  } catch (err) {
+    return {
+      configured: strava.configured(),
+      connected: false,
+      login: null,
+      avatarUrl: null,
+      athleteId: null,
+      stats: null,
+      streak: null,
+      calendar: null,
+      heatmap: null,
+      featuredActivity: null,
+      activities: [],
+      monthDistance: 0,
+      error: err instanceof Error ? err.message : "strava_error",
+    }
+  }
+})
+
+ipcMain.handle("strava:connect", async () => {
+  await strava.startAuth()
+  return strava.status({ force: true })
+})
+
+ipcMain.handle("strava:disconnect", async () => strava.disconnect())
+
+ipcMain.handle("strava:open-url", async (_event, url) => {
+  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+    await shell.openExternal(url)
+  }
+})
+
 ipcMain.handle("media:status", async () => {
   try {
     return await mediaSession.getStatus()
@@ -448,6 +569,7 @@ ipcMain.handle("media:status", async () => {
       album: null,
       isBrowser: false,
       isYoutube: false,
+      thumbnailUrl: null,
       error: err instanceof Error ? err.message : "media_error",
     }
   }
@@ -468,6 +590,7 @@ ipcMain.handle("media:action", async (_event, action) => {
       album: null,
       isBrowser: false,
       isYoutube: false,
+      thumbnailUrl: null,
       error: err instanceof Error ? err.message : "media_error",
     }
   }
