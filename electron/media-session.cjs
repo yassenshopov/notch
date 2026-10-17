@@ -6,6 +6,11 @@ const { promisify } = require("util")
 
 const execFileAsync = promisify(execFile)
 
+/** @type {Map<string, string | null>} */
+const youtubeThumbCache = new Map()
+/** @type {{ key: string, promise: Promise<string | null> } | null} */
+let youtubeThumbInflight = null
+
 function psEncode(script) {
   return Buffer.from(script, "utf16le").toString("base64")
 }
@@ -50,6 +55,70 @@ function isBrowserApp(appId) {
   )
 }
 
+function youtubeThumbKey(title, artist) {
+  return `${title || ""}\0${artist || ""}`.trim()
+}
+
+function collectYoutubeVideoIds(node, out, limit = 8) {
+  if (!node || typeof node !== "object" || out.length >= limit) return
+  if (typeof node.videoId === "string" && node.videoId.length >= 6) {
+    if (!out.includes(node.videoId)) out.push(node.videoId)
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectYoutubeVideoIds(item, out, limit)
+    return
+  }
+  for (const value of Object.values(node)) {
+    collectYoutubeVideoIds(value, out, limit)
+    if (out.length >= limit) return
+  }
+}
+
+async function resolveYoutubeThumbnail(title, artist) {
+  const query = [title, artist].filter(Boolean).join(" ").trim()
+  if (!query) return null
+
+  const key = youtubeThumbKey(title, artist)
+  if (youtubeThumbCache.has(key)) return youtubeThumbCache.get(key) ?? null
+  if (youtubeThumbInflight?.key === key) return youtubeThumbInflight.promise
+
+  const promise = (async () => {
+    try {
+      const res = await fetch("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          context: { client: { clientName: "WEB", clientVersion: "2.20240214" } },
+          query,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      const ids = []
+      collectYoutubeVideoIds(data, ids)
+      const id = ids[0]
+      return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
+    } catch {
+      return null
+    }
+  })()
+
+  youtubeThumbInflight = { key, promise }
+  const url = await promise
+  youtubeThumbInflight = null
+  youtubeThumbCache.set(key, url)
+  return url
+}
+
+async function attachThumbnail(snap) {
+  if (!snap.isYoutube || (!snap.title && !snap.artist)) {
+    return { ...snap, thumbnailUrl: null }
+  }
+  const thumbnailUrl = await resolveYoutubeThumbnail(snap.title, snap.artist)
+  return { ...snap, thumbnailUrl }
+}
+
 function normalizeSnapshot(raw) {
   if (!raw || raw.supported === false) {
     return {
@@ -62,6 +131,7 @@ function normalizeSnapshot(raw) {
       album: null,
       isBrowser: false,
       isYoutube: false,
+      thumbnailUrl: null,
     }
   }
 
@@ -88,6 +158,7 @@ function normalizeSnapshot(raw) {
     album: raw.album || null,
     isBrowser,
     isYoutube,
+    thumbnailUrl: null,
   }
 }
 
@@ -98,6 +169,7 @@ async function readSession() {
 
   const script = `
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
 function Await($WinRtTask, $ResultType) {
   $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
   $netTask = $asTask.MakeGenericMethod($ResultType).Invoke($null, @($WinRtTask))
@@ -105,14 +177,13 @@ function Await($WinRtTask, $ResultType) {
   $netTask.Result
 }
 [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager,Windows.Media,ContentType=WindowsRuntime] | Out-Null
-[Windows.Media.MediaProperties.MusicDisplayProperties,Windows.Media,ContentType=WindowsRuntime] | Out-Null
 $manager = Await ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager])
 $session = $manager.GetCurrentSession()
 if ($null -eq $session) {
   @{ supported = $true; playing = $false } | ConvertTo-Json -Compress
   exit 0
 }
-$props = Await ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.MediaProperties.MusicDisplayProperties])
+$props = Await ($session.TryGetMediaPropertiesAsync()) ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionMediaProperties])
 $info = $session.GetPlaybackInfo()
 @{ supported = $true; appId = $session.SourceAppUserModelId; status = $info.PlaybackStatus.ToString(); title = $props.Title; artist = $props.Artist; album = $props.AlbumTitle } | ConvertTo-Json -Compress
 `
@@ -123,9 +194,16 @@ $info = $session.GetPlaybackInfo()
     const raw = JSON.parse(out)
     const snap = normalizeSnapshot(raw)
     if (isSpotifyApp(snap.appId)) {
-      return { ...snap, playing: false, paused: false, title: null, artist: null }
+      return {
+        ...snap,
+        playing: false,
+        paused: false,
+        title: null,
+        artist: null,
+        thumbnailUrl: null,
+      }
     }
-    return snap
+    return attachThumbnail(snap)
   } catch {
     return normalizeSnapshot({ supported: true, playing: false })
   }
@@ -145,6 +223,7 @@ async function runAction(action) {
 
   const script = `
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
 function Await($WinRtTask, $ResultType) {
   $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
   $netTask = $asTask.MakeGenericMethod($ResultType).Invoke($null, @($WinRtTask))

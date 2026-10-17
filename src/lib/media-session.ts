@@ -8,6 +8,7 @@ export type MediaSessionStatus = {
   album: string | null
   isBrowser: boolean
   isYoutube: boolean
+  thumbnailUrl: string | null
   error?: string
 }
 
@@ -23,6 +24,7 @@ const idle: MediaSessionStatus = {
   album: null,
   isBrowser: false,
   isYoutube: false,
+  thumbnailUrl: null,
 }
 
 export async function fetchMediaSessionStatus(): Promise<MediaSessionStatus> {

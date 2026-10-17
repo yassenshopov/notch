@@ -17,6 +17,7 @@ const idle: MediaSessionStatus = {
   album: null,
   isBrowser: false,
   isYoutube: false,
+  thumbnailUrl: null,
 }
 
 export function useMediaSession(active: boolean) {

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react"
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import type { MediaSessionStatus } from "../lib/media-session"
 import { cn } from "../lib/utils"
 
@@ -10,9 +10,16 @@ type Props = {
 }
 
 export function BrowserMediaPanel({ status, onAction }: Props) {
+  const [thumbFailed, setThumbFailed] = useState(false)
   const title = status.title || "Now playing"
   const subtitle = status.artist || status.album || "System media"
   const youtube = status.isYoutube
+  const thumbUrl = status.thumbnailUrl
+  const showThumb = Boolean(thumbUrl && !thumbFailed)
+
+  useEffect(() => {
+    setThumbFailed(false)
+  }, [thumbUrl])
 
   return (
     <div
@@ -36,11 +43,24 @@ export function BrowserMediaPanel({ status, onAction }: Props) {
       <div className="flex flex-1 flex-col items-center justify-center px-2 text-center">
         <div
           className={cn(
-            "mb-4 flex size-24 items-center justify-center rounded-2xl",
-            youtube ? "bg-[#FF0000]/10" : "bg-black/[0.04] dark:bg-white/[0.06]",
+            "relative mb-4 overflow-hidden",
+            showThumb
+              ? "aspect-square w-[56%] max-w-[168px] rounded-[28px] bg-black/5 dark:bg-white/10"
+              : cn(
+                  "flex size-24 items-center justify-center rounded-2xl",
+                  youtube ? "bg-[#FF0000]/10" : "bg-black/[0.04] dark:bg-white/[0.06]",
+                ),
           )}
         >
-          {youtube ? (
+          {showThumb ? (
+            <img
+              src={thumbUrl!}
+              alt=""
+              className="size-full object-cover"
+              draggable={false}
+              onError={() => setThumbFailed(true)}
+            />
+          ) : youtube ? (
             <Icon icon="simple-icons:youtube" className="size-10 text-[#FF0000]" aria-hidden />
           ) : (
             <Icon icon="lucide:monitor-play" className="size-10 opacity-50" aria-hidden />
