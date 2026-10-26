@@ -7,6 +7,7 @@ import type { MarketsSnapshot } from "../lib/markets"
 import type { GitHubStatus } from "../lib/github"
 import type { StravaStatus } from "../lib/strava"
 import type { MintServerStatus } from "../lib/mint"
+import type { ServerStatsHistory } from "../lib/server-stats-history"
 import type { MediaSessionAction } from "../lib/media-session"
 import type { SpotifyAction } from "../lib/spotify"
 import type { PiServerStatus } from "../lib/pi"
@@ -58,10 +59,12 @@ type Props = {
   stravaRefreshing: boolean
   refreshStrava: () => void
   mintStatus: MintServerStatus
+  mintHistory: ServerStatsHistory
   mintLoading: boolean
   mintRefreshing: boolean
   refreshMint: () => void
   piStatus: PiServerStatus
+  piHistory: ServerStatsHistory
   piLoading: boolean
   piRefreshing: boolean
   refreshPi: () => void
@@ -106,10 +109,12 @@ export function NotchActivePanel(props: Props) {
     stravaRefreshing,
     refreshStrava,
     mintStatus,
+    mintHistory,
     mintLoading,
     mintRefreshing,
     refreshMint,
     piStatus,
+    piHistory,
     piLoading,
     piRefreshing,
     refreshPi,
@@ -194,6 +199,7 @@ export function NotchActivePanel(props: Props) {
     return (
       <MintPanel
         status={mintStatus}
+        history={mintHistory}
         loading={mintLoading}
         refreshing={mintRefreshing}
         onRefresh={() => void refreshMint()}
@@ -204,6 +210,7 @@ export function NotchActivePanel(props: Props) {
     return (
       <PiPanel
         status={piStatus}
+        history={piHistory}
         loading={piLoading}
         refreshing={piRefreshing}
         onRefresh={() => void refreshPi()}

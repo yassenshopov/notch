@@ -4,7 +4,6 @@ import {
   CloudSun,
   Leaf,
   LineChart,
-  Server,
   Settings,
   Timer,
   Volume2,
@@ -40,7 +39,8 @@ import {
 import { collapsedContentDimensions } from "../lib/notch-collapsed-size"
 import {
   EXPANDED_BOTTOM_BLEED,
-  expandedWindowPadding,
+  EXPANDED_RAIL_GUTTER,
+  EXPANDED_SIDE_INSET,
 } from "../lib/notch-expanded-chrome"
 import { withPlacementForm } from "../lib/notch-placement-grid"
 import { cn, formatHour, formatTemp } from "../lib/utils"
@@ -78,8 +78,7 @@ import { NotchActivePanel } from "./NotchActivePanel"
 
 type Panel = NotchPanel
 
-/** Side rail top → bottom — indicator Y and panel slide direction use this order */
-const RAIL_PANELS: Panel[] = [
+const RAIL_PANELS_LEFT: Panel[] = [
   "weather",
   "spotify",
   "media",
@@ -87,6 +86,9 @@ const RAIL_PANELS: Panel[] = [
   "calendar",
   "cursor",
   "clock",
+]
+
+const RAIL_PANELS_RIGHT: Panel[] = [
   "markets",
   "github",
   "strava",
@@ -209,12 +211,14 @@ export function Notch() {
   } = useStrava(Boolean(stravaPoll))
   const {
     status: mintStatus,
+    history: mintHistory,
     loading: mintLoading,
     refreshing: mintRefreshing,
     refresh: refreshMint,
   } = useMint(Boolean(mintPoll))
   const {
     status: piStatus,
+    history: piHistory,
     loading: piLoading,
     refreshing: piRefreshing,
     refresh: refreshPi,
@@ -504,10 +508,12 @@ export function Notch() {
       stravaRefreshing={stravaRefreshing}
       refreshStrava={refreshStrava}
       mintStatus={mintStatus}
+      mintHistory={mintHistory}
       mintLoading={mintLoading}
       mintRefreshing={mintRefreshing}
       refreshMint={refreshMint}
       piStatus={piStatus}
+      piHistory={piHistory}
       piLoading={piLoading}
       piRefreshing={piRefreshing}
       refreshPi={refreshPi}
@@ -522,15 +528,10 @@ export function Notch() {
     />
   )
 
-  const expandPad = expandedWindowPadding(placement.edge)
   const shell = useShellSize(expanded)
-  const islandW = Math.max(
-    expandedW,
-    shell.w - expandPad.paddingLeft - expandPad.paddingRight,
-  )
   const islandH = Math.max(
     expandedH,
-    shell.h - expandPad.paddingTop - expandPad.paddingBottom,
+    shell.h - EXPANDED_BOTTOM_BLEED,
   )
 
   useEffect(() => {
@@ -548,18 +549,35 @@ export function Notch() {
     >
       {expanded ? (
         <div
-          className="relative box-border overflow-hidden"
+          className="box-border flex items-center overflow-hidden"
           style={{
             width: shell.w,
             height: shell.h,
             minWidth: shell.w,
             minHeight: shell.h,
+            paddingLeft: EXPANDED_SIDE_INSET,
+            paddingRight: EXPANDED_SIDE_INSET,
+            paddingBottom: EXPANDED_BOTTOM_BLEED,
+            gap: 0,
           }}
         >
           <div
+            className="relative z-20 flex shrink-0 items-center justify-center"
+            style={{ width: EXPANDED_RAIL_GUTTER }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <PanelRail
+              panels={RAIL_PANELS_LEFT}
+              active={activePanel}
+              themed={railThemed}
+              onSelect={setPanelOverride}
+            />
+          </div>
+          <div
             data-notch-island
             className={cn(
-              "notch-fold absolute left-0 top-0 flex flex-col overflow-hidden",
+              "notch-fold relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden",
               `notch-edge-${placement.edge}`,
               `notch-form-${placement.form}`,
               !themedFg && (dark ? "text-white" : "text-[#111111]"),
@@ -569,10 +587,8 @@ export function Notch() {
             )}
             style={
               {
-                left: expandPad.paddingLeft,
-                top: expandPad.paddingTop,
-                width: islandW,
                 height: islandH,
+                maxWidth: Math.min(expandedW, shell.w - EXPANDED_SIDE_INSET * 2 - EXPANDED_RAIL_GUTTER * 2),
                 backgroundColor: fill,
                 ...shellRadii,
                 "--notch-fill": fill,
@@ -593,12 +609,13 @@ export function Notch() {
             </div>
           </div>
           <div
-            className="absolute top-1/2 z-20 -translate-y-1/2"
-            style={{ right: EXPANDED_BOTTOM_BLEED }}
+            className="relative z-20 flex shrink-0 items-center justify-center"
+            style={{ width: EXPANDED_RAIL_GUTTER }}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <PanelRail
+              panels={RAIL_PANELS_RIGHT}
               active={activePanel}
               themed={railThemed}
               onSelect={setPanelOverride}
@@ -1010,7 +1027,7 @@ export function Notch() {
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         className="flex items-center justify-center gap-1.5 leading-none"
                       >
-                        <Server className="size-3.5 opacity-75" strokeWidth={2} />
+                        <Icon icon="simple-icons:linuxmint" className="size-3.5 opacity-75" aria-hidden />
                         <span className="text-[11px] font-semibold tabular-nums opacity-80">
                           {mintStatus.memUsedPct ?? "—"}%
                         </span>
@@ -1106,7 +1123,7 @@ function railTabIcon(panel: Panel) {
     case "strava":
       return <Icon icon="simple-icons:strava" className="size-4" aria-hidden />
     case "mint":
-      return <Server className="size-4" strokeWidth={1.75} />
+      return <Icon icon="simple-icons:linuxmint" className="size-4" aria-hidden />
     case "pi":
       return <Icon icon="simple-icons:raspberrypi" className="size-4" aria-hidden />
     case "controls":
@@ -1134,10 +1151,12 @@ const RAIL_TAB_LABELS: Record<Panel, string> = {
 }
 
 function PanelRail({
+  panels,
   active,
   themed,
   onSelect,
 }: {
+  panels: Panel[]
   active: Panel
   themed: boolean
   onSelect: (panel: Panel) => void
@@ -1147,12 +1166,15 @@ function PanelRail({
   const tabRefs = useRef<Partial<Record<Panel, HTMLButtonElement>>>({})
   const [indicatorY, setIndicatorY] = useState(0)
 
+  const indicatorVisible = panels.includes(active)
+
   const measureIndicator = useCallback(() => {
+    if (!panels.includes(active)) return
     const tab = tabRefs.current[active]
     const nav = navRef.current
     if (!tab || !nav) return
     setIndicatorY(tab.offsetTop)
-  }, [active])
+  }, [active, panels])
 
   useLayoutEffect(() => {
     measureIndicator()
@@ -1182,16 +1204,18 @@ function PanelRail({
       className="relative flex flex-col items-center gap-1.5"
       aria-label="Panels"
     >
-      <motion.span
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute left-0 top-0 z-0 size-9 rounded-full shadow-sm",
-          themed ? "bg-white" : "bg-[#111111] dark:bg-white",
-        )}
-        style={{ y }}
-      />
+      {indicatorVisible ? (
+        <motion.span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute left-0 top-0 z-0 size-9 rounded-full shadow-sm",
+            themed ? "bg-white" : "bg-[#111111] dark:bg-white",
+          )}
+          style={{ y }}
+        />
+      ) : null}
 
-      {RAIL_PANELS.map((panel) => (
+      {panels.map((panel) => (
         <IconTab
           key={panel}
           ref={(el) => {
