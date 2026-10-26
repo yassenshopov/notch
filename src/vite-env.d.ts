@@ -62,6 +62,7 @@ type MarketQuote = import("./lib/markets").MarketQuote
 type MarketsSnapshot = import("./lib/markets").MarketsSnapshot
 type GitHubBridgeStatus = import("./lib/github").GitHubStatus
 type MintBridgeStatus = import("./lib/mint").MintServerStatus
+type PiBridgeStatus = import("./lib/pi").PiServerStatus
 type StravaBridgeStatus = import("./lib/strava").StravaStatus
 type MediaSessionStatus = import("./lib/media-session").MediaSessionStatus
 type CalendarSnapshot = import("./lib/calendar").CalendarSnapshot
@@ -85,7 +86,14 @@ interface NotchBridge {
   setExpanded: (
     payload:
       | boolean
-      | { expanded: boolean; music?: boolean; width?: number; height?: number },
+      | {
+          expanded: boolean
+          music?: boolean
+          width?: number
+          height?: number
+          expandedWidth?: number
+          expandedHeight?: number
+        },
   ) => Promise<{ anchorLeft: number; anchorTop: number }>
   setPassthrough: (pass: boolean) => Promise<void>
   reposition: () => Promise<void>
@@ -102,6 +110,7 @@ interface NotchBridge {
   onPlacement: (cb: (placement: NotchPlacementBridge) => void) => () => void
   onBlur: (cb: () => void) => () => void
   onEscape: (cb: () => void) => () => void
+  onTestExpand?: (cb: () => void) => () => void
   platform: string
   mapTiles: {
     cartoApiKey: string
@@ -148,6 +157,9 @@ interface NotchBridge {
   }
   mint: {
     status: (options?: { force?: boolean; host?: string }) => Promise<MintBridgeStatus>
+  }
+  pi: {
+    status: (options?: { force?: boolean; host?: string }) => Promise<PiBridgeStatus>
   }
   strava: {
     status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>

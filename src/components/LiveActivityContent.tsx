@@ -48,6 +48,7 @@ export function LiveActivityContent({ activity, onDismiss }: Props) {
       {dismissible ? (
         <button
           type="button"
+          data-live-activity-dismiss=""
           aria-label={
             activity.kind === "weather-precip"
               ? "Dismiss rain alert"
@@ -60,10 +61,10 @@ export function LiveActivityContent({ activity, onDismiss }: Props) {
           )}
           onPointerDown={(e) => {
             e.stopPropagation()
-            e.preventDefault()
           }}
-          onClick={(e) => {
+          onPointerUp={(e) => {
             e.stopPropagation()
+            if (e.button !== 0) return
             onDismiss?.()
           }}
         >

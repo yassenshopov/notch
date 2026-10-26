@@ -226,6 +226,23 @@ export function SettingsPanel({
             }
           />
         </Row>
+        <Row label="Raspberry Pi">
+          <Segmented
+            value={(s.island.faces.pi ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, pi: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
         <Row label="Air quality">
           <Segmented
             value={(s.island.faces.air ?? true) ? "on" : "off"}
@@ -860,6 +877,40 @@ export function SettingsPanel({
             onChange={(v) =>
               void updateSettings({
                 mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), pollIntervalMs: Number(v) },
+              })
+            }
+          />
+        </Row>
+      </Section>
+
+      <Section title="Raspberry Pi">
+        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+          TV Pi over SSH (<span className="font-medium">pi-home</span> on LAN). Away from home, set a
+          Tailscale SSH host here.
+        </p>
+        <Row label="SSH host">
+          <input
+            type="text"
+            value={s.pi?.sshHost ?? "pi-home"}
+            onChange={(e) =>
+              void updateSettings({
+                pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi-home" }), sshHost: e.target.value },
+              })
+            }
+            className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
+          />
+        </Row>
+        <Row label="Refresh">
+          <Segmented
+            value={String(s.pi?.pollIntervalMs ?? 30_000)}
+            options={[
+              { value: "15000", label: "15s" },
+              { value: "30000", label: "30s" },
+              { value: "60000", label: "1m" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi-home" }), pollIntervalMs: Number(v) },
               })
             }
           />

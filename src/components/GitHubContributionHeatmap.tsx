@@ -126,8 +126,14 @@ function HeatmapTooltip({
 
 export function GitHubContributionHeatmap({ weeks = [], variant, className }: Props) {
   const weekCount = variant === "mini" ? 12 : 26
-  const cell = variant === "mini" ? "size-[2px]" : "size-[9px]"
+  const cellPx = variant === "mini" ? 2 : 9
   const gap = variant === "mini" ? "gap-px" : "gap-[3px]"
+  const cellStyle = {
+    width: cellPx,
+    height: cellPx,
+    minWidth: cellPx,
+    minHeight: cellPx,
+  }
   const rootRef = useRef<HTMLDivElement>(null)
   const [hover, setHover] = useState<HoverState | null>(null)
 
@@ -159,8 +165,8 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
       className={cn(
         "relative shrink-0",
         variant === "mini"
-          ? "block leading-none -translate-y-0.5"
-          : "inline-block",
+          ? "block max-h-[14px] max-w-[30px] overflow-hidden leading-none -translate-y-0.5"
+          : "inline-block max-w-full overflow-x-auto",
         className,
       )}
       onMouseLeave={() => setHover(null)}
@@ -187,12 +193,12 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
         style={
           variant === "mini"
             ? {
-                gridTemplateRows: "repeat(7, 2px)",
-                gridTemplateColumns: `repeat(${columns.length}, 2px)`,
+                gridTemplateRows: `repeat(7, ${cellPx}px)`,
+                gridTemplateColumns: `repeat(${columns.length}, ${cellPx}px)`,
               }
             : {
-                gridTemplateRows: "repeat(7, min-content)",
-                gridTemplateColumns: `repeat(${columns.length}, min-content)`,
+                gridTemplateRows: `repeat(7, ${cellPx}px)`,
+                gridTemplateColumns: `repeat(${columns.length}, ${cellPx}px)`,
               }
         }
         role="img"
@@ -205,9 +211,9 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
             return (
               <span
                 key={isPad ? `pad-${ci}-${ri}` : `${ci}-${ri}-${day.date}`}
+                style={cellStyle}
                 className={cn(
-                  "rounded-[1px] transition-[box-shadow,transform]",
-                  cell,
+                  "box-border shrink-0 rounded-[1px] transition-[box-shadow,transform]",
                   isPad ? "bg-transparent" : contributionLevelClass(day.count, maxCount),
                   active && "ring-1 ring-black/35 dark:ring-white/45",
                   !isPad && variant === "panel" && "cursor-crosshair",

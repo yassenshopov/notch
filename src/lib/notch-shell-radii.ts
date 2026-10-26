@@ -1,4 +1,4 @@
-import type { NotchForm } from "../config/settings"
+import type { NotchEdge, NotchForm } from "../config/settings"
 
 export type NotchShellRadii = {
   borderTopLeftRadius: number
@@ -12,6 +12,7 @@ export function notchShellRadii(
   expanded: boolean,
   collapsedHeight: number,
   collapsedWidth?: number,
+  edge: NotchEdge = "top",
 ): NotchShellRadii {
   const cap = expanded ? 22 : collapsedHeight / 2
 
@@ -31,6 +32,24 @@ export function notchShellRadii(
       borderTopRightRadius: 0,
       borderBottomLeftRadius: r,
       borderBottomRightRadius: 0,
+    }
+  }
+
+  if (expanded) {
+    const r = cap
+    if (edge === "top" && form === "pill") {
+      return {
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+        borderBottomLeftRadius: r,
+        borderBottomRightRadius: r,
+      }
+    }
+    return {
+      borderTopLeftRadius: r,
+      borderTopRightRadius: r,
+      borderBottomLeftRadius: r,
+      borderBottomRightRadius: r,
     }
   }
 

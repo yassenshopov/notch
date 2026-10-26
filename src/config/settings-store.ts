@@ -51,6 +51,8 @@ export async function hydrateSettings() {
   try {
     const saved = (await window.notch?.settings?.get()) ?? {}
     current = deepMerge(structuredClone(defaultSettings), saved as Partial<AppSettings>)
+    current.expanded.width = Math.max(380, current.expanded.width)
+    current.expanded.height = Math.max(580, current.expanded.height)
     emit()
   } catch {
     current = structuredClone(defaultSettings)
@@ -63,7 +65,7 @@ export async function updateSettings(patch: Partial<AppSettings>) {
   emit()
   try {
     const saved = (await window.notch?.settings?.set(patch)) ?? {}
-    current = deepMerge(structuredClone(defaultSettings), saved as Partial<AppSettings>)
+    current = deepMerge(current, saved as Partial<AppSettings>)
     emit()
   } catch {
     // keep in-memory even if persist fails

@@ -11,6 +11,7 @@ export type NotchPanel =
   | "github"
   | "strava"
   | "mint"
+  | "pi"
   | "air"
   | "calendar"
   | "controls"
@@ -43,6 +44,8 @@ export function panelForCollapsedTap(args: {
       return "strava"
     case "mint":
       return "mint"
+    case "pi":
+      return "pi"
     case "air":
       return "air"
     case "calendar":

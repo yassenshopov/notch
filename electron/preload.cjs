@@ -1,8 +1,8 @@
-const path = require("path")
-require("dotenv").config({ path: path.join(__dirname, "../.env") })
 const { contextBridge, ipcRenderer } = require("electron")
 
-const cartoApiKey = process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
+// Sandboxed preload cannot require dotenv; key is resolved in main (see notch:carto-api-key).
+const cartoApiKey =
+  process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
 
 contextBridge.exposeInMainWorld("notch", {
   setExpanded: (payload) => ipcRenderer.invoke("notch:set-expanded", payload),
@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld("notch", {
     const handler = () => cb()
     ipcRenderer.on("notch:escape", handler)
     return () => ipcRenderer.removeListener("notch:escape", handler)
+  },
+  onTestExpand: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on("notch:test-expand", handler)
+    return () => ipcRenderer.removeListener("notch:test-expand", handler)
   },
   platform: process.platform,
   spotify: {
@@ -57,6 +62,9 @@ contextBridge.exposeInMainWorld("notch", {
   },
   mint: {
     status: (options) => ipcRenderer.invoke("mint:status", options),
+  },
+  pi: {
+    status: (options) => ipcRenderer.invoke("pi:status", options),
   },
   strava: {
     status: (options) => ipcRenderer.invoke("strava:status", options),
@@ -89,5 +97,6 @@ contextBridge.exposeInMainWorld("notch", {
   },
   mapTiles: {
     cartoApiKey,
+    fetchCartoApiKey: () => ipcRenderer.invoke("notch:carto-api-key"),
   },
 })

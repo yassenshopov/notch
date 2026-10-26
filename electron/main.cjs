@@ -112,6 +112,7 @@ const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
 const mint = require("./mint.cjs")
+const pi = require("./pi.cjs")
 const strava = require("./strava.cjs")
 const mediaSession = require("./media-session.cjs")
 const calendar = require("./calendar.cjs")
@@ -140,6 +141,8 @@ let cursorTrayTimer = null
 /** Prevent blur-from-expand-resize from immediately collapsing */
 let ignoreBlurUntil = 0
 let lastContentSize = { ...COLLAPSED }
+/** Main-process expanded shell — display-metrics must not snap back to pill size */
+let shellExpanded = false
 let wallpaperDailyScheduler = null
 
 function showNotch() {
@@ -265,7 +268,12 @@ function createWindow() {
   })
 
   mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.setZoomFactor(1)
     sendPlacementToRenderer()
+  })
+
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    console.error("[notch] preload-error", preloadPath, error)
   })
 
   mainWindow.webContents.on("before-input-event", (_event, input) => {
@@ -462,31 +470,38 @@ ipcMain.handle("notch:set-expanded", (_event, payload) => {
   const contentH = typeof payload === "object" ? payload.height : undefined
 
   if (expanded) {
-    // Full-display overlay so any outside click can dismiss.
-    // Grow the shell *before* the renderer morphs the pill — never animate
-    // inside a shrinking/jumping window (that’s what felt snappy).
-    ignoreBlurUntil = Date.now() + 900
+    ignoreBlurUntil = Date.now() + 600
+    shellExpanded = true
     const placement = notchPlacement.readPlacement()
-    const collapsed = collapsedShellBounds(contentW, contentH)
-    const display = notchPlacement.displayForPlacement(placement, {
-      x: collapsed.x,
-      y: collapsed.y,
-      width: collapsed.width,
-      height: collapsed.height,
-    })
-    const db = display.bounds
-    mainWindow.setBounds(db, false)
+    const cw = Math.max(40, Number(contentW) || lastContentSize.width)
+    const ch = Math.max(24, Number(contentH) || lastContentSize.height)
+    const expandedW = Number(payload?.expandedWidth) || 380
+    const expandedH = Number(payload?.expandedHeight) || 580
+    const target = notchPlacement.expandedWindowBounds(
+      placement,
+      cw,
+      ch,
+      expandedW,
+      expandedH,
+    )
+    // Windows ignores setBounds size changes while resizable is false
+    mainWindow.setResizable(true)
+    mainWindow.setMinimumSize(40, 24)
+    mainWindow.setMaximumSize(0, 0)
+    mainWindow.setBounds(target, false)
     mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setAlwaysOnTop(true, "screen-saver")
     mainWindow.focus()
-    return {
-      anchorLeft: collapsed.x - db.x,
-      anchorTop: collapsed.y - db.y,
-    }
+    return { anchorLeft: 0, anchorTop: 0, ...target }
   }
 
+  shellExpanded = false
   // Collapsed shell — renderer only calls this AFTER the morph finishes
-  mainWindow.setBounds(collapsedShellBounds(contentW, contentH), false)
+  const collapsed = collapsedShellBounds(contentW, contentH)
+  mainWindow.setBounds(collapsed, false)
+  mainWindow.setMinimumSize(collapsed.width, collapsed.height)
+  mainWindow.setMaximumSize(collapsed.width, collapsed.height)
+  mainWindow.setResizable(false)
   mainWindow.setIgnoreMouseEvents(false)
   return { anchorLeft: 0, anchorTop: 0 }
 })
@@ -635,7 +650,39 @@ ipcMain.handle("mint:status", async (_event, options) => {
       tailscaleIp: null,
       mirrorRepoCount: null,
       mirrorLastLog: null,
+      cpuTempC: null,
       error: err instanceof Error ? err.message : "mint_error",
+    }
+  }
+})
+
+ipcMain.handle("pi:status", async (_event, options) => {
+  try {
+    return await pi.status({
+      force: options?.force === true,
+      host: typeof options?.host === "string" ? options.host : undefined,
+    })
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      host: "pi-home",
+      hostname: null,
+      uptimeSec: null,
+      load1: null,
+      load5: null,
+      load15: null,
+      memTotalMb: null,
+      memUsedMb: null,
+      memUsedPct: null,
+      diskTotalGb: null,
+      diskUsedGb: null,
+      diskUsedPct: null,
+      tailscaleIp: null,
+      mirrorRepoCount: null,
+      mirrorLastLog: null,
+      cpuTempC: null,
+      error: err instanceof Error ? err.message : "pi_error",
     }
   }
 })
@@ -814,6 +861,10 @@ ipcMain.handle("controls:set-bluetooth", async (_event, payload) =>
   systemControls.setBluetoothConnected(payload?.id, payload?.connected),
 )
 
+ipcMain.handle("notch:carto-api-key", () =>
+  String(process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || "").trim(),
+)
+
 if (gotLock) {
   app.whenReady().then(() => {
     syncLaunchAtLogin()
@@ -821,6 +872,73 @@ if (gotLock) {
     createTray()
     startCursorTrayPoll()
     createWindow()
+
+    if (process.env.NOTCH_VERIFY_EXPAND === "1") {
+      require("fs").writeFileSync(
+        path.join(__dirname, "../verify-expand-started.txt"),
+        String(process.env.NOTCH_VERIFY_EXPAND),
+      )
+      setTimeout(async () => {
+        if (!mainWindow?.webContents) {
+          app.exit(1)
+          return
+        }
+        const expandDone = mainWindow.webContents
+          .executeJavaScript(
+            `(() => {
+              if (typeof window.__NOTCH_EXPAND__ === "function") {
+                return window.__NOTCH_EXPAND__()
+              }
+              return Promise.resolve()
+            })()`,
+          )
+          .catch(() => undefined)
+        await expandDone
+        for (let i = 0; i < 40; i++) {
+          const b = mainWindow.getBounds()
+          if (b.height >= 560 && b.width >= 480) break
+          await new Promise((r) => setTimeout(r, 100))
+        }
+        setTimeout(async () => {
+          try {
+            const rect = await mainWindow.webContents.executeJavaScript(`(() => {
+              const el = document.querySelector("[data-notch-island]")
+              if (!el) return null
+              const r = el.getBoundingClientRect()
+              return {
+                width: Math.round(r.width),
+                height: Math.round(r.height),
+                top: Math.round(r.top),
+              }
+            })()`)
+            const layout = await mainWindow.webContents.executeJavaScript(
+              `document.querySelector("[data-notch-layout]")?.getAttribute("data-notch-layout")`,
+            )
+            const bounds = mainWindow.getBounds()
+            const png = await mainWindow.webContents.capturePage()
+            require("fs").writeFileSync(
+              path.join(__dirname, "../verify-expand.png"),
+              png.toPNG(),
+            )
+            const hasBridge = await mainWindow.webContents.executeJavaScript(
+              `typeof window.notch !== "undefined" && typeof window.notch.setExpanded === "function"`,
+            )
+            const ok =
+              hasBridge &&
+              layout === "expanded-tight" &&
+              rect &&
+              rect.height >= 480 &&
+              rect.width >= 340 &&
+              bounds.height >= 560
+            console.log("[verify-expand]", { ok, rect, bounds, layout, hasBridge })
+            app.exit(ok ? 0 : 1)
+          } catch (err) {
+            console.error("[verify-expand] failed", err)
+            app.exit(1)
+          }
+        }, 4000)
+      }, 5000)
+    }
 
     wallpaperDailyScheduler = startWallpaperDailyScheduler({
       runRegenerate: () => runWallpaperRegenerate(),
@@ -830,7 +948,7 @@ if (gotLock) {
 
     screen.on("display-metrics-changed", () => {
       if (!mainWindow || mainWindow.isDestroyed()) return
-      if (mainWindow.getBounds().width > lastContentSize.width + 200) return
+      if (shellExpanded) return
       setWindowBounds(collapsedShellBounds())
       sendPlacementToRenderer()
     })

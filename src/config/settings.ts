@@ -19,6 +19,7 @@ export type IslandFace =
   | "github"
   | "strava"
   | "mint"
+  | "pi"
   | "air"
   | "calendar"
 
@@ -77,6 +78,7 @@ export type AppSettings = {
       github: boolean
       strava: boolean
       mint: boolean
+      pi: boolean
       air: boolean
       calendar: boolean
     }
@@ -84,6 +86,11 @@ export type AppSettings = {
   mint: {
     pollIntervalMs: number
     /** SSH config host (e.g. mint via Tailscale) */
+    sshHost: string
+  }
+  pi: {
+    pollIntervalMs: number
+    /** SSH config host (e.g. pi-home on LAN) */
     sshHost: string
   }
   calendar: {
@@ -224,6 +231,7 @@ export const defaultSettings: AppSettings = {
       github: true,
       strava: true,
       mint: true,
+      pi: true,
       air: true,
       calendar: true,
     },
@@ -231,6 +239,10 @@ export const defaultSettings: AppSettings = {
   mint: {
     pollIntervalMs: 30_000,
     sshHost: "mint",
+  },
+  pi: {
+    pollIntervalMs: 30_000,
+    sshHost: "pi-home",
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,

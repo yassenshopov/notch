@@ -15,9 +15,10 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env ELECTRON_DEV=1 nodemon --quiet --watch electron --ext cjs,js --exec electron .\"",
     "dev:web": "vite",
     "build": "tsc -b && vite build",
-    "start": "electron .",
+    "start": "npm run build && electron .",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:expand": "npm run build && cross-env NOTCH_VERIFY_EXPAND=1 electron ."
   },
   "dependencies": {
     "@fontsource-variable/outfit": "^5.3.0",

@@ -477,6 +477,48 @@ function endDrag(windowBounds, setBounds, notify) {
   })
 }
 
+/** Match src/lib/notch-expanded-chrome.ts */
+const EXPANDED_RAIL_GUTTER = 56
+const EXPANDED_SIDE_INSET = EAR_PAD
+const EXPANDED_BOTTOM_BLEED = 12
+
+function expandedWindowBounds(placement, contentW, contentH, expandedW, expandedH) {
+  const p = normalizePlacement(placement)
+  const collapsed = boundsForPlacement(p, contentW, contentH)
+  const ew = Math.max(200, Number(expandedW) || 380)
+  const eh = Math.max(200, Number(expandedH) || 580)
+
+  let width
+  let height
+  if (p.edge === "left" || p.edge === "right") {
+    width = eh + 16 + EXPANDED_RAIL_GUTTER
+    height = ew + EXPANDED_SIDE_INSET * 2 + EXPANDED_BOTTOM_BLEED
+  } else {
+    width = ew + EXPANDED_SIDE_INSET * 2 + EXPANDED_RAIL_GUTTER
+    height = eh + EXPANDED_BOTTOM_BLEED
+  }
+
+  const centerX = collapsed.x + collapsed.width / 2
+  let x = Math.round(centerX - width / 2)
+  let y = collapsed.y
+
+  const display = resolveDisplay(p, { x: centerX, y: collapsed.y })
+  const db = display.bounds
+  const wa = display.workArea
+  x = clamp(wa.x, x, wa.x + Math.max(0, wa.width - width))
+  if (p.edge === "top") {
+    // Stay glued to the physical top edge (not workArea — that adds a taskbar gap)
+    y = db.y
+    if (y + height > db.y + db.height) {
+      y = Math.max(db.y, db.y + db.height - height)
+    }
+  } else {
+    y = clamp(wa.y, y, wa.y + Math.max(0, wa.height - height))
+  }
+
+  return { x, y, width, height }
+}
+
 function getBoundsSnapshot(bounds) {
   return {
     x: bounds.x,
@@ -496,6 +538,7 @@ module.exports = {
   readPlacement,
   writePlacement,
   boundsForPlacement,
+  expandedWindowBounds,
   displayForPlacement,
   shellSize,
   beginDrag,
