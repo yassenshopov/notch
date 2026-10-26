@@ -3,6 +3,7 @@ import type { ChartStyle } from "../config/settings"
 import { useSettings } from "../config/settings-store"
 import {
   formatAxisMid,
+  formatSeriesAxisTickLabels,
   resolveChartYDomain,
   type ChartYAxisKind,
 } from "../lib/chart-axis"
@@ -93,6 +94,7 @@ export function MetricChart({
         bars: [] as { x: number; y: number; w: number; h: number; cx: number; fillOpacity: number }[],
         coords: [] as Coord[],
         labels: [] as Point[],
+        labelTexts: null as string[] | null,
         minLabel: "",
         maxLabel: "",
         midLabel: "",
@@ -156,14 +158,22 @@ export function MetricChart({
       bars,
       coords,
       labels: labelIdx.map((i) => points[i]),
+      labelTexts: compact ? formatSeriesAxisTickLabels(points, labelIdx, clockFormat) : null,
       minLabel: formatValue(min),
       maxLabel: formatValue(max),
-      midLabel:
-        compact && max - min > 0.0001 ? formatValue(formatAxisMid(min, max)) : "",
+      midLabel: (() => {
+        if (!compact || max - min <= 0.0001) return ""
+        const mid = formatAxisMid(min, max)
+        const midText = formatValue(mid)
+        const minText = formatValue(min)
+        const maxText = formatValue(max)
+        if (midText === minText || midText === maxText) return ""
+        return midText
+      })(),
       padY,
       nowX,
     }
-  }, [points, formatValue, variant, markNow, nowMs, yAxis, compact])
+  }, [points, formatValue, variant, markNow, nowMs, yAxis, compact, clockFormat])
 
   const timeLabel = formatTime
 
@@ -262,7 +272,7 @@ export function MetricChart({
             "h-full w-full cursor-crosshair",
             compact ? "overflow-hidden" : "overflow-visible",
           )}
-          preserveAspectRatio={compact ? "xMidYMid meet" : "none"}
+          preserveAspectRatio={compact && variant === "bar" ? "xMidYMid meet" : "none"}
           role="img"
           aria-label={
             variant === "bar" ? "Bar chart" : variant === "area" ? "Area chart" : "Line chart"
@@ -397,9 +407,9 @@ export function MetricChart({
           compact ? "text-[8px] leading-tight" : "text-[10px]",
         )}
       >
-        {chart.labels.map((l) => (
+        {chart.labels.map((l, i) => (
           <span key={l.time} className="truncate">
-            {timeLabel(l.time)}
+            {chart.labelTexts?.[i] ?? timeLabel(l.time)}
           </span>
         ))}
       </div>

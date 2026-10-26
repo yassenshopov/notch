@@ -5,9 +5,12 @@ import type { ServerStatsHistory, ServerStatsMetricPoint } from "../lib/server-s
 import { formatUptime, type ServerStatsStatus } from "../lib/server-stats"
 import { MINT_PANEL_GREEN } from "../lib/mint-theme"
 import { PI_PANEL_RED } from "../lib/pi-theme"
-import { formatHour } from "../lib/utils"
 import { cn } from "../lib/utils"
-import type { ChartYAxisKind } from "../lib/chart-axis"
+import {
+  formatSeriesAxisTime,
+  seriesTimeSpanMs,
+  type ChartYAxisKind,
+} from "../lib/chart-axis"
 import { MetricChart } from "./MetricChart"
 
 type Props = {
@@ -117,6 +120,8 @@ function TrendChart({
   yAxis: ChartYAxisKind
 }) {
   if (points.length === 0) return null
+  const spanMs = seriesTimeSpanMs(points)
+  const formatTime = (iso: string) => formatSeriesAxisTime(iso, spanMs, clockFormat)
   return (
     <div
       className="max-h-[6.5rem] overflow-hidden rounded-xl px-2.5 pb-1.5 pt-2"
@@ -133,7 +138,7 @@ function TrendChart({
         accent={accent}
         gradientId={gradientId}
         formatValue={formatValue}
-        formatTime={(iso) => formatHour(iso, clockFormat)}
+        formatTime={formatTime}
         markNow
       />
     </div>
