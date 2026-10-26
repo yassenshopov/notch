@@ -61,6 +61,7 @@ type CursorBridgeStatus = import("./lib/cursor").CursorStatus
 type MarketQuote = import("./lib/markets").MarketQuote
 type MarketsSnapshot = import("./lib/markets").MarketsSnapshot
 type GitHubBridgeStatus = import("./lib/github").GitHubStatus
+type MintBridgeStatus = import("./lib/mint").MintServerStatus
 type StravaBridgeStatus = import("./lib/strava").StravaStatus
 type MediaSessionStatus = import("./lib/media-session").MediaSessionStatus
 type CalendarSnapshot = import("./lib/calendar").CalendarSnapshot
@@ -144,6 +145,9 @@ interface NotchBridge {
   github: {
     status: (options?: { force?: boolean }) => Promise<GitHubBridgeStatus>
     openUrl: (url: string) => Promise<void>
+  }
+  mint: {
+    status: (options?: { force?: boolean; host?: string }) => Promise<MintBridgeStatus>
   }
   strava: {
     status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>

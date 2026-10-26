@@ -55,6 +55,9 @@ contextBridge.exposeInMainWorld("notch", {
     status: (options) => ipcRenderer.invoke("github:status", options),
     openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
   },
+  mint: {
+    status: (options) => ipcRenderer.invoke("mint:status", options),
+  },
   strava: {
     status: (options) => ipcRenderer.invoke("strava:status", options),
     activity: (activityId) => ipcRenderer.invoke("strava:activity", activityId),

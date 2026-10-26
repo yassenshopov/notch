@@ -10,6 +10,7 @@ export type NotchPanel =
   | "markets"
   | "github"
   | "strava"
+  | "mint"
   | "air"
   | "calendar"
   | "controls"
@@ -40,6 +41,8 @@ export function panelForCollapsedTap(args: {
       return "github"
     case "strava":
       return "strava"
+    case "mint":
+      return "mint"
     case "air":
       return "air"
     case "calendar":
