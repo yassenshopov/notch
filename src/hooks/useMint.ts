@@ -1,30 +1,18 @@
 import { useCallback, useEffect, useState } from "react"
 import { useSettings } from "../config/settings-store"
 import { fetchMintStatus, type MintServerStatus } from "../lib/mint"
-
-const idle: MintServerStatus = {
-  configured: true,
-  connected: false,
-  host: "mint",
-  hostname: null,
-  uptimeSec: null,
-  load1: null,
-  load5: null,
-  load15: null,
-  memTotalMb: null,
-  memUsedMb: null,
-  memUsedPct: null,
-  diskTotalGb: null,
-  diskUsedGb: null,
-  diskUsedPct: null,
-  tailscaleIp: null,
-  mirrorRepoCount: null,
-  mirrorLastLog: null,
-}
+import {
+  emptyServerStatsHistory,
+  pushServerStatsHistory,
+  type ServerStatsHistory,
+} from "../lib/server-stats-history"
+import { emptyServerStats } from "../lib/server-stats"
 
 export function useMint(active = true) {
   const settings = useSettings()
-  const [status, setStatus] = useState<MintServerStatus>(idle)
+  const host = settings.mint?.sshHost ?? "mint"
+  const [status, setStatus] = useState<MintServerStatus>(() => emptyServerStats(host))
+  const [history, setHistory] = useState<ServerStatsHistory>(() => emptyServerStatsHistory())
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -34,26 +22,37 @@ export function useMint(active = true) {
       try {
         const data = await fetchMintStatus({
           force,
-          host: settings.mint.sshHost,
+          host,
         })
         setStatus(data)
+        if (data.connected) {
+          setHistory((h) => pushServerStatsHistory(h, data))
+        } else {
+          setHistory(emptyServerStatsHistory())
+        }
       } catch {
-        setStatus({ ...idle, host: settings.mint.sshHost, error: "mint_error" })
+        setStatus({ ...emptyServerStats(host), error: "mint_error" })
+        setHistory(emptyServerStatsHistory())
       } finally {
         setLoading(false)
         if (force) setRefreshing(false)
       }
     },
-    [settings.mint.sshHost],
+    [host],
   )
+
+  useEffect(() => {
+    setHistory(emptyServerStatsHistory())
+    setStatus(emptyServerStats(host))
+  }, [host])
 
   useEffect(() => {
     if (!active) return
     setLoading(true)
     void refresh()
-    const id = window.setInterval(() => void refresh(), settings.mint.pollIntervalMs)
+    const id = window.setInterval(() => void refresh(), settings.mint?.pollIntervalMs ?? 30_000)
     return () => window.clearInterval(id)
-  }, [active, refresh, settings.mint.pollIntervalMs])
+  }, [active, refresh, settings.mint?.pollIntervalMs])
 
-  return { status, loading, refreshing, refresh: () => void refresh(true) }
+  return { status, history, loading, refreshing, refresh: () => void refresh(true) }
 }

@@ -55,6 +55,11 @@ function createSshServerStats({
       mirrorRepoCount: null,
       mirrorLastLog: null,
       cpuTempC: null,
+      swapTotalMb: null,
+      swapUsedMb: null,
+      swapUsedPct: null,
+      cpuCount: null,
+      processCount: null,
       error: message,
     }
   }

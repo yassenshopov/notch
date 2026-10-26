@@ -17,6 +17,11 @@ export type ServerStatsStatus = {
   mirrorRepoCount: number | null
   mirrorLastLog: string | null
   cpuTempC?: number | null
+  swapTotalMb: number | null
+  swapUsedMb: number | null
+  swapUsedPct: number | null
+  cpuCount: number | null
+  processCount: number | null
   error?: string | null
 }
 
@@ -49,4 +54,9 @@ export const emptyServerStats = (host: string): ServerStatsStatus => ({
   mirrorRepoCount: null,
   mirrorLastLog: null,
   cpuTempC: null,
+  swapTotalMb: null,
+  swapUsedMb: null,
+  swapUsedPct: null,
+  cpuCount: null,
+  processCount: null,
 })

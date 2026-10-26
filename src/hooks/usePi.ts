@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useState } from "react"
 import { useSettings } from "../config/settings-store"
 import { emptyServerStats } from "../lib/server-stats"
+import {
+  emptyServerStatsHistory,
+  pushServerStatsHistory,
+  type ServerStatsHistory,
+} from "../lib/server-stats-history"
 import { fetchPiStatus, type PiServerStatus } from "../lib/pi"
 
 export function usePi(active = true) {
   const settings = useSettings()
   const host = settings.pi?.sshHost ?? "pi-home"
   const [status, setStatus] = useState<PiServerStatus>(() => emptyServerStats(host))
+  const [history, setHistory] = useState<ServerStatsHistory>(() => emptyServerStatsHistory())
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -14,9 +20,16 @@ export function usePi(active = true) {
     async (force = false) => {
       if (force) setRefreshing(true)
       try {
-        setStatus(await fetchPiStatus({ force, host }))
+        const data = await fetchPiStatus({ force, host })
+        setStatus(data)
+        if (data.connected) {
+          setHistory((h) => pushServerStatsHistory(h, data))
+        } else {
+          setHistory(emptyServerStatsHistory())
+        }
       } catch {
         setStatus({ ...emptyServerStats(host), error: "pi_error" })
+        setHistory(emptyServerStatsHistory())
       } finally {
         setLoading(false)
         if (force) setRefreshing(false)
@@ -26,6 +39,11 @@ export function usePi(active = true) {
   )
 
   useEffect(() => {
+    setHistory(emptyServerStatsHistory())
+    setStatus(emptyServerStats(host))
+  }, [host])
+
+  useEffect(() => {
     if (!active) return
     setLoading(true)
     void refresh()
@@ -33,5 +51,5 @@ export function usePi(active = true) {
     return () => window.clearInterval(id)
   }, [active, refresh, settings.pi?.pollIntervalMs])
 
-  return { status, loading, refreshing, refresh: () => void refresh(true) }
+  return { status, history, loading, refreshing, refresh: () => void refresh(true) }
 }
