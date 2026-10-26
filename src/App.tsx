@@ -4,7 +4,7 @@ import { TimerEngineProvider } from "./hooks/useTimerEngine"
 export default function App() {
   return (
     <TimerEngineProvider>
-      <main className="h-screen w-screen overflow-visible bg-transparent">
+      <main className="block h-screen w-screen overflow-visible bg-transparent">
         <Notch />
       </main>
     </TimerEngineProvider>

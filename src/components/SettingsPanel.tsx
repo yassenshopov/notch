@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { DEFAULT_WEATHER_LOCATION } from "../config/default-location"
 import type { ChartStyle, ClockFormat, MarketWatchItem, ThemeMode } from "../config/settings"
 import { resetSettings, updateSettings, useSettings } from "../config/settings-store"
-import { ISLAND_EASE } from "../lib/island-motion"
+import { notchUi, notchUiFast } from "../lib/island-motion"
 import { CRYPTO_IDS } from "../lib/market-assets"
 import {
   mergeYearWallpaper,
@@ -204,6 +204,23 @@ export function SettingsPanel({
                 island: {
                   ...s.island,
                   faces: { ...s.island.faces, strava: v === "on" },
+                },
+              })
+            }
+          />
+        </Row>
+        <Row label="Mint server">
+          <Segmented
+            value={(s.island.faces.mint ?? true) ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                island: {
+                  ...s.island,
+                  faces: { ...s.island.faces, mint: v === "on" },
                 },
               })
             }
@@ -423,7 +440,7 @@ export function SettingsPanel({
               initial={{ opacity: 0, height: 0, y: -6 }}
               animate={{ opacity: 1, height: "auto", y: 0 }}
               exit={{ opacity: 0, height: 0, y: -6 }}
-              transition={{ duration: 0.32, ease: ISLAND_EASE }}
+              transition={notchUi}
               className="overflow-hidden"
             >
               <div className="mt-2 grid grid-cols-2 gap-2">
@@ -541,7 +558,7 @@ export function SettingsPanel({
                 })()
               }}
               whileTap={{ scale: 0.97 }}
-              transition={{ duration: 0.22, ease: ISLAND_EASE }}
+              transition={notchUiFast}
               className="rounded-full bg-black/5 px-3 py-1.5 text-[11px] font-semibold dark:bg-white/10"
             >
               Choose folder…
@@ -557,6 +574,21 @@ export function SettingsPanel({
             ) : null}
           </div>
         </label>
+        <Row label="Daily update">
+          <Segmented
+            value={wallpaper.autoUpdateDaily ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) => patchWallpaper({ autoUpdateDaily: v === "on" })}
+          />
+        </Row>
+        <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">
+          When on, Notch regenerates the heatmap once per day (on launch, after sleep, and at
+          midnight) so today&apos;s cell stays current.
+          {wallpaper.lastAutoDate ? ` Last auto run: ${wallpaper.lastAutoDate}.` : ""}
+        </p>
         <Row label="Apply">
           <Segmented
             value={wallpaper.applyAfterRegenerate ? "on" : "off"}
@@ -676,7 +708,7 @@ export function SettingsPanel({
               })()
             }}
             whileTap={{ scale: 0.97 }}
-            transition={{ duration: 0.22, ease: ISLAND_EASE }}
+            transition={notchUiFast}
             className="w-fit rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-[#111]"
           >
             {wallpaperBusy ? "Generating…" : `Regenerate ${year} wallpaper`}
@@ -761,7 +793,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 className="text-[12px] text-black/45 dark:text-white/45"
               >
                 Add Strava keys to <span className="font-medium">.env</span> and restart.
@@ -774,7 +806,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 whileTap={{ scale: 0.97 }}
                 className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
               >
@@ -788,7 +820,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 whileTap={{ scale: 0.97 }}
                 className="rounded-full bg-[#fc4c02] px-4 py-2 text-[12px] font-semibold text-white"
               >
@@ -797,6 +829,41 @@ export function SettingsPanel({
             )}
           </AnimatePresence>
         </div>
+      </Section>
+
+      <Section title="Mint server">
+        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+          Polls your home Linux box over SSH (Tailscale host{" "}
+          <span className="font-medium">mint</span> by default). Requires{" "}
+          <span className="font-medium">ssh mint</span> to work from this PC.
+        </p>
+        <Row label="SSH host">
+          <input
+            type="text"
+            value={s.mint?.sshHost ?? "mint"}
+            onChange={(e) =>
+              void updateSettings({
+                mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), sshHost: e.target.value },
+              })
+            }
+            className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
+          />
+        </Row>
+        <Row label="Refresh">
+          <Segmented
+            value={String(s.mint?.pollIntervalMs ?? 30_000)}
+            options={[
+              { value: "15000", label: "15s" },
+              { value: "30000", label: "30s" },
+              { value: "60000", label: "1m" },
+            ]}
+            onChange={(v) =>
+              void updateSettings({
+                mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), pollIntervalMs: Number(v) },
+              })
+            }
+          />
+        </Row>
       </Section>
 
       <Section title="Spotify">
@@ -835,7 +902,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 className="text-[12px] text-black/45 dark:text-white/45"
               >
                 Add Spotify keys to <span className="font-medium">.env</span> first.
@@ -848,7 +915,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 whileTap={{ scale: 0.97 }}
                 className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
               >
@@ -862,7 +929,7 @@ export function SettingsPanel({
                 initial={{ opacity: 0, y: 4, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={{ duration: 0.22, ease: ISLAND_EASE }}
+                transition={notchUiFast}
                 whileTap={{ scale: 0.97 }}
                 className="rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white dark:bg-white dark:text-[#111]"
               >

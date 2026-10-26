@@ -18,6 +18,12 @@ const {
   dialog,
 } = require("electron")
 const settingsStore = require("./settings-store.cjs")
+const notchPlacement = require("./notch-placement.cjs")
+const windowMotion = require("./notch-window-motion.cjs")
+const {
+  localDateKey: wallpaperLocalDateKey,
+  startWallpaperDailyScheduler,
+} = require("./wallpaper-daily.cjs")
 
 let yearWallpaperModule = null
 function getYearWallpaper() {
@@ -52,7 +58,7 @@ ipcMain.handle("wallpaper:pick-output-folder", async () => {
   return { ok: true, path: result.filePaths[0] }
 })
 
-ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
+async function runWallpaperRegenerate(payload = {}) {
   try {
     const yearWallpaper = getYearWallpaper()
     const display = screen.getPrimaryDisplay()
@@ -87,6 +93,17 @@ ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
     }
     return { ok: false, error: message }
   }
+}
+
+ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
+  const result = await runWallpaperRegenerate(payload ?? {})
+  if (result.ok) {
+    const saved = settingsStore.readSettings()?.yearWallpaper ?? {}
+    settingsStore.writeSettings({
+      yearWallpaper: { ...saved, lastAutoDate: wallpaperLocalDateKey() },
+    })
+  }
+  return result
 })
 
 const spotify = require("./spotify.cjs")
@@ -94,6 +111,7 @@ const cursor = require("./cursor.cjs")
 const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
+const mint = require("./mint.cjs")
 const strava = require("./strava.cjs")
 const mediaSession = require("./media-session.cjs")
 const calendar = require("./calendar.cjs")
@@ -112,8 +130,6 @@ const isDev =
 const APP_ICON = path.join(__dirname, "assets", "icon.ico")
 const TRAY_ICON = path.join(__dirname, "assets", "tray.png")
 
-/** Horizontal room for concave ears beyond the pill */
-const EAR_PAD = 36
 /** Default collapsed content size (renderer overrides via set-expanded) */
 const COLLAPSED = { width: 152, height: 34 }
 
@@ -124,6 +140,7 @@ let cursorTrayTimer = null
 /** Prevent blur-from-expand-resize from immediately collapsing */
 let ignoreBlurUntil = 0
 let lastContentSize = { ...COLLAPSED }
+let wallpaperDailyScheduler = null
 
 function showNotch() {
   if (!mainWindow) {
@@ -153,15 +170,22 @@ if (!gotLock) {
   })
 }
 
-function centerTop(width, height) {
-  const display = screen.getPrimaryDisplay()
-  const { x, y, width: screenWidth } = display.bounds
-  return {
-    x: Math.round(x + (screenWidth - width) / 2),
-    y,
-    width,
-    height,
-  }
+function sendPlacementToRenderer() {
+  if (!mainWindow?.webContents) return
+  mainWindow.webContents.send("notch:placement", notchPlacement.readPlacement())
+}
+
+function setWindowBounds(bounds) {
+  if (!mainWindow) return
+  mainWindow.setBounds(
+    {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+    },
+    false,
+  )
 }
 
 /** Tight shell around the pill — avoids a huge transparent hit-target */
@@ -170,7 +194,16 @@ function collapsedShellBounds(contentW = lastContentSize.width, contentH = lastC
     width: Math.max(40, Number(contentW) || COLLAPSED.width),
     height: Math.max(24, Number(contentH) || COLLAPSED.height),
   }
-  return centerTop(lastContentSize.width + EAR_PAD * 2, lastContentSize.height + 16)
+  const placement = notchPlacement.readPlacement()
+  const bounds = notchPlacement.boundsForPlacement(
+    placement,
+    lastContentSize.width,
+    lastContentSize.height,
+  )
+  if (bounds.placement) {
+    notchPlacement.writePlacement(bounds.placement)
+  }
+  return bounds
 }
 
 function createWindow() {
@@ -228,6 +261,16 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show()
+    sendPlacementToRenderer()
+  })
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    sendPlacementToRenderer()
+  })
+
+  mainWindow.webContents.on("before-input-event", (_event, input) => {
+    if (input.type !== "keyDown" || input.key !== "Escape") return
+    mainWindow?.webContents.send("notch:escape")
   })
 
   mainWindow.on("blur", () => {
@@ -373,12 +416,47 @@ ipcMain.handle("notch:set-passthrough", (_event, pass) => {
 
 ipcMain.handle("notch:reposition", () => {
   if (!mainWindow) return
-  mainWindow.setBounds(collapsedShellBounds(), false)
+  setWindowBounds(collapsedShellBounds())
   mainWindow.setIgnoreMouseEvents(false)
+  sendPlacementToRenderer()
+})
+
+ipcMain.handle("notch:placement-get", () => notchPlacement.readPlacement())
+
+ipcMain.handle("notch:drag-start", (_event, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const contentW = Number(payload?.width) || lastContentSize.width
+  const contentH = Number(payload?.height) || lastContentSize.height
+  const screenX = Number(payload?.screenX)
+  const screenY = Number(payload?.screenY)
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return
+  notchPlacement.beginDrag(screenX, screenY, contentW, contentH, mainWindow.getBounds())
+})
+
+ipcMain.on("notch:drag-move", (_event, payload) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const screenX = Number(payload?.screenX)
+  const screenY = Number(payload?.screenY)
+  if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return
+  notchPlacement.moveDrag(screenX, screenY, setWindowBounds)
+})
+
+ipcMain.handle("notch:drag-end", () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return notchPlacement.readPlacement()
+  return notchPlacement.endDrag(mainWindow.getBounds(), setWindowBounds, sendPlacementToRenderer)
+})
+
+ipcMain.handle("notch:drag-cancel", () => {
+  if (!mainWindow) return notchPlacement.readPlacement()
+  const from = mainWindow.getBounds()
+  notchPlacement.cancelDrag()
+  const target = collapsedShellBounds()
+  windowMotion.animateBounds(from, target, setWindowBounds, { durationMs: 420 })
+  return notchPlacement.readPlacement()
 })
 
 ipcMain.handle("notch:set-expanded", (_event, payload) => {
-  if (!mainWindow) return
+  if (!mainWindow) return { anchorLeft: 0, anchorTop: 0 }
   const expanded = typeof payload === "object" ? payload.expanded : payload
   const contentW = typeof payload === "object" ? payload.width : undefined
   const contentH = typeof payload === "object" ? payload.height : undefined
@@ -388,17 +466,29 @@ ipcMain.handle("notch:set-expanded", (_event, payload) => {
     // Grow the shell *before* the renderer morphs the pill — never animate
     // inside a shrinking/jumping window (that’s what felt snappy).
     ignoreBlurUntil = Date.now() + 900
-    const display = screen.getPrimaryDisplay()
-    mainWindow.setBounds(display.bounds, false)
+    const placement = notchPlacement.readPlacement()
+    const collapsed = collapsedShellBounds(contentW, contentH)
+    const display = notchPlacement.displayForPlacement(placement, {
+      x: collapsed.x,
+      y: collapsed.y,
+      width: collapsed.width,
+      height: collapsed.height,
+    })
+    const db = display.bounds
+    mainWindow.setBounds(db, false)
     mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setAlwaysOnTop(true, "screen-saver")
     mainWindow.focus()
-    return
+    return {
+      anchorLeft: collapsed.x - db.x,
+      anchorTop: collapsed.y - db.y,
+    }
   }
 
   // Collapsed shell — renderer only calls this AFTER the morph finishes
   mainWindow.setBounds(collapsedShellBounds(contentW, contentH), false)
   mainWindow.setIgnoreMouseEvents(false)
+  return { anchorLeft: 0, anchorTop: 0 }
 })
 
 ipcMain.handle("spotify:status", async () => {
@@ -520,6 +610,36 @@ ipcMain.handle("github:open-url", async (_event, url) => {
   }
 })
 
+ipcMain.handle("mint:status", async (_event, options) => {
+  try {
+    return await mint.status({
+      force: options?.force === true,
+      host: typeof options?.host === "string" ? options.host : undefined,
+    })
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      host: "mint",
+      hostname: null,
+      uptimeSec: null,
+      load1: null,
+      load5: null,
+      load15: null,
+      memTotalMb: null,
+      memUsedMb: null,
+      memUsedPct: null,
+      diskTotalGb: null,
+      diskUsedGb: null,
+      diskUsedPct: null,
+      tailscaleIp: null,
+      mirrorRepoCount: null,
+      mirrorLastLog: null,
+      error: err instanceof Error ? err.message : "mint_error",
+    }
+  }
+})
+
 ipcMain.handle("strava:status", async (_event, options) => {
   try {
     return await strava.status({ force: options?.force === true })
@@ -533,6 +653,7 @@ ipcMain.handle("strava:status", async (_event, options) => {
       stats: null,
       streak: null,
       calendar: null,
+      calendarActivities: [],
       heatmap: null,
       featuredActivity: null,
       activities: [],
@@ -548,6 +669,14 @@ ipcMain.handle("strava:connect", async () => {
 })
 
 ipcMain.handle("strava:disconnect", async () => strava.disconnect())
+
+ipcMain.handle("strava:activity", async (_event, activityId) => {
+  try {
+    return await strava.getActivity(activityId)
+  } catch (err) {
+    throw err instanceof Error ? err : new Error("strava_activity_error")
+  }
+})
 
 ipcMain.handle("strava:open-url", async (_event, url) => {
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
@@ -636,6 +765,13 @@ ipcMain.handle("settings:set", (_event, partial) => {
   if (partial && Object.prototype.hasOwnProperty.call(partial, "launchAtLogin")) {
     syncLaunchAtLogin(resolveLaunchAtLogin(next))
   }
+  if (
+    partial?.yearWallpaper &&
+    Object.prototype.hasOwnProperty.call(partial.yearWallpaper, "autoUpdateDaily") &&
+    partial.yearWallpaper.autoUpdateDaily
+  ) {
+    wallpaperDailyScheduler?.runNow?.()
+  }
   return next
 })
 ipcMain.handle("settings:reset", () => {
@@ -685,6 +821,19 @@ if (gotLock) {
     createTray()
     startCursorTrayPoll()
     createWindow()
+
+    wallpaperDailyScheduler = startWallpaperDailyScheduler({
+      runRegenerate: () => runWallpaperRegenerate(),
+      readSettings: settingsStore.readSettings,
+      writeSettings: settingsStore.writeSettings,
+    })
+
+    screen.on("display-metrics-changed", () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      if (mainWindow.getBounds().width > lastContentSize.width + 200) return
+      setWindowBounds(collapsedShellBounds())
+      sendPlacementToRenderer()
+    })
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

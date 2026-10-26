@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_WEATHER_LOCATION } from "./default-location"
+import { topCenterSlot } from "../lib/notch-placement-grid"
 
 export type TemperatureUnit = "celsius" | "fahrenheit"
 export type ThemeMode = "system" | "light" | "dark"
@@ -17,6 +18,7 @@ export type IslandFace =
   | "markets"
   | "github"
   | "strava"
+  | "mint"
   | "air"
   | "calendar"
 
@@ -38,6 +40,18 @@ export type LocationConfig =
       label: string
       countryCode: string
     }
+
+export type NotchEdge = "top" | "left" | "right"
+
+export type NotchForm = "pill" | "corner-tl" | "corner-tr"
+
+export type NotchPlacement = {
+  displayId: number | null
+  edge: NotchEdge
+  /** Discrete index along the edge (see placement-grid.json). */
+  slot: number
+  form: NotchForm
+}
 
 export type AppSettings = {
   appName: string
@@ -62,9 +76,15 @@ export type AppSettings = {
       markets: boolean
       github: boolean
       strava: boolean
+      mint: boolean
       air: boolean
       calendar: boolean
     }
+  }
+  mint: {
+    pollIntervalMs: number
+    /** SSH config host (e.g. mint via Tailscale) */
+    sshHost: string
   }
   calendar: {
     pollIntervalMs: number
@@ -146,6 +166,10 @@ export type AppSettings = {
     trayPollIntervalMs: number
   }
   yearWallpaper: {
+    /** Regenerate (and apply when enabled) once per local calendar day */
+    autoUpdateDaily: boolean
+    /** YYYY-MM-DD — last successful auto run (main process) */
+    lastAutoDate: string
     /** Set Windows desktop background after generating */
     applyAfterRegenerate: boolean
     backgroundColor: string
@@ -163,6 +187,7 @@ export type AppSettings = {
     width: number
     height: number
   }
+  placement: NotchPlacement
   window: {
     width: number
     height: number
@@ -198,9 +223,14 @@ export const defaultSettings: AppSettings = {
       markets: true,
       github: true,
       strava: true,
+      mint: true,
       air: true,
       calendar: true,
     },
+  },
+  mint: {
+    pollIntervalMs: 30_000,
+    sshHost: "mint",
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,
@@ -286,6 +316,12 @@ export const defaultSettings: AppSettings = {
     width: 380,
     height: 580,
   },
+  placement: {
+    displayId: null,
+    edge: "top",
+    slot: topCenterSlot(),
+    form: "pill",
+  },
   window: {
     width: 440,
     height: 660,
@@ -297,6 +333,8 @@ export const defaultSettings: AppSettings = {
     mass: 0.85,
   },
   yearWallpaper: {
+    autoUpdateDaily: true,
+    lastAutoDate: "",
     applyAfterRegenerate: true,
     backgroundColor: "#ffffff",
     passedColor: "#373737",

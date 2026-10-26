@@ -1,12 +1,15 @@
 import { Icon } from "@iconify/react"
-import { CalendarDays, CloudSun, Leaf, LineChart, Settings, Timer, Volume2 } from "lucide-react"
 import {
-  AnimatePresence,
-  motion,
-  useSpring,
-  useTransform,
-  useVelocity,
-} from "motion/react"
+  CalendarDays,
+  CloudSun,
+  Leaf,
+  LineChart,
+  Server,
+  Settings,
+  Timer,
+  Volume2,
+} from "lucide-react"
+import { AnimatePresence, motion, useSpring } from "motion/react"
 import {
   useCallback,
   useEffect,
@@ -23,12 +26,22 @@ import { useSpotify } from "../hooks/useSpotify"
 import { useTheme } from "../hooks/useTheme"
 import { useWeather } from "../hooks/useWeather"
 import {
-  ISLAND_EASE,
   ISLAND_MORPH_MS,
   islandContentIn,
   islandContentOut,
   islandMorph,
+  notchUi,
+  notchUiFast,
 } from "../lib/island-motion"
+import { notchShellRadii } from "../lib/notch-shell-radii"
+import {
+  islandLayoutSize,
+  isSidePlacement,
+  panelRailPlacementClass,
+  transformOriginForPlacement,
+} from "../lib/notch-anchor"
+import { collapsedContentDimensions } from "../lib/notch-collapsed-size"
+import { withPlacementForm } from "../lib/notch-placement-grid"
 import { cn, formatHour, formatTemp } from "../lib/utils"
 import type { IslandFace } from "../config/settings"
 import { useAlbumPalette } from "../hooks/useAlbumPalette"
@@ -54,11 +67,13 @@ import { MarketsPanel } from "./MarketsPanel"
 import { GitHubPanel } from "./GitHubPanel"
 import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
 import { StravaPanel } from "./StravaPanel"
+import { MintPanel } from "./MintPanel"
 import { StravaActivityCalendar } from "./StravaActivityCalendar"
 import { useTimerEngine } from "../hooks/useTimerEngine"
 import { useMarkets } from "../hooks/useMarkets"
 import { useGithub } from "../hooks/useGithub"
 import { useStrava } from "../hooks/useStrava"
+import { useMint } from "../hooks/useMint"
 import { todayContributionCount } from "../lib/github"
 import { formatQuoteChange } from "../lib/markets"
 import { nextEvent } from "../lib/calendar"
@@ -68,6 +83,7 @@ import { useCalendar } from "../hooks/useCalendar"
 import { AirQualityPanel } from "./AirQualityPanel"
 import { CalendarPanel } from "./CalendarPanel"
 import { BrowserMediaPanel } from "./BrowserMediaPanel"
+import { useNotchPlacement } from "../hooks/useNotchPlacement"
 
 type Panel = NotchPanel
 
@@ -83,6 +99,7 @@ const RAIL_PANELS: Panel[] = [
   "markets",
   "github",
   "strava",
+  "mint",
   "controls",
   "settings",
 ]
@@ -91,10 +108,9 @@ const PANEL_ORDER = Object.fromEntries(
   RAIL_PANELS.map((panel, index) => [panel, index]),
 ) as Record<Panel, number>
 
-const panelTransition = {
-  duration: 0.28,
-  ease: ISLAND_EASE,
-}
+const panelTransition = notchUi
+
+const DRAG_THRESHOLD_PX = 8
 
 export function Notch() {
   const [expanded, setExpanded] = useState(false)
@@ -104,6 +120,8 @@ export function Notch() {
   const [connecting, setConnecting] = useState(false)
   const [stravaConnecting, setStravaConnecting] = useState(false)
   const settings = useSettings()
+  const placementRaw = useNotchPlacement()
+  const placement = useMemo(() => withPlacementForm(placementRaw), [placementRaw])
   const { data, loading, error, refresh } = useWeather()
   const { status, playing, connect, action, disconnect } = useSpotify()
   const mediaPoll = settings.media.enabled && !playing
@@ -178,6 +196,8 @@ export function Notch() {
   const stravaPoll =
     (!expanded && (settings.island.faces.strava ?? true)) ||
     (expanded && activePanel === "strava")
+  const mintPoll =
+    (!expanded && (settings.island.faces.mint ?? true)) || (expanded && activePanel === "mint")
 
   const {
     snapshot: marketsSnapshot,
@@ -199,6 +219,12 @@ export function Notch() {
     connect: connectStrava,
     disconnect: disconnectStrava,
   } = useStrava(Boolean(stravaPoll))
+  const {
+    status: mintStatus,
+    loading: mintLoading,
+    refreshing: mintRefreshing,
+    refresh: refreshMint,
+  } = useMint(Boolean(mintPoll))
 
   const islandFaces = useMemo(() => {
     const faces: IslandFace[] = []
@@ -209,6 +235,7 @@ export function Notch() {
     if (enabled.markets && marketsSnapshot.quotes.length > 0) faces.push("markets")
     if (enabled.github && githubStatus.connected) faces.push("github")
     if ((enabled.strava ?? true) && stravaStatus.connected) faces.push("strava")
+    if ((enabled.mint ?? true) && mintStatus.connected) faces.push("mint")
     const today = data?.days.find((d) => d.isToday)
     if ((enabled.air ?? true) && today && (today.aqi != null || today.uvIndex > 0))
       faces.push("air")
@@ -223,6 +250,8 @@ export function Notch() {
     githubStatus.notifications.length,
     githubStatus.pullRequests.length,
     stravaStatus.connected,
+    mintStatus.connected,
+    mintStatus.memUsedPct,
     calendarReady,
   ])
 
@@ -249,7 +278,7 @@ export function Notch() {
   const stravaCalendarShowing =
     rotateEnabled &&
     islandFace === "strava" &&
-    Boolean(stravaStatus.calendar?.cells.length)
+    Boolean(stravaStatus.calendarActivities.length || stravaStatus.calendar?.cells.length)
 
   const calendarNext = useMemo(
     () => nextEvent(calendarSnapshot.events),
@@ -266,6 +295,12 @@ export function Notch() {
     (timerShowing ? settings.collapsed.timerExtraWidth : 0) +
     (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0) +
     (stravaCalendarShowing ? settings.collapsed.stravaExtraWidth : 0)
+
+  const collapsedH = settings.collapsed.height
+  const collapsedBody = useMemo(
+    () => collapsedContentDimensions(placement.form, collapsedWidth, collapsedH),
+    [placement.form, collapsedWidth, collapsedH],
+  )
 
   const {
     status: cursorStatus,
@@ -301,25 +336,35 @@ export function Notch() {
   const morphGen = useRef(0)
   /** Skip blur/backdrop dismiss while the shell/pill are morphing */
   const ignoreDismissUntil = useRef(0)
+  const pillDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    dragging: boolean
+  } | null>(null)
 
-  const collapse = () => {
+  const collapse = useCallback(() => {
     morphGen.current += 1
     ignoreDismissUntil.current = Date.now() + ISLAND_MORPH_MS + 120
+    setPanelOverride(null)
     setExpanded(false)
     // shellExpanded stays true until onMorphComplete
-  }
+  }, [])
+
+  const [expandAnchor, setExpandAnchor] = useState({ left: 0, top: 0 })
 
   const expand = async () => {
     const gen = ++morphGen.current
     ignoreDismissUntil.current = Date.now() + ISLAND_MORPH_MS + 200
     setShellExpanded(true)
     // Wait for fullscreen shell before morphing so the pill isn’t clipped
-    await window.notch?.setExpanded({
+    const anchor = await window.notch?.setExpanded({
       expanded: true,
       width: settings.expanded.width,
       height: settings.expanded.height,
     })
     if (morphGen.current !== gen) return
+    if (anchor) setExpandAnchor({ left: anchor.anchorLeft, top: anchor.anchorTop })
     setExpanded(true)
   }
 
@@ -340,20 +385,17 @@ export function Notch() {
     setPanelOverride((current) => (current === "settings" ? current : null))
   }, [browserMediaShowing])
 
-  // Drive the Electron shell from shellExpanded — never shrink it mid-morph.
+  // Shrink the OS shell only after collapse morph — expand is handled in expand().
   useEffect(() => {
-    void window.notch?.setExpanded({
-      expanded: shellExpanded,
-      width: shellExpanded ? settings.expanded.width : collapsedWidth,
-      height: shellExpanded ? settings.expanded.height : settings.collapsed.height,
-    })
-  }, [
-    shellExpanded,
-    collapsedWidth,
-    settings.expanded.width,
-    settings.expanded.height,
-    settings.collapsed.height,
-  ])
+    if (shellExpanded) return
+    void window.notch
+      ?.setExpanded({
+        expanded: false,
+        width: collapsedBody.width,
+        height: collapsedBody.height,
+      })
+      .then(() => setExpandAnchor({ left: 0, top: 0 }))
+  }, [shellExpanded, collapsedBody.width, collapsedBody.height])
 
   // Clicking another app / the desktop blurs us — treat as outside dismiss.
   useEffect(() => {
@@ -366,25 +408,35 @@ export function Notch() {
   }, [])
 
   useEffect(() => {
-    if (!expanded) return
+    if (!expanded && !shellExpanded) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (panelOverride === "settings") setPanelOverride(null)
-        else collapse()
-      }
+      if (e.key !== "Escape") return
+      e.preventDefault()
+      e.stopPropagation()
+      collapse()
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [expanded, panelOverride])
+    window.addEventListener("keydown", onKey, true)
+    const offEscape = window.notch?.onEscape?.(() => collapse())
+    return () => {
+      window.removeEventListener("keydown", onKey, true)
+      offEscape?.()
+    }
+  }, [expanded, shellExpanded, collapse])
 
   const unit = settings.temperatureUnit
   const fill = albumThemed && albumPalette ? albumPalette.bg : dark ? "#111111" : "#f7f7f5"
   const themedFg = albumThemed && albumPalette ? albumPalette.fg : null
-  // Apple compact island = true capsule (r = h/2). Expanded uses a tighter
-  // continuous corner (~22) — the old 32 looked ballooned.
-  const collapsedH = settings.collapsed.height
-  const bottomRadius = expanded ? 22 : collapsedH / 2
-  const earSize = expanded ? 12 : 10
+  const shellRadii = useMemo(
+    () =>
+      notchShellRadii(
+        placement.form,
+        expanded,
+        collapsedBody.height,
+        collapsedBody.width,
+      ),
+    [placement.form, expanded, collapsedBody.height, collapsedBody.width],
+  )
+  const earSize = expanded ? 12 : placement.form === "pill" ? 10 : 14
   const fillTransition = {
     ...islandMorph,
     duration: 0.45,
@@ -392,12 +444,27 @@ export function Notch() {
 
   const railThemed = Boolean(albumPalette && spotifyPanelThemed)
 
+  const islandAnchor = shellExpanded
+    ? { left: expandAnchor.left, top: expandAnchor.top }
+    : { left: 0, top: 0 }
+
+  const morphOrigin = transformOriginForPlacement(placement.edge, placement.form)
+  const isSide = isSidePlacement(placement.edge)
+  const islandSize = islandLayoutSize(
+    placement.edge,
+    expanded,
+    collapsedBody.width,
+    collapsedBody.height,
+    settings.expanded.width,
+    settings.expanded.height,
+  )
+
   return (
     <div
       className={cn(
-        "flex h-full w-full items-start justify-center select-none",
+        "relative h-full w-full select-none",
         // Windows ignores clicks on fully transparent pixels — keep a whisper of fill
-        expanded && "bg-black/[0.02]",
+        shellExpanded && "bg-black/[0.02]",
       )}
       onPointerDown={(e) => {
         // Only dismiss when the press is on the backdrop itself, not the notch
@@ -406,31 +473,90 @@ export function Notch() {
         collapse()
       }}
     >
-      <div className="relative">
+      <div
+        className={cn(
+          "relative z-10",
+          isSide && "notch-side-mount",
+          placement.edge === "left" && "notch-side-mount--left",
+          placement.edge === "right" && "notch-side-mount--right",
+        )}
+        style={
+          shellExpanded
+            ? {
+                position: "fixed",
+                left: islandAnchor.left,
+                top: islandAnchor.top,
+              }
+            : undefined
+        }
+      >
+        <div className={cn(isSide && "notch-side-rotate")}>
       <motion.div
         initial={false}
         animate={{
-          width: expanded ? settings.expanded.width : collapsedWidth,
-          height: expanded ? settings.expanded.height : settings.collapsed.height,
-          borderBottomLeftRadius: bottomRadius,
-          borderBottomRightRadius: bottomRadius,
+          width: islandSize.width,
+          height: islandSize.height,
+          ...shellRadii,
         }}
         transition={islandMorph}
         onAnimationComplete={onMorphComplete}
         onPointerDown={(e) => {
-          // Keep presses on the panel from hitting the backdrop
           e.stopPropagation()
-          if (!expanded) {
-            const panel = panelForCollapsedTap({
-              spotifyPlaying: playing,
-              browserMediaActive: browserMediaShowing,
-              liveActivity,
-              timerShowing,
-              islandFace,
-            })
-            setPanelOverride(panel)
-            void expand()
+          if (expanded) return
+          pillDragRef.current = {
+            pointerId: e.pointerId,
+            startX: e.screenX,
+            startY: e.screenY,
+            dragging: false,
           }
+          e.currentTarget.setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          const drag = pillDragRef.current
+          if (!drag || drag.pointerId !== e.pointerId || expanded) return
+          const dist = Math.hypot(e.screenX - drag.startX, e.screenY - drag.startY)
+          if (!drag.dragging && dist < DRAG_THRESHOLD_PX) return
+          if (!drag.dragging) {
+            drag.dragging = true
+            void window.notch?.dragStart({
+              screenX: e.screenX,
+              screenY: e.screenY,
+              width: collapsedBody.width,
+              height: collapsedBody.height,
+            })
+          }
+          window.notch?.dragMove({ screenX: e.screenX, screenY: e.screenY })
+        }}
+        onPointerUp={(e) => {
+          const drag = pillDragRef.current
+          if (!drag || drag.pointerId !== e.pointerId) return
+          pillDragRef.current = null
+          try {
+            e.currentTarget.releasePointerCapture(e.pointerId)
+          } catch {
+            // capture may already be released
+          }
+          if (drag.dragging) {
+            void window.notch?.dragEnd().then((next) => {
+              if (next) void updateSettings({ placement: next })
+            })
+            return
+          }
+          const panel = panelForCollapsedTap({
+            spotifyPlaying: playing,
+            browserMediaActive: browserMediaShowing,
+            liveActivity,
+            timerShowing,
+            islandFace,
+          })
+          setPanelOverride(panel)
+          void expand()
+        }}
+        onPointerCancel={(e) => {
+          const drag = pillDragRef.current
+          if (!drag || drag.pointerId !== e.pointerId) return
+          pillDragRef.current = null
+          if (drag.dragging) void window.notch?.dragCancel()
         }}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -443,16 +569,22 @@ export function Notch() {
             "--ear": `${earSize}px`,
             "--battery-bolt": fill,
             color: themedFg ?? undefined,
-            transformOrigin: "top center",
+            transformOrigin: morphOrigin,
             willChange: "width, height, border-radius",
           } as CSSProperties
         }
         className={cn(
-          "notch-fold relative overflow-visible",
+          "notch-fold relative",
+          expanded && isSide ? "overflow-hidden" : "overflow-visible",
+          `notch-edge-${placement.edge}`,
+          `notch-form-${placement.form}`,
           !themedFg && (dark ? "text-white" : "text-[#111111]"),
-          expanded ? "cursor-default" : "cursor-pointer",
+          expanded ? "cursor-default" : "cursor-grab active:cursor-grabbing",
         )}
       >
+        {placement.edge === "top" ? (
+          <span className="notch-fold-cap" aria-hidden />
+        ) : null}
         {/* Concave ears — Apple-style blend into the top screen edge */}
         <span className="notch-ear notch-ear--left" aria-hidden />
         <span className="notch-ear notch-ear--right" aria-hidden />
@@ -462,8 +594,7 @@ export function Notch() {
           initial={false}
           animate={{
             backgroundColor: fill,
-            borderBottomLeftRadius: bottomRadius,
-            borderBottomRightRadius: bottomRadius,
+            ...shellRadii,
           }}
           transition={albumThemed ? fillTransition : islandMorph}
           style={
@@ -484,17 +615,14 @@ export function Notch() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              transition={notchUi}
               className="pointer-events-none absolute inset-0 z-[4]"
               aria-hidden
             >
               {/* Pill body — clipped to the rounded bottom edge */}
               <div
                 className="absolute inset-0 overflow-hidden"
-                style={{
-                  borderBottomLeftRadius: bottomRadius,
-                  borderBottomRightRadius: bottomRadius,
-                }}
+                style={shellRadii}
               >
                 <img
                   src={status.track.artUrl}
@@ -703,8 +831,9 @@ export function Notch() {
                         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
                         className="flex items-center justify-center gap-1.5 leading-none"
                       >
-                        {stravaStatus.calendar ? (
+                        {stravaStatus.calendarActivities.length > 0 || stravaStatus.calendar ? (
                           <StravaActivityCalendar
+                            activities={stravaStatus.calendarActivities}
                             calendar={stravaStatus.calendar}
                             variant="mini"
                           />
@@ -734,6 +863,24 @@ export function Notch() {
                         )}
                         <span className="text-[11px] font-semibold tabular-nums leading-none opacity-80">
                           {todayContributionCount(githubStatus.contributions?.weeks ?? [])}
+                        </span>
+                      </motion.span>
+                    ) : islandFace === "mint" ? (
+                      <motion.span
+                        key="mint"
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        className="flex items-center justify-center gap-1.5 leading-none"
+                      >
+                        <Server className="size-3.5 opacity-75" strokeWidth={2} />
+                        <span className="text-[11px] font-semibold tabular-nums opacity-80">
+                          {mintStatus.memUsedPct ?? "—"}%
+                        </span>
+                        <span className="text-[10px] opacity-50">·</span>
+                        <span className="text-[11px] font-semibold tabular-nums opacity-80">
+                          {mintStatus.diskUsedPct ?? "—"}%
                         </span>
                       </motion.span>
                     ) : islandFace === "air" && data ? (
@@ -778,7 +925,20 @@ export function Notch() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={islandContentIn}
-              className="relative z-10 flex h-full flex-col px-8 pb-6 pt-8"
+              className={cn(
+                "relative z-10 flex flex-col px-8 pb-6 pt-8",
+                isSide ? "notch-side-upright" : "h-full",
+                isSide && placement.edge === "left" && "notch-side-upright--left",
+                isSide && placement.edge === "right" && "notch-side-upright--right",
+              )}
+              style={
+                isSide
+                  ? {
+                      width: settings.expanded.width,
+                      height: settings.expanded.height,
+                    }
+                  : undefined
+              }
             >
               <div className="relative min-h-0 flex-1">
                 <AnimatePresence mode="wait" custom={panelDir} initial={false}>
@@ -864,6 +1024,13 @@ export function Notch() {
                         }}
                         onDisconnect={() => void disconnectStrava()}
                       />
+                    ) : activePanel === "mint" ? (
+                      <MintPanel
+                        status={mintStatus}
+                        loading={mintLoading}
+                        refreshing={mintRefreshing}
+                        onRefresh={() => void refreshMint()}
+                      />
                     ) : activePanel === "air" && data ? (
                       <AirQualityPanel data={data} />
                     ) : activePanel === "calendar" ? (
@@ -911,11 +1078,11 @@ export function Notch() {
         {expanded ? (
           <motion.div
             key="panel-rail"
-            initial={{ opacity: 0, x: -6 }}
+            initial={{ opacity: 0, x: placement.edge === "right" ? 6 : -6 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -6 }}
-            transition={{ duration: 0.22, ease: ISLAND_EASE }}
-            className="absolute top-1/2 left-full ml-2.5 -translate-y-1/2"
+            exit={{ opacity: 0, x: placement.edge === "right" ? 6 : -6 }}
+            transition={notchUiFast}
+            className={cn("absolute", panelRailPlacementClass(placement.edge))}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -927,6 +1094,7 @@ export function Notch() {
           </motion.div>
         ) : null}
       </AnimatePresence>
+        </div>
       </div>
     </div>
   )
@@ -954,6 +1122,8 @@ function railTabIcon(panel: Panel) {
       return <Icon icon="simple-icons:github" className="size-4" aria-hidden />
     case "strava":
       return <Icon icon="simple-icons:strava" className="size-4" aria-hidden />
+    case "mint":
+      return <Server className="size-4" strokeWidth={1.75} />
     case "controls":
       return <Volume2 className="size-4" strokeWidth={1.75} />
     case "settings":
@@ -972,6 +1142,7 @@ const RAIL_TAB_LABELS: Record<Panel, string> = {
   markets: "Markets",
   github: "GitHub",
   strava: "Strava",
+  mint: "Mint server",
   controls: "Controls",
   settings: "Settings",
 }
@@ -1019,18 +1190,6 @@ function PanelRail({
     y.set(indicatorY)
   }, [indicatorY, y])
 
-  const velocity = useVelocity(y)
-  // Stretch into a capsule while moving; squash sideways so it reads like a drop
-  const scaleY = useTransform(velocity, [-1100, 0, 1100], [1.72, 1, 1.72])
-  const scaleX = useTransform(scaleY, (sy) => Math.max(0.68, 1.12 / sy))
-  // Lead with the tip in the travel direction (mass trails behind)
-  const transformOrigin = useTransform(velocity, (v) => {
-    if (v > 40) return "50% 0%"
-    if (v < -40) return "50% 100%"
-    return "50% 50%"
-  })
-  const borderRadius = useTransform(scaleY, [1, 1.72], [999, 22])
-
   return (
     <nav
       ref={navRef}
@@ -1040,10 +1199,10 @@ function PanelRail({
       <motion.span
         aria-hidden
         className={cn(
-          "pointer-events-none absolute left-0 top-0 z-0 size-9 shadow-sm",
-          themed ? "bg-white/95" : "bg-[#111111] dark:bg-white",
+          "pointer-events-none absolute left-0 top-0 z-0 size-9 rounded-full shadow-sm",
+          themed ? "bg-white" : "bg-[#111111] dark:bg-white",
         )}
-        style={{ y, scaleX, scaleY, transformOrigin, borderRadius }}
+        style={{ y }}
       />
 
       {RAIL_PANELS.map((panel) => (
@@ -1096,8 +1255,8 @@ function IconTab({
             ? "bg-transparent text-black"
             : "bg-transparent text-white dark:text-[#111111]"
           : themed
-            ? "bg-black/25 text-white/70 backdrop-blur-md hover:bg-black/40 hover:text-white"
-            : "bg-[#f7f7f5]/90 text-black/40 shadow-sm backdrop-blur-md hover:bg-[#f7f7f5] hover:text-black/70 dark:bg-[#111111]/90 dark:text-white/40 dark:hover:bg-[#111111] dark:hover:text-white/80",
+            ? "bg-neutral-700 text-neutral-200 hover:bg-neutral-600 hover:text-white"
+            : "bg-[#f7f7f5] text-neutral-400 shadow-sm hover:bg-[#efefed] hover:text-neutral-600 dark:bg-[#111111] dark:text-neutral-500 dark:hover:bg-[#1a1a1a] dark:hover:text-neutral-300",
       )}
     >
       {children}
