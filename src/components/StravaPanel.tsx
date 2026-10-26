@@ -1,16 +1,10 @@
-import { ExternalLink, Flame, RefreshCw } from "lucide-react"
+import { Flame, RefreshCw } from "lucide-react"
 import type { StravaStatus } from "../lib/strava"
-import {
-  activityKind,
-  formatDistance,
-  formatDuration,
-  formatPace,
-  openStravaUrl,
-} from "../lib/strava"
+import { formatDistance } from "../lib/strava"
 import { cn } from "../lib/utils"
+import { StravaActivityAccordion } from "./StravaActivityAccordion"
 import { StravaActivityCalendar } from "./StravaActivityCalendar"
 import { StravaRouteHeatmap } from "./StravaRouteHeatmap"
-import { StravaRouteMap } from "./StravaRouteMap"
 
 type Props = {
   status: StravaStatus
@@ -129,45 +123,20 @@ export function StravaPanel({
         </div>
       </div>
 
-      {status.calendar ? (
-        <StravaActivityCalendar calendar={status.calendar} variant="panel" className="mb-4" />
-      ) : null}
-
-      {status.featuredActivity ? (
-        <section className="mb-4">
-          <div className="mb-2 flex items-baseline justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
-              Latest route
-            </p>
-            <button
-              type="button"
-              onClick={() => openStravaUrl(status.featuredActivity!.url)}
-              className="text-[11px] text-[#fc4c02] hover:underline"
-            >
-              Open
-            </button>
-          </div>
-          <StravaRouteMap activity={status.featuredActivity} />
-          <p className="mt-2 truncate text-[13px] font-semibold">{status.featuredActivity.name}</p>
-          <p className="text-[11px] text-black/45 dark:text-white/45">
-            {formatDistance(status.featuredActivity.distance)} ·{" "}
-            {formatDuration(status.featuredActivity.movingTime)}
-            {activityKind(status.featuredActivity.type) === "run" &&
-            status.featuredActivity.distance > 0
-              ? ` · ${formatPace(
-                  status.featuredActivity.movingTime /
-                    (status.featuredActivity.distance / 1000),
-                )}`
-              : null}
-          </p>
-        </section>
+      {status.calendarActivities.length > 0 || status.calendar ? (
+        <StravaActivityCalendar
+          activities={status.calendarActivities}
+          calendar={status.calendar}
+          variant="panel"
+          className="mb-4"
+        />
       ) : null}
 
       <section className="mb-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
           Route heatmap
         </p>
-        <StravaRouteHeatmap heatmap={status.heatmap} />
+        <StravaRouteHeatmap heatmap={status.heatmap} height={200} />
         <p className="mt-1.5 text-[10px] text-black/35 dark:text-white/35">
           Density from your last ~40 activities with GPS
         </p>
@@ -183,31 +152,9 @@ export function StravaPanel({
 
       <section>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
-          Recent
+          Activities
         </p>
-        {loading && status.activities.length === 0 ? (
-          <p className="text-[12px] text-black/40 dark:text-white/40">Loading activities…</p>
-        ) : status.activities.length === 0 ? (
-          <p className="text-[12px] text-black/40 dark:text-white/40">No activities yet.</p>
-        ) : (
-          <ul className="space-y-1">
-            {status.activities.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => openStravaUrl(a.url)}
-                  className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-black/5 dark:hover:bg-white/8"
-                >
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{a.name}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-black/40 dark:text-white/40">
-                    {formatDistance(a.distance)}
-                  </span>
-                  <ExternalLink className="size-3 shrink-0 opacity-35" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <StravaActivityAccordion activities={status.activities} loading={loading} />
       </section>
     </div>
   )

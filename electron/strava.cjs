@@ -11,7 +11,8 @@ const CALLBACK_PORT = 43111
 const cache = createSmartCache()
 const STATUS_TTL_MS = 3 * 60_000
 const STATUS_STALE_MS = 15 * 60_000
-
+const ACTIVITY_DETAIL_TTL_MS = 30 * 60_000
+const ACTIVITY_DETAIL_STALE_MS = 24 * 60 * 60_000
 function tokenPath() {
   return path.join(app.getPath("userData"), "strava-tokens.json")
 }
@@ -140,7 +141,7 @@ function mapActivity(a) {
     movingTime: a.moving_time ?? 0,
     elevation: a.total_elevation_gain ?? 0,
     averageSpeed: a.average_speed ?? 0,
-    polyline: a.map?.summary_polyline || null,
+    polyline: a.map?.polyline || a.map?.summary_polyline || null,
     url: `https://www.strava.com/activities/${a.id}`,
   }
 }
@@ -295,64 +296,75 @@ function decodePolyline(encoded) {
   return points
 }
 
-function buildRouteHeatmap(activities, gridSize = 28) {
-  const points = []
+function haversineMeters(a, b) {
+  const R = 6371000
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180
+  const lat1 = (a.lat * Math.PI) / 180
+  const lat2 = (b.lat * Math.PI) / 180
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+function densifyRoutePoints(points, stepMeters = 18) {
+  if (points.length < 2) return points
+  const out = [points[0]]
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const dist = haversineMeters(a, b)
+    const steps = Math.max(1, Math.ceil(dist / stepMeters))
+    for (let s = 1; s < steps; s++) {
+      const t = s / steps
+      out.push({
+        lat: a.lat + (b.lat - a.lat) * t,
+        lng: a.lng + (b.lng - a.lng) * t,
+      })
+    }
+    out.push(b)
+  }
+  return out
+}
+
+function buildRouteHeatmap(activities) {
+  const polylines = []
+  const boundsPoints = []
+
   for (const a of activities) {
     if (!a.polyline) continue
-    const decoded = decodePolyline(a.polyline)
-    for (const p of decoded) points.push(p)
-  }
-  if (points.length < 2) {
-    return { gridSize, cells: [], bounds: null }
+    polylines.push(a.polyline)
+    for (const p of decodePolyline(a.polyline)) {
+      boundsPoints.push(p)
+    }
   }
 
-  let minLat = points[0].lat
-  let maxLat = points[0].lat
-  let minLng = points[0].lng
-  let maxLng = points[0].lng
-  for (const p of points) {
+  if (boundsPoints.length < 2) {
+    return { polylines: [], bounds: null }
+  }
+
+  let minLat = boundsPoints[0].lat
+  let maxLat = boundsPoints[0].lat
+  let minLng = boundsPoints[0].lng
+  let maxLng = boundsPoints[0].lng
+  for (const p of boundsPoints) {
     minLat = Math.min(minLat, p.lat)
     maxLat = Math.max(maxLat, p.lat)
     minLng = Math.min(minLng, p.lng)
     maxLng = Math.max(maxLng, p.lng)
   }
 
-  const padLat = (maxLat - minLat) * 0.08 || 0.002
-  const padLng = (maxLng - minLng) * 0.08 || 0.002
-  minLat -= padLat
-  maxLat += padLat
-  minLng -= padLng
-  maxLng += padLng
-
-  const grid = Array.from({ length: gridSize * gridSize }, () => 0)
-  for (const p of points) {
-    const x = Math.min(
-      gridSize - 1,
-      Math.max(0, Math.floor(((p.lng - minLng) / (maxLng - minLng)) * gridSize)),
-    )
-    const y = Math.min(
-      gridSize - 1,
-      Math.max(0, Math.floor((1 - (p.lat - minLat) / (maxLat - minLat)) * gridSize)),
-    )
-    grid[y * gridSize + x] += 1
-  }
-
-  let max = 0
-  for (const v of grid) if (v > max) max = v
-
-  const cells = []
-  for (let y = 0; y < gridSize; y++) {
-    for (let x = 0; x < gridSize; x++) {
-      const count = grid[y * gridSize + x]
-      if (count <= 0) continue
-      cells.push({ x, y, intensity: max > 0 ? count / max : 0 })
-    }
-  }
+  const padLat = (maxLat - minLat) * 0.1 || 0.002
+  const padLng = (maxLng - minLng) * 0.1 || 0.002
 
   return {
-    gridSize,
-    cells,
-    bounds: { minLat, maxLat, minLng, maxLng },
+    bounds: {
+      minLat: minLat - padLat,
+      maxLat: maxLat + padLat,
+      minLng: minLng - padLng,
+      maxLng: maxLng + padLng,
+    },
+    polylines,
   }
 }
 
@@ -386,7 +398,6 @@ async function fetchStatusPayload() {
   const streak = computeStreak(activities)
   const calendar = buildMonthCalendar(activities)
   const heatmap = buildRouteHeatmap(activities.slice(0, 40))
-  const featured = activities.find((a) => a.polyline) ?? activities[0] ?? null
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -399,9 +410,14 @@ async function fetchStatusPayload() {
     stats,
     streak,
     calendar,
+    calendarActivities: activities.map((a) => ({
+      id: a.id,
+      type: a.type,
+      startDate: a.startDate,
+    })),
     heatmap,
-    featuredActivity: featured,
-    activities: activities.slice(0, 12),
+    featuredActivity: activities.find((a) => a.polyline) ?? activities[0] ?? null,
+    activities: activities.slice(0, 20),
     monthDistance: recent30.reduce((sum, a) => sum + (a.distance || 0), 0),
   }
 }
@@ -419,6 +435,7 @@ async function status(options = {}) {
       stats: null,
       streak: null,
       calendar: null,
+      calendarActivities: [],
       heatmap: null,
       featuredActivity: null,
       activities: [],
@@ -437,6 +454,7 @@ async function status(options = {}) {
       stats: null,
       streak: null,
       calendar: null,
+      calendarActivities: [],
       heatmap: null,
       featuredActivity: null,
       activities: [],
@@ -446,7 +464,7 @@ async function status(options = {}) {
   }
 
   try {
-    const data = await cache.get("strava:status:v1", {
+    const data = await cache.get("strava:status:v4", {
       ttlMs: STATUS_TTL_MS,
       staleMs: STATUS_STALE_MS,
       force,
@@ -464,6 +482,7 @@ async function status(options = {}) {
         stats: null,
         streak: null,
         calendar: null,
+        calendarActivities: [],
         heatmap: null,
         featuredActivity: null,
         activities: [],
@@ -480,6 +499,7 @@ async function status(options = {}) {
       stats: null,
       streak: null,
       calendar: null,
+      calendarActivities: [],
       heatmap: null,
       featuredActivity: null,
       activities: [],
@@ -570,8 +590,28 @@ function startAuth() {
 
 function disconnect() {
   clearTokens()
-  cache.invalidate?.("strava:status:v1")
+  cache.invalidate?.("strava:status:v4")
+  cache.invalidatePrefix?.("strava:activity:")
   return status()
+}
+
+async function getActivity(activityId) {
+  const id = Number(activityId)
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("invalid_activity_id")
+  }
+
+  return cache.get(`strava:activity:${id}`, {
+    ttlMs: ACTIVITY_DETAIL_TTL_MS,
+    staleMs: ACTIVITY_DETAIL_STALE_MS,
+    fetcher: async () => {
+      const res = await stravaFetch(`/activities/${id}`)
+      if (!res.ok) {
+        throw new Error(`strava_http_${res.status}`)
+      }
+      return mapActivity(await res.json())
+    },
+  })
 }
 
 module.exports = {
@@ -580,5 +620,6 @@ module.exports = {
   status,
   startAuth,
   disconnect,
+  getActivity,
   configured: () => isConfigured(),
 }

@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_CARTO_API_KEY?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
 declare module "country-flag-icons/react/3x2" {
   import type { FC, SVGProps } from "react"
   const flags: Record<string, FC<SVGProps<SVGSVGElement>>>
@@ -70,16 +78,33 @@ type ControlsBridgeStatus = {
   error?: string
 }
 
+type NotchPlacementBridge = import("./config/settings").NotchPlacement
+
 interface NotchBridge {
   setExpanded: (
     payload:
       | boolean
       | { expanded: boolean; music?: boolean; width?: number; height?: number },
-  ) => Promise<void>
+  ) => Promise<{ anchorLeft: number; anchorTop: number }>
   setPassthrough: (pass: boolean) => Promise<void>
   reposition: () => Promise<void>
+  getPlacement: () => Promise<NotchPlacementBridge>
+  dragStart: (payload: {
+    screenX: number
+    screenY: number
+    width: number
+    height: number
+  }) => Promise<void>
+  dragMove: (payload: { screenX: number; screenY: number }) => void
+  dragEnd: () => Promise<NotchPlacementBridge>
+  dragCancel: () => Promise<NotchPlacementBridge>
+  onPlacement: (cb: (placement: NotchPlacementBridge) => void) => () => void
   onBlur: (cb: () => void) => () => void
+  onEscape: (cb: () => void) => () => void
   platform: string
+  mapTiles: {
+    cartoApiKey: string
+  }
   cursor: {
     status: (options?: { force?: boolean }) => Promise<CursorBridgeStatus>
     analytics: (options?: { force?: boolean }) => Promise<import("./lib/cursor").CursorAnalyticsPayload | null>
@@ -122,6 +147,7 @@ interface NotchBridge {
   }
   strava: {
     status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>
+    activity: (activityId: number) => Promise<import("./lib/strava").StravaActivitySummary>
     connect: () => Promise<StravaBridgeStatus>
     disconnect: () => Promise<StravaBridgeStatus>
     openUrl: (url: string) => Promise<void>

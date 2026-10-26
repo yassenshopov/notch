@@ -11,6 +11,7 @@ const idle: StravaStatus = {
   stats: null,
   streak: null,
   calendar: null,
+  calendarActivities: [],
   heatmap: null,
   featuredActivity: null,
   activities: [],

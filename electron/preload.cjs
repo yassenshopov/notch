@@ -1,13 +1,32 @@
+const path = require("path")
+require("dotenv").config({ path: path.join(__dirname, "../.env") })
 const { contextBridge, ipcRenderer } = require("electron")
+
+const cartoApiKey = process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
 
 contextBridge.exposeInMainWorld("notch", {
   setExpanded: (payload) => ipcRenderer.invoke("notch:set-expanded", payload),
   setPassthrough: (pass) => ipcRenderer.invoke("notch:set-passthrough", pass),
   reposition: () => ipcRenderer.invoke("notch:reposition"),
+  getPlacement: () => ipcRenderer.invoke("notch:placement-get"),
+  dragStart: (payload) => ipcRenderer.invoke("notch:drag-start", payload),
+  dragMove: (payload) => ipcRenderer.send("notch:drag-move", payload),
+  dragEnd: () => ipcRenderer.invoke("notch:drag-end"),
+  dragCancel: () => ipcRenderer.invoke("notch:drag-cancel"),
+  onPlacement: (cb) => {
+    const handler = (_event, placement) => cb(placement)
+    ipcRenderer.on("notch:placement", handler)
+    return () => ipcRenderer.removeListener("notch:placement", handler)
+  },
   onBlur: (cb) => {
     const handler = () => cb()
     ipcRenderer.on("notch:window-blur", handler)
     return () => ipcRenderer.removeListener("notch:window-blur", handler)
+  },
+  onEscape: (cb) => {
+    const handler = () => cb()
+    ipcRenderer.on("notch:escape", handler)
+    return () => ipcRenderer.removeListener("notch:escape", handler)
   },
   platform: process.platform,
   spotify: {
@@ -38,6 +57,7 @@ contextBridge.exposeInMainWorld("notch", {
   },
   strava: {
     status: (options) => ipcRenderer.invoke("strava:status", options),
+    activity: (activityId) => ipcRenderer.invoke("strava:activity", activityId),
     connect: () => ipcRenderer.invoke("strava:connect"),
     disconnect: () => ipcRenderer.invoke("strava:disconnect"),
     openUrl: (url) => ipcRenderer.invoke("strava:open-url", url),
@@ -63,5 +83,8 @@ contextBridge.exposeInMainWorld("notch", {
     setPlayback: (id) => ipcRenderer.invoke("controls:set-playback", id),
     setBluetooth: (id, connected) =>
       ipcRenderer.invoke("controls:set-bluetooth", { id, connected }),
+  },
+  mapTiles: {
+    cartoApiKey,
   },
 })
