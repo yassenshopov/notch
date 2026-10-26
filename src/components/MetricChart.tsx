@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react"
 import type { ChartStyle } from "../config/settings"
 import { useSettings } from "../config/settings-store"
+import {
+  formatAxisMid,
+  resolveChartYDomain,
+  type ChartYAxisKind,
+} from "../lib/chart-axis"
 import { cn, formatHour } from "../lib/utils"
 
 type Point = { time: string; value: number }
@@ -19,6 +24,10 @@ type Props = {
   gradientId?: string
   /** Dotted vertical line at the current time when it falls within the series. */
   markNow?: boolean
+  /** Shorter embed for dense panels (no min-height overflow). */
+  compact?: boolean
+  /** Nice-rounded Y axis for server / metric panels */
+  yAxis?: ChartYAxisKind
 }
 
 function interpolateTimeX(
@@ -57,6 +66,8 @@ export function MetricChart({
   accent = "currentColor",
   gradientId = "metric-chart-fill",
   markNow = false,
+  compact = false,
+  yAxis = "auto",
 }: Props) {
   const clockFormat = useSettings().clock.format
   const formatTime = formatTimeProp ?? ((iso: string) => formatHour(iso, clockFormat))
@@ -84,21 +95,29 @@ export function MetricChart({
         labels: [] as Point[],
         minLabel: "",
         maxLabel: "",
+        midLabel: "",
         padY: 4,
         nowX: null as number | null,
       }
     }
 
     const values = points.map((p) => p.value)
-    const min = variant === "bar" ? 0 : Math.min(...values)
-    const max = Math.max(...values)
+    const domain =
+      yAxis === "auto" && variant === "bar"
+        ? { min: 0, max: Math.max(...values) }
+        : yAxis === "auto"
+          ? { min: Math.min(...values), max: Math.max(...values) }
+          : resolveChartYDomain(yAxis, values)
+    const min = domain.min
+    const max = domain.max
     const span = Math.max(0.0001, max - min)
     const padY = 4
     const plotH = VIEW_H - padY * 2
 
     const coords: Coord[] = points.map((p, i) => {
       const x = points.length === 1 ? VIEW_W / 2 : (i / (points.length - 1)) * VIEW_W
-      const y = padY + (1 - (p.value - min) / span) * plotH
+      const t = Math.min(1, Math.max(0, (p.value - min) / span))
+      const y = padY + (1 - t) * plotH
       return { x, y, ...p }
     })
 
@@ -139,10 +158,12 @@ export function MetricChart({
       labels: labelIdx.map((i) => points[i]),
       minLabel: formatValue(min),
       maxLabel: formatValue(max),
+      midLabel:
+        compact && max - min > 0.0001 ? formatValue(formatAxisMid(min, max)) : "",
       padY,
       nowX,
     }
-  }, [points, formatValue, variant, markNow, nowMs])
+  }, [points, formatValue, variant, markNow, nowMs, yAxis, compact])
 
   const timeLabel = formatTime
 
@@ -170,7 +191,8 @@ export function MetricChart({
     return (
       <div
         className={cn(
-          "flex min-h-[9rem] flex-1 items-center justify-center text-[12px] text-black/35 dark:text-white/35",
+          "flex items-center justify-center text-[12px] text-black/35 dark:text-white/35",
+          compact ? "h-16 flex-none" : "min-h-[9rem] flex-1",
           className,
         )}
       >
@@ -195,15 +217,29 @@ export function MetricChart({
   return (
     <div
       className={cn(
-        "grid w-full min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-x-2 gap-y-1",
+        "grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-2",
+        compact
+          ? "grid-rows-[4.25rem_auto] flex-none gap-y-0.5"
+          : "grid-rows-[minmax(0,1fr)_auto] min-h-0 flex-1 gap-y-1",
         className,
       )}
     >
-      <div className="flex flex-col justify-between py-0.5 text-right text-[10px] leading-none tabular-nums text-black/35 dark:text-white/35">
+      <div
+        className={cn(
+          "flex flex-col justify-between py-0.5 text-right leading-none tabular-nums text-black/35 dark:text-white/35",
+          compact ? "text-[9px]" : "text-[10px]",
+        )}
+      >
         <span>{chart.maxLabel}</span>
+        {chart.midLabel ? <span>{chart.midLabel}</span> : null}
         <span>{chart.minLabel}</span>
       </div>
-      <div className="relative min-h-[9rem] h-full w-full">
+      <div
+        className={cn(
+          "relative w-full overflow-hidden",
+          compact ? "h-[4.25rem] min-h-0" : "min-h-[9rem] h-full",
+        )}
+      >
         {hoverCoord ? (
           <div
             className="pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center gap-0.5 rounded-lg bg-[#111111] px-2 py-1 text-center shadow-md dark:bg-white"
@@ -222,8 +258,11 @@ export function MetricChart({
         ) : null}
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-          className="h-full w-full cursor-crosshair overflow-visible"
-          preserveAspectRatio="none"
+          className={cn(
+            "h-full w-full cursor-crosshair",
+            compact ? "overflow-hidden" : "overflow-visible",
+          )}
+          preserveAspectRatio={compact ? "xMidYMid meet" : "none"}
           role="img"
           aria-label={
             variant === "bar" ? "Bar chart" : variant === "area" ? "Area chart" : "Line chart"
@@ -352,9 +391,16 @@ export function MetricChart({
         </svg>
       </div>
       <div aria-hidden className="col-start-1" />
-      <div className="flex justify-between text-[10px] text-black/35 dark:text-white/35">
+      <div
+        className={cn(
+          "flex min-w-0 justify-between overflow-hidden text-black/35 dark:text-white/35",
+          compact ? "text-[8px] leading-tight" : "text-[10px]",
+        )}
+      >
         {chart.labels.map((l) => (
-          <span key={l.time}>{timeLabel(l.time)}</span>
+          <span key={l.time} className="truncate">
+            {timeLabel(l.time)}
+          </span>
         ))}
       </div>
     </div>
