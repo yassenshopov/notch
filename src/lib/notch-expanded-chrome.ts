@@ -14,12 +14,12 @@ export function expandedWindowPixelSize(
 ) {
   if (edge === "left" || edge === "right") {
     return {
-      width: expandedH + 16 + EXPANDED_RAIL_GUTTER,
+      width: expandedH + 16 + EXPANDED_RAIL_GUTTER * 2,
       height: expandedW + EXPANDED_SIDE_INSET * 2 + EXPANDED_BOTTOM_BLEED,
     }
   }
   return {
-    width: expandedW + EXPANDED_SIDE_INSET * 2 + EXPANDED_RAIL_GUTTER,
+    width: expandedW + EXPANDED_SIDE_INSET * 2 + EXPANDED_RAIL_GUTTER * 2,
     height: expandedH + EXPANDED_BOTTOM_BLEED,
   }
 }
@@ -38,6 +38,6 @@ export function expandedWindowPadding(edge: NotchEdge) {
     paddingTop: 0,
     paddingRight: EXPANDED_SIDE_INSET + EXPANDED_RAIL_GUTTER,
     paddingBottom: EXPANDED_BOTTOM_BLEED,
-    paddingLeft: EXPANDED_SIDE_INSET,
+    paddingLeft: EXPANDED_SIDE_INSET + EXPANDED_RAIL_GUTTER,
   }
 }

@@ -491,10 +491,10 @@ function expandedWindowBounds(placement, contentW, contentH, expandedW, expanded
   let width
   let height
   if (p.edge === "left" || p.edge === "right") {
-    width = eh + 16 + EXPANDED_RAIL_GUTTER
+    width = eh + 16 + EXPANDED_RAIL_GUTTER * 2
     height = ew + EXPANDED_SIDE_INSET * 2 + EXPANDED_BOTTOM_BLEED
   } else {
-    width = ew + EXPANDED_SIDE_INSET * 2 + EXPANDED_RAIL_GUTTER
+    width = ew + EXPANDED_SIDE_INSET * 2 + EXPANDED_RAIL_GUTTER * 2
     height = eh + EXPANDED_BOTTOM_BLEED
   }
 
