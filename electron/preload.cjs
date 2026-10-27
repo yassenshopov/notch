@@ -5,6 +5,14 @@ const cartoApiKey =
   process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
 
 contextBridge.exposeInMainWorld("notch", {
+  desktop: {
+    open: (panel) => ipcRenderer.invoke("desktop:open", panel),
+    onNavigate: (cb) => {
+      const handler = (_event, panel) => cb(panel)
+      ipcRenderer.on("desktop:navigate", handler)
+      return () => ipcRenderer.removeListener("desktop:navigate", handler)
+    },
+  },
   setExpanded: (payload) => ipcRenderer.invoke("notch:set-expanded", payload),
   setPassthrough: (pass) => ipcRenderer.invoke("notch:set-passthrough", pass),
   reposition: () => ipcRenderer.invoke("notch:reposition"),
@@ -39,6 +47,8 @@ contextBridge.exposeInMainWorld("notch", {
     connect: () => ipcRenderer.invoke("spotify:connect"),
     disconnect: () => ipcRenderer.invoke("spotify:disconnect"),
     action: (action) => ipcRenderer.invoke("spotify:action", action),
+    recentlyPlayed: (limit) => ipcRenderer.invoke("spotify:recently-played", limit),
+    playUri: (uri) => ipcRenderer.invoke("spotify:play-uri", uri),
     lyrics: (query) => ipcRenderer.invoke("spotify:lyrics", query),
   },
   settings: {
@@ -58,6 +68,7 @@ contextBridge.exposeInMainWorld("notch", {
   },
   github: {
     status: (options) => ipcRenderer.invoke("github:status", options),
+    insights: (options) => ipcRenderer.invoke("github:insights", options),
     openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
   },
   mint: {

@@ -83,6 +83,10 @@ type ControlsBridgeStatus = {
 type NotchPlacementBridge = import("./config/settings").NotchPlacement
 
 interface NotchBridge {
+  desktop?: {
+    open: (panel: import("./lib/panel-routing").NotchPanel) => Promise<{ ok: boolean }>
+    onNavigate?: (cb: (panel: string) => void) => () => void
+  }
   setExpanded: (
     payload:
       | boolean
@@ -114,6 +118,7 @@ interface NotchBridge {
   platform: string
   mapTiles: {
     cartoApiKey: string
+    fetchCartoApiKey: () => Promise<string>
   }
   cursor: {
     status: (options?: { force?: boolean }) => Promise<CursorBridgeStatus>
@@ -126,6 +131,13 @@ interface NotchBridge {
     connect: () => Promise<SpotifyBridgeStatus>
     disconnect: () => Promise<SpotifyBridgeStatus>
     action: (action: "play" | "pause" | "next" | "previous") => Promise<SpotifyBridgeStatus>
+    recentlyPlayed: (limit?: number) => Promise<
+      Array<{
+        track: SpotifyBridgeStatus["track"] & { uri: string }
+        playedAt: string | null
+      }>
+    >
+    playUri: (uri: string) => Promise<SpotifyBridgeStatus>
     lyrics: (query: {
       trackName: string
       artistName: string
@@ -152,7 +164,14 @@ interface NotchBridge {
     ) => Promise<import("./lib/markets").MarketChartSeries>
   }
   github: {
-    status: (options?: { force?: boolean }) => Promise<GitHubBridgeStatus>
+    status: (options?: {
+      force?: boolean
+      includeInsights?: boolean
+      year?: number
+    }) => Promise<GitHubBridgeStatus>
+    insights: (options?: { force?: boolean; year?: number }) => Promise<
+      import("./lib/github").GitHubActivityInsights
+    >
     openUrl: (url: string) => Promise<void>
   }
   mint: {

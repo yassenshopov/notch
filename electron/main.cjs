@@ -18,6 +18,8 @@ const {
   dialog,
 } = require("electron")
 const settingsStore = require("./settings-store.cjs")
+const { createDesktopWindowManager } = require("./desktop-window.cjs")
+const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
 const notchPlacement = require("./notch-placement.cjs")
 const windowMotion = require("./notch-window-motion.cjs")
 const {
@@ -144,6 +146,11 @@ let lastContentSize = { ...COLLAPSED }
 /** Main-process expanded shell — display-metrics must not snap back to pill size */
 let shellExpanded = false
 let wallpaperDailyScheduler = null
+const desktopWindows = createDesktopWindowManager({
+  isDev: () => isDev,
+  preloadPath: PRELOAD_PATH,
+  readSettings: () => settingsStore.readSettings(),
+})
 
 function showNotch() {
   if (!mainWindow) {
@@ -226,7 +233,7 @@ function createWindow() {
     thickFrame: false,
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, "preload.cjs"),
+      preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -463,6 +470,8 @@ ipcMain.handle("notch:drag-cancel", () => {
   return notchPlacement.readPlacement()
 })
 
+ipcMain.handle("desktop:open", (_event, panel) => desktopWindows.openDesktopPanel(panel))
+
 ipcMain.handle("notch:set-expanded", (_event, payload) => {
   if (!mainWindow) return { anchorLeft: 0, anchorTop: 0 }
   const expanded = typeof payload === "object" ? payload.expanded : payload
@@ -529,6 +538,18 @@ ipcMain.handle("spotify:disconnect", () => spotify.disconnect())
 
 ipcMain.handle("spotify:action", async (_event, action) => {
   return spotify.playbackAction(action)
+})
+
+ipcMain.handle("spotify:recently-played", async (_event, limit) => {
+  try {
+    return await spotify.getRecentlyPlayed(limit)
+  } catch {
+    return []
+  }
+})
+
+ipcMain.handle("spotify:play-uri", async (_event, uri) => {
+  return spotify.playUri(uri)
 })
 
 ipcMain.handle("spotify:lyrics", async (_event, query) => {
@@ -619,6 +640,26 @@ ipcMain.handle("github:status", async (_event, options) => {
   }
 })
 
+ipcMain.handle("github:insights", async (_event, options) => {
+  try {
+    return await github.activityInsights({
+      force: options?.force === true,
+      year: options?.year,
+    })
+  } catch (err) {
+    return {
+      configured: github.configured(),
+      connected: false,
+      years: [],
+      chartYear: new Date().getFullYear(),
+      repoTotals: [],
+      repoSeries: [],
+      monthLabels: [],
+      error: err instanceof Error ? err.message : "github_insights_error",
+    }
+  }
+})
+
 ipcMain.handle("github:open-url", async (_event, url) => {
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {
     await shell.openExternal(url)
@@ -666,7 +707,7 @@ ipcMain.handle("pi:status", async (_event, options) => {
     return {
       configured: true,
       connected: false,
-      host: "pi-home",
+      host: "pi",
       hostname: null,
       uptimeSec: null,
       load1: null,
