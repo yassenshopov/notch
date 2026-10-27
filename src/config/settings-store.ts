@@ -51,6 +51,9 @@ export async function hydrateSettings() {
   try {
     const saved = (await window.notch?.settings?.get()) ?? {}
     current = deepMerge(structuredClone(defaultSettings), saved as Partial<AppSettings>)
+    if (current.pi?.sshHost === "pi-home") {
+      current.pi = { ...current.pi, sshHost: "pi" }
+    }
     current.expanded.width = Math.max(380, current.expanded.width)
     current.expanded.height = Math.max(580, current.expanded.height)
     emit()

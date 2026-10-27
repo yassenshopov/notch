@@ -11,7 +11,11 @@ import {
   wallpaperOutputDirLabel,
   type YearWallpaperShape,
 } from "../lib/year-wallpaper"
+import { usePanelLayout } from "../lib/panel-layout"
 import { cn } from "../lib/utils"
+import { BentoGrid, BentoTile, bentoPad, type BentoCol } from "./desktop/DesktopBento"
+import { PanelPageHeader } from "./desktop/PanelPageHeader"
+import { YearWallpaperPreview } from "./YearWallpaperPreview"
 
 type Props = {
   spotifyConnected: boolean
@@ -39,6 +43,7 @@ export function SettingsPanel({
   stravaConnecting,
 }: Props) {
   const s = useSettings()
+  const desktop = usePanelLayout() === "desktop"
   const year = new Date().getFullYear()
   const wallpaper = mergeYearWallpaper(s.yearWallpaper)
   const [wallpaperBusy, setWallpaperBusy] = useState(false)
@@ -81,479 +86,777 @@ export function SettingsPanel({
 
   return (
     <div
-      className="notch-scroll flex h-full flex-col pr-1"
+      className={cn(
+        "flex flex-col pr-1",
+        desktop ? "min-h-0 pb-4" : "notch-scroll h-full min-h-0",
+      )}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="mb-5">
+      <PanelPageHeader className="mb-5">
         <p className="text-[15px] font-semibold tracking-tight">Settings</p>
         <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-          Island faces, weather, Spotify & feel.
+          Grouped by topic — general, island, integrations, and servers.
         </p>
-      </header>
+      </PanelPageHeader>
 
-      <Section title="Island">
-        <Row label="Rotate">
-          <Segmented
-            value={String(s.island.rotateIntervalMs)}
-            options={[
-              { value: "3000", label: "3s" },
-              { value: "5000", label: "5s" },
-              { value: "8000", label: "8s" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: { ...s.island, rotateIntervalMs: Number(v) },
-              })
-            }
-          />
-        </Row>
-        <Row label="Weather">
-          <Segmented
-            value={s.island.faces.weather ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, weather: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Battery">
-          <Segmented
-            value={s.island.faces.battery ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, battery: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Clock">
-          <Segmented
-            value={s.island.faces.clock ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, clock: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Markets">
-          <Segmented
-            value={s.island.faces.markets ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, markets: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="GitHub">
-          <Segmented
-            value={s.island.faces.github ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, github: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Strava">
-          <Segmented
-            value={(s.island.faces.strava ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, strava: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Mint server">
-          <Segmented
-            value={(s.island.faces.mint ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, mint: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Raspberry Pi">
-          <Segmented
-            value={(s.island.faces.pi ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, pi: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Air quality">
-          <Segmented
-            value={(s.island.faces.air ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, air: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Calendar">
-          <Segmented
-            value={(s.island.faces.calendar ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                island: {
-                  ...s.island,
-                  faces: { ...s.island.faces, calendar: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-      </Section>
+      <SettingsShell>
+        <SettingsGroupLabel title="General" />
 
-      <Section title="Calendar">
-        <Row label="ICS URL">
-          <input
-            type="url"
-            value={s.calendar?.icsUrl ?? ""}
-            placeholder="https://calendar.google.com/…/basic.ics"
-            onChange={(e) =>
-              void updateSettings({
-                calendar: { ...(s.calendar ?? { pollIntervalMs: 300_000 }), icsUrl: e.target.value },
-              })
-            }
-            className="w-full max-w-[200px] rounded-lg border border-black/10 bg-white/80 px-2 py-1 text-[11px] outline-none focus:border-black/25 dark:border-white/15 dark:bg-black/30"
-          />
-        </Row>
-      </Section>
+        <SettingsTile col={6}>
+          <Section title="App" description="Startup, appearance, clock, and motion.">
+            <Row label="Launch at login">
+              <Segmented
+                value={s.launchAtLogin ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) => void updateSettings({ launchAtLogin: v === "on" })}
+              />
+            </Row>
+            <Row label="Theme">
+              <Segmented
+                value={s.theme}
+                options={[
+                  { value: "system", label: "Auto" },
+                  { value: "light", label: "Light" },
+                  { value: "dark", label: "Dark" },
+                ]}
+                onChange={(theme) => void updateSettings({ theme: theme as ThemeMode })}
+              />
+            </Row>
+            <Row label="Time">
+              <Segmented
+                value={s.clock.format}
+                options={[
+                  { value: "24h", label: "24h" },
+                  { value: "12h", label: "12h" },
+                ]}
+                onChange={(format) =>
+                  void updateSettings({ clock: { format: format as ClockFormat } })
+                }
+              />
+            </Row>
+            <Row label="Motion">
+              <Segmented
+                value={
+                  s.motion.stiffness >= 420 ? "snappy" : s.motion.stiffness <= 280 ? "soft" : "balanced"
+                }
+                options={[
+                  { value: "soft", label: "Soft" },
+                  { value: "balanced", label: "Balanced" },
+                  { value: "snappy", label: "Snappy" },
+                ]}
+                onChange={(feel) => {
+                  const presets = {
+                    soft: { stiffness: 260, damping: 28, mass: 1 },
+                    balanced: { stiffness: 380, damping: 32, mass: 0.85 },
+                    snappy: { stiffness: 480, damping: 34, mass: 0.7 },
+                  } as const
+                  void updateSettings({ motion: { type: "spring", ...presets[feel] } })
+                }}
+              />
+            </Row>
+          </Section>
+          <Section title="Charts" nested>
+            <Row label="Style">
+              <Segmented
+                value={s.charts.style}
+                options={[
+                  { value: "bar", label: "Bars" },
+                  { value: "line", label: "Line" },
+                ]}
+                onChange={(style) =>
+                  void updateSettings({ charts: { style: style as ChartStyle } })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
 
-      <Section title="Browser media">
-        <Row label="YouTube / web">
-          <Segmented
-            value={(s.media?.enabled ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                media: { ...(s.media ?? { pollIntervalMs: 2000 }), enabled: v === "on" },
-              })
-            }
-          />
-        </Row>
-      </Section>
+        <SettingsTile col={6}>
+          <Section title="Weather" description="Units, refresh interval, and location.">
+            <Row label="Temperature">
+              <Segmented
+                value={s.temperatureUnit}
+                options={[
+                  { value: "celsius", label: "°C" },
+                  { value: "fahrenheit", label: "°F" },
+                ]}
+                onChange={(temperatureUnit) => void updateSettings({ temperatureUnit })}
+              />
+            </Row>
+            <Row label="Wind">
+              <Segmented
+                value={s.windSpeedUnit}
+                options={[
+                  { value: "kmh", label: "km/h" },
+                  { value: "mph", label: "mph" },
+                  { value: "ms", label: "m/s" },
+                ]}
+                onChange={(windSpeedUnit) => void updateSettings({ windSpeedUnit })}
+              />
+            </Row>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.refreshIntervalMs)}
+                options={[
+                  { value: String(5 * 60 * 1000), label: "5m" },
+                  { value: String(10 * 60 * 1000), label: "10m" },
+                  { value: String(30 * 60 * 1000), label: "30m" },
+                ]}
+                onChange={(v) => void updateSettings({ refreshIntervalMs: Number(v) })}
+              />
+            </Row>
+            <Row label="Location">
+              <Segmented
+                value={s.location.mode}
+                options={[
+                  { value: "auto", label: "Auto" },
+                  { value: "manual", label: "Manual" },
+                ]}
+                onChange={(mode) => {
+                  if (mode === "auto") {
+                    void updateSettings({ location: { mode: "auto" } })
+                  } else {
+                    const { label, latitude, longitude, countryCode } = DEFAULT_WEATHER_LOCATION
+                    setManualLabel(label)
+                    setManualLat(String(latitude))
+                    setManualLon(String(longitude))
+                    setManualCountry(countryCode)
+                    saveManual(label, String(latitude), String(longitude), countryCode)
+                  }
+                }}
+              />
+            </Row>
+            <AnimatePresence initial={false}>
+              {s.location.mode === "manual" ? (
+                <motion.div
+                  key="manual-location"
+                  initial={{ opacity: 0, height: 0, y: -6 }}
+                  animate={{ opacity: 1, height: "auto", y: 0 }}
+                  exit={{ opacity: 0, height: 0, y: -6 }}
+                  transition={notchUi}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Field
+                      label="Label"
+                      value={manualLabel}
+                      onChange={setManualLabel}
+                      onBlur={() => saveManual()}
+                      className="col-span-2"
+                    />
+                    <Field
+                      label="Lat"
+                      value={manualLat}
+                      onChange={setManualLat}
+                      onBlur={() => saveManual()}
+                    />
+                    <Field
+                      label="Lon"
+                      value={manualLon}
+                      onChange={setManualLon}
+                      onBlur={() => saveManual()}
+                    />
+                    <Field
+                      label="Country"
+                      value={manualCountry}
+                      onChange={(v) => setManualCountry(v.toUpperCase().slice(0, 2))}
+                      onBlur={() => saveManual()}
+                      className="col-span-2"
+                    />
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </Section>
+        </SettingsTile>
 
-      <Section title="Live activities">
-        <Row label="Alerts">
-          <Segmented
-            value={s.liveActivities.enabled ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                liveActivities: { ...s.liveActivities, enabled: v === "on" },
-              })
-            }
-          />
-        </Row>
-        <Row label="Rotate">
-          <Segmented
-            value={String(s.liveActivities.dwellMs)}
-            options={[
-              { value: "6000", label: "6s" },
-              { value: "8000", label: "8s" },
-              { value: "12000", label: "12s" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                liveActivities: { ...s.liveActivities, dwellMs: Number(v) },
-              })
-            }
-          />
-        </Row>
-        <Row label="Rain soon">
-          <Segmented
-            value={s.liveActivities.weather.enabled ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                liveActivities: {
-                  ...s.liveActivities,
-                  weather: {
-                    ...s.liveActivities.weather,
-                    enabled: v === "on",
-                  },
-                },
-              })
-            }
-          />
-        </Row>
-        <Row label="Cursor usage">
-          <Segmented
-            value={s.liveActivities.cursor.enabled ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                liveActivities: {
-                  ...s.liveActivities,
-                  cursor: { ...s.liveActivities.cursor, enabled: v === "on" },
-                },
-              })
-            }
-          />
-        </Row>
-      </Section>
+        <SettingsTile col={6}>
+          <Section title="Calendar" description="Public ICS feed for upcoming events.">
+            <Row label="ICS URL">
+              <input
+                type="url"
+                value={s.calendar?.icsUrl ?? ""}
+                placeholder="https://calendar.google.com/…/basic.ics"
+                onChange={(e) =>
+                  void updateSettings({
+                    calendar: { ...(s.calendar ?? { pollIntervalMs: 300_000 }), icsUrl: e.target.value },
+                  })
+                }
+                className="w-full max-w-[200px] rounded-lg border border-black/10 bg-white/80 px-2 py-1 text-[11px] outline-none focus:border-black/25 dark:border-white/15 dark:bg-black/30"
+              />
+            </Row>
+          </Section>
+          <Section title="Browser media" nested>
+            <Row label="YouTube / web">
+              <Segmented
+                value={(s.media?.enabled ?? true) ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    media: { ...(s.media ?? { pollIntervalMs: 2000 }), enabled: v === "on" },
+                  })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
 
-      <Section title="Charts">
-        <Row label="Style">
-          <Segmented
-            value={s.charts.style}
-            options={[
-              { value: "bar", label: "Bars" },
-              { value: "line", label: "Line" },
-            ]}
-            onChange={(style) =>
-              void updateSettings({ charts: { style: style as ChartStyle } })
-            }
-          />
-        </Row>
-      </Section>
+        <SettingsTile col={6}>
+          <Section title="Live activities" description="Rotating alerts in the island.">
+            <Row label="Alerts">
+              <Segmented
+                value={s.liveActivities.enabled ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    liveActivities: { ...s.liveActivities, enabled: v === "on" },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Rotate">
+              <Segmented
+                value={String(s.liveActivities.dwellMs)}
+                options={[
+                  { value: "6000", label: "6s" },
+                  { value: "8000", label: "8s" },
+                  { value: "12000", label: "12s" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    liveActivities: { ...s.liveActivities, dwellMs: Number(v) },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Rain soon">
+              <Segmented
+                value={s.liveActivities.weather.enabled ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    liveActivities: {
+                      ...s.liveActivities,
+                      weather: {
+                        ...s.liveActivities.weather,
+                        enabled: v === "on",
+                      },
+                    },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Cursor usage">
+              <Segmented
+                value={s.liveActivities.cursor.enabled ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    liveActivities: {
+                      ...s.liveActivities,
+                      cursor: { ...s.liveActivities.cursor, enabled: v === "on" },
+                    },
+                  })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
 
-      <Section title="Weather">
-        <Row label="Temperature">
-          <Segmented
-            value={s.temperatureUnit}
-            options={[
-              { value: "celsius", label: "°C" },
-              { value: "fahrenheit", label: "°F" },
-            ]}
-            onChange={(temperatureUnit) => void updateSettings({ temperatureUnit })}
-          />
-        </Row>
-        <Row label="Wind">
-          <Segmented
-            value={s.windSpeedUnit}
-            options={[
-              { value: "kmh", label: "km/h" },
-              { value: "mph", label: "mph" },
-              { value: "ms", label: "m/s" },
-            ]}
-            onChange={(windSpeedUnit) => void updateSettings({ windSpeedUnit })}
-          />
-        </Row>
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.refreshIntervalMs)}
-            options={[
-              { value: String(5 * 60 * 1000), label: "5m" },
-              { value: String(10 * 60 * 1000), label: "10m" },
-              { value: String(30 * 60 * 1000), label: "30m" },
-            ]}
-            onChange={(v) => void updateSettings({ refreshIntervalMs: Number(v) })}
-          />
-        </Row>
-        <Row label="Location">
-          <Segmented
-            value={s.location.mode}
-            options={[
-              { value: "auto", label: "Auto" },
-              { value: "manual", label: "Manual" },
-            ]}
-            onChange={(mode) => {
-              if (mode === "auto") {
-                void updateSettings({ location: { mode: "auto" } })
-              } else {
-                const { label, latitude, longitude, countryCode } = DEFAULT_WEATHER_LOCATION
-                setManualLabel(label)
-                setManualLat(String(latitude))
-                setManualLon(String(longitude))
-                setManualCountry(countryCode)
-                saveManual(label, String(latitude), String(longitude), countryCode)
-              }
-            }}
-          />
-        </Row>
-        <AnimatePresence initial={false}>
-          {s.location.mode === "manual" ? (
-            <motion.div
-              key="manual-location"
-              initial={{ opacity: 0, height: 0, y: -6 }}
-              animate={{ opacity: 1, height: "auto", y: 0 }}
-              exit={{ opacity: 0, height: 0, y: -6 }}
-              transition={notchUi}
-              className="overflow-hidden"
-            >
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Field
-                  label="Label"
-                  value={manualLabel}
-                  onChange={setManualLabel}
-                  onBlur={() => saveManual()}
-                  className="col-span-2"
-                />
-                <Field
-                  label="Lat"
-                  value={manualLat}
-                  onChange={setManualLat}
-                  onBlur={() => saveManual()}
-                />
-                <Field
-                  label="Lon"
-                  value={manualLon}
-                  onChange={setManualLon}
-                  onBlur={() => saveManual()}
-                />
-                <Field
-                  label="Country"
-                  value={manualCountry}
-                  onChange={(v) => setManualCountry(v.toUpperCase().slice(0, 2))}
-                  onBlur={() => saveManual()}
-                  className="col-span-2"
-                />
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </Section>
+        <SettingsGroupLabel title="Island" />
 
-      <Section title="App">
-        <Row label="Launch at login">
-          <Segmented
-            value={s.launchAtLogin ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) => void updateSettings({ launchAtLogin: v === "on" })}
-          />
-        </Row>
-        <Row label="Theme">
-          <Segmented
-            value={s.theme}
-            options={[
-              { value: "system", label: "Auto" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-            onChange={(theme) => void updateSettings({ theme: theme as ThemeMode })}
-          />
-        </Row>
-        <Row label="Time">
-          <Segmented
-            value={s.clock.format}
-            options={[
-              { value: "24h", label: "24h" },
-              { value: "12h", label: "12h" },
-            ]}
-            onChange={(format) =>
-              void updateSettings({ clock: { format: format as ClockFormat } })
-            }
-          />
-        </Row>
-        <Row label="Motion">
-          <Segmented
-            value={
-              s.motion.stiffness >= 420 ? "snappy" : s.motion.stiffness <= 280 ? "soft" : "balanced"
-            }
-            options={[
-              { value: "soft", label: "Soft" },
-              { value: "balanced", label: "Balanced" },
-              { value: "snappy", label: "Snappy" },
-            ]}
-            onChange={(feel) => {
-              const presets = {
-                soft: { stiffness: 260, damping: 28, mass: 1 },
-                balanced: { stiffness: 380, damping: 32, mass: 0.85 },
-                snappy: { stiffness: 480, damping: 34, mass: 0.7 },
-              } as const
-              void updateSettings({ motion: { type: "spring", ...presets[feel] } })
-            }}
-          />
-        </Row>
-      </Section>
+        <SettingsTile col={12}>
+          <Section
+            title="Rotation & faces"
+            description="How fast the collapsed notch cycles, and which panels appear in the carousel."
+          >
+            <Row label="Rotate interval">
+              <Segmented
+                value={String(s.island.rotateIntervalMs)}
+                options={[
+                  { value: "3000", label: "3s" },
+                  { value: "5000", label: "5s" },
+                  { value: "8000", label: "8s" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    island: { ...s.island, rotateIntervalMs: Number(v) },
+                  })
+                }
+              />
+            </Row>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <IslandFaceRow
+                label="Weather"
+                on={s.island.faces.weather}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, weather: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Battery"
+                on={s.island.faces.battery}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, battery: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Clock"
+                on={s.island.faces.clock}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, clock: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Air quality"
+                on={s.island.faces.air ?? true}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, air: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Calendar"
+                on={s.island.faces.calendar ?? true}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, calendar: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Markets"
+                on={s.island.faces.markets}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, markets: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="GitHub"
+                on={s.island.faces.github}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, github: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Strava"
+                on={s.island.faces.strava ?? true}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, strava: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Mint server"
+                on={s.island.faces.mint ?? true}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, mint: on } },
+                  })
+                }
+              />
+              <IslandFaceRow
+                label="Raspberry Pi"
+                on={s.island.faces.pi ?? true}
+                onChange={(on) =>
+                  void updateSettings({
+                    island: { ...s.island, faces: { ...s.island.faces, pi: on } },
+                  })
+                }
+              />
+            </div>
+          </Section>
+        </SettingsTile>
 
-      <Section title="Wallpaper">
+        <SettingsGroupLabel title="Integrations" />
+
+        <SettingsTile col={6}>
+          <Section title="Spotify">
+            <Row label="Lyrics">
+              <Segmented
+                value={(s.spotify.showLyrics ?? true) ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    spotify: { ...s.spotify, showLyrics: v === "on" },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Poll">
+              <Segmented
+                value={String(s.spotify.pollIntervalMs)}
+                options={[
+                  { value: "2000", label: "2s" },
+                  { value: "4000", label: "4s" },
+                  { value: "8000", label: "8s" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({ spotify: { ...s.spotify, pollIntervalMs: Number(v) } })
+                }
+              />
+            </Row>
+            <div className="mt-1">
+              <AnimatePresence mode="wait" initial={false}>
+                {!spotifyConfigured ? (
+                  <motion.p
+                    key="spotify-unconfigured"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={notchUiFast}
+                    className="text-[12px] text-black/45 dark:text-white/45"
+                  >
+                    Add Spotify keys to <span className="font-medium">.env</span> first.
+                  </motion.p>
+                ) : spotifyConnected ? (
+                  <motion.button
+                    key="spotify-disconnect"
+                    type="button"
+                    onClick={onDisconnectSpotify}
+                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={notchUiFast}
+                    whileTap={{ scale: 0.97 }}
+                    className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
+                  >
+                    Disconnect Spotify
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    key="spotify-connect"
+                    type="button"
+                    onClick={onConnectSpotify}
+                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={notchUiFast}
+                    whileTap={{ scale: 0.97 }}
+                    className="rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white dark:bg-white dark:text-[#111]"
+                  >
+                    {connecting ? "Waiting…" : "Connect Spotify"}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+          </Section>
+        </SettingsTile>
+
+        <SettingsTile col={6}>
+          <Section title="Strava">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              Use your Strava API app credentials in <span className="font-medium">.env</span>{" "}
+              (<span className="font-medium">STRAVA_CLIENT_ID</span> /{" "}
+              <span className="font-medium">STRAVA_CLIENT_SECRET</span>). Set callback to{" "}
+              <span className="font-medium">http://127.0.0.1:43111/callback</span>.
+            </p>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.strava?.pollIntervalMs ?? 180_000)}
+                options={[
+                  { value: "120000", label: "2m" },
+                  { value: "180000", label: "3m" },
+                  { value: "300000", label: "5m" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    strava: { ...(s.strava ?? { pollIntervalMs: 180_000 }), pollIntervalMs: Number(v) },
+                  })
+                }
+              />
+            </Row>
+            <div className="mt-1">
+              <AnimatePresence mode="wait" initial={false}>
+                {!stravaConfigured ? (
+                  <motion.p
+                    key="strava-unconfigured"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={notchUiFast}
+                    className="text-[12px] text-black/45 dark:text-white/45"
+                  >
+                    Add Strava keys to <span className="font-medium">.env</span> and restart.
+                  </motion.p>
+                ) : stravaConnected ? (
+                  <motion.button
+                    key="strava-disconnect"
+                    type="button"
+                    onClick={onDisconnectStrava}
+                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={notchUiFast}
+                    whileTap={{ scale: 0.97 }}
+                    className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
+                  >
+                    Disconnect Strava
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    key="strava-connect"
+                    type="button"
+                    onClick={onConnectStrava}
+                    initial={{ opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={notchUiFast}
+                    whileTap={{ scale: 0.97 }}
+                    className="rounded-full bg-[#fc4c02] px-4 py-2 text-[12px] font-semibold text-white"
+                  >
+                    {stravaConnecting ? "Waiting…" : "Connect Strava"}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+          </Section>
+        </SettingsTile>
+
+        <SettingsTile col={6}>
+          <Section title="Markets">
+            <WatchlistField
+              value={s.markets.watchlist.map((w) => w.symbol).join(", ")}
+              onSave={(raw) => {
+                const items = parseWatchlist(raw)
+                void updateSettings({ markets: { ...s.markets, watchlist: items } })
+              }}
+            />
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.markets.pollIntervalMs)}
+                options={[
+                  { value: "60000", label: "1m" },
+                  { value: "90000", label: "1.5m" },
+                  { value: "180000", label: "3m" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({ markets: { ...s.markets, pollIntervalMs: Number(v) } })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
+
+        <SettingsTile col={6}>
+          <Section title="GitHub">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              Set <span className="font-medium">GITHUB_TOKEN</span> in{" "}
+              <span className="font-medium">.env</span> (classic PAT with{" "}
+              <span className="font-medium">notifications</span> scope) and restart Notch.
+            </p>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.github.pollIntervalMs)}
+                options={[
+                  { value: "60000", label: "1m" },
+                  { value: "120000", label: "2m" },
+                  { value: "300000", label: "5m" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({ github: { ...s.github, pollIntervalMs: Number(v) } })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
+
+        <SettingsGroupLabel title="Servers" />
+
+        <SettingsTile col={6}>
+          <Section title="Mint server">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              Polls your home Linux box over SSH. Default host{" "}
+              <span className="font-medium">mint</span> uses Tailscale (falls back to{" "}
+              <span className="font-medium">mint-home</span> on LAN). Laptop needs Tailscale running.
+            </p>
+            <Row label="SSH host">
+              <input
+                type="text"
+                value={s.mint?.sshHost ?? "mint"}
+                onChange={(e) =>
+                  void updateSettings({
+                    mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), sshHost: e.target.value },
+                  })
+                }
+                className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
+              />
+            </Row>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.mint?.pollIntervalMs ?? 30_000)}
+                options={[
+                  { value: "15000", label: "15s" },
+                  { value: "30000", label: "30s" },
+                  { value: "60000", label: "1m" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), pollIntervalMs: Number(v) },
+                  })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
+
+        <SettingsTile col={6}>
+          <Section title="Raspberry Pi">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              TV Pi over SSH. Default <span className="font-medium">pi</span> uses Tailscale (falls back to{" "}
+              <span className="font-medium">pi-home</span> on LAN).
+            </p>
+            <Row label="SSH host">
+              <input
+                type="text"
+                value={s.pi?.sshHost ?? "pi"}
+                onChange={(e) =>
+                  void updateSettings({
+                    pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi" }), sshHost: e.target.value },
+                  })
+                }
+                className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
+              />
+            </Row>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.pi?.pollIntervalMs ?? 30_000)}
+                options={[
+                  { value: "15000", label: "15s" },
+                  { value: "30000", label: "30s" },
+                  { value: "60000", label: "1m" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi" }), pollIntervalMs: Number(v) },
+                  })
+                }
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
+
+        <SettingsGroupLabel title="Personalization" />
+
+        <SettingsTile col={12}>
+          <Section title="Wallpaper">
         <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
           {year} week heatmap (Mon→Sun). Saves{" "}
           <span className="font-medium">{wallpaperFileName(year)}</span> to your folder below.
         </p>
+        <div
+          className={cn(
+            "overflow-hidden rounded-2xl border border-black/10 dark:border-white/15",
+            "grid gap-4 p-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] sm:items-start",
+          )}
+        >
+          <div className="min-w-0 overflow-hidden rounded-xl bg-black/5 dark:bg-white/5">
+            <YearWallpaperPreview
+              year={year}
+              settings={wallpaper}
+              className="aspect-video w-full"
+            />
+          </div>
+          <div className="flex min-w-0 flex-col gap-2.5">
+            <Row label="Shape">
+              <Segmented
+                value={wallpaper.shape}
+                options={[
+                  { value: "square", label: "Square" },
+                  { value: "circle", label: "Circle" },
+                ]}
+                onChange={(v) => patchWallpaper({ shape: v as YearWallpaperShape })}
+              />
+            </Row>
+            <Row label="Cell">
+              <Segmented
+                value={String(wallpaper.cellSize)}
+                options={[
+                  { value: "10", label: "S" },
+                  { value: "13", label: "M" },
+                  { value: "16", label: "L" },
+                ]}
+                onChange={(v) => patchWallpaper({ cellSize: Number(v) })}
+              />
+            </Row>
+            <Row label="Gap">
+              <Segmented
+                value={String(wallpaper.gap)}
+                options={[
+                  { value: "4", label: "4" },
+                  { value: "6", label: "6" },
+                  { value: "8", label: "8" },
+                ]}
+                onChange={(v) => patchWallpaper({ gap: Number(v) })}
+              />
+            </Row>
+            {wallpaper.shape === "square" ? (
+              <Row label="Corners">
+                <Segmented
+                  value={String(wallpaper.cornerRadius)}
+                  options={[
+                    { value: "0", label: "0" },
+                    { value: "2", label: "2" },
+                    { value: "4", label: "4" },
+                  ]}
+                  onChange={(v) => patchWallpaper({ cornerRadius: Number(v) })}
+                />
+              </Row>
+            ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <ColorField
+                label="Background"
+                value={wallpaper.backgroundColor}
+                onChange={(v) => patchWallpaper({ backgroundColor: v })}
+              />
+              <ColorField
+                label="Passed"
+                value={wallpaper.passedColor}
+                onChange={(v) => patchWallpaper({ passedColor: v })}
+              />
+              <ColorField
+                label="Upcoming"
+                value={wallpaper.futureColor}
+                onChange={(v) => patchWallpaper({ futureColor: v })}
+              />
+              <ColorField
+                label="Today"
+                value={wallpaper.todayColor}
+                onChange={(v) => patchWallpaper({ todayColor: v })}
+              />
+            </div>
+          </div>
+        </div>
         <label className="flex flex-col gap-1.5">
           <span className="text-[13px] font-medium">Save folder</span>
           <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">
@@ -616,73 +919,6 @@ export function SettingsPanel({
             onChange={(v) => patchWallpaper({ applyAfterRegenerate: v === "on" })}
           />
         </Row>
-        <Row label="Shape">
-          <Segmented
-            value={wallpaper.shape}
-            options={[
-              { value: "square", label: "Square" },
-              { value: "circle", label: "Circle" },
-            ]}
-            onChange={(v) => patchWallpaper({ shape: v as YearWallpaperShape })}
-          />
-        </Row>
-        <Row label="Cell">
-          <Segmented
-            value={String(wallpaper.cellSize)}
-            options={[
-              { value: "10", label: "S" },
-              { value: "13", label: "M" },
-              { value: "16", label: "L" },
-            ]}
-            onChange={(v) => patchWallpaper({ cellSize: Number(v) })}
-          />
-        </Row>
-        <Row label="Gap">
-          <Segmented
-            value={String(wallpaper.gap)}
-            options={[
-              { value: "4", label: "4" },
-              { value: "6", label: "6" },
-              { value: "8", label: "8" },
-            ]}
-            onChange={(v) => patchWallpaper({ gap: Number(v) })}
-          />
-        </Row>
-        {wallpaper.shape === "square" ? (
-          <Row label="Corners">
-            <Segmented
-              value={String(wallpaper.cornerRadius)}
-              options={[
-                { value: "0", label: "0" },
-                { value: "2", label: "2" },
-                { value: "4", label: "4" },
-              ]}
-              onChange={(v) => patchWallpaper({ cornerRadius: Number(v) })}
-            />
-          </Row>
-        ) : null}
-        <div className="grid grid-cols-2 gap-2">
-          <ColorField
-            label="Background"
-            value={wallpaper.backgroundColor}
-            onChange={(v) => patchWallpaper({ backgroundColor: v })}
-          />
-          <ColorField
-            label="Passed"
-            value={wallpaper.passedColor}
-            onChange={(v) => patchWallpaper({ passedColor: v })}
-          />
-          <ColorField
-            label="Upcoming"
-            value={wallpaper.futureColor}
-            onChange={(v) => patchWallpaper({ futureColor: v })}
-          />
-          <ColorField
-            label="Today"
-            value={wallpaper.todayColor}
-            onChange={(v) => patchWallpaper({ todayColor: v })}
-          />
-        </div>
         <div className="mt-1 flex flex-col gap-2">
           <motion.button
             type="button"
@@ -734,262 +970,9 @@ export function SettingsPanel({
             <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">{wallpaperNote}</p>
           ) : null}
         </div>
-      </Section>
-
-      <Section title="Markets">
-        <WatchlistField
-          value={s.markets.watchlist.map((w) => w.symbol).join(", ")}
-          onSave={(raw) => {
-            const items = parseWatchlist(raw)
-            void updateSettings({ markets: { ...s.markets, watchlist: items } })
-          }}
-        />
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.markets.pollIntervalMs)}
-            options={[
-              { value: "60000", label: "1m" },
-              { value: "90000", label: "1.5m" },
-              { value: "180000", label: "3m" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({ markets: { ...s.markets, pollIntervalMs: Number(v) } })
-            }
-          />
-        </Row>
-      </Section>
-
-      <Section title="GitHub">
-        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
-          Set <span className="font-medium">GITHUB_TOKEN</span> in{" "}
-          <span className="font-medium">.env</span> (classic PAT with{" "}
-          <span className="font-medium">notifications</span> scope) and restart Notch.
-        </p>
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.github.pollIntervalMs)}
-            options={[
-              { value: "60000", label: "1m" },
-              { value: "120000", label: "2m" },
-              { value: "300000", label: "5m" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({ github: { ...s.github, pollIntervalMs: Number(v) } })
-            }
-          />
-        </Row>
-      </Section>
-
-      <Section title="Strava">
-        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
-          Use your Strava API app credentials in <span className="font-medium">.env</span>{" "}
-          (<span className="font-medium">STRAVA_CLIENT_ID</span> /{" "}
-          <span className="font-medium">STRAVA_CLIENT_SECRET</span>). Set callback to{" "}
-          <span className="font-medium">http://127.0.0.1:43111/callback</span>.
-        </p>
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.strava?.pollIntervalMs ?? 180_000)}
-            options={[
-              { value: "120000", label: "2m" },
-              { value: "180000", label: "3m" },
-              { value: "300000", label: "5m" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                strava: { ...(s.strava ?? { pollIntervalMs: 180_000 }), pollIntervalMs: Number(v) },
-              })
-            }
-          />
-        </Row>
-        <div className="mt-3">
-          <AnimatePresence mode="wait" initial={false}>
-            {!stravaConfigured ? (
-              <motion.p
-                key="strava-unconfigured"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={notchUiFast}
-                className="text-[12px] text-black/45 dark:text-white/45"
-              >
-                Add Strava keys to <span className="font-medium">.env</span> and restart.
-              </motion.p>
-            ) : stravaConnected ? (
-              <motion.button
-                key="strava-disconnect"
-                type="button"
-                onClick={onDisconnectStrava}
-                initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={notchUiFast}
-                whileTap={{ scale: 0.97 }}
-                className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
-              >
-                Disconnect Strava
-              </motion.button>
-            ) : (
-              <motion.button
-                key="strava-connect"
-                type="button"
-                onClick={onConnectStrava}
-                initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={notchUiFast}
-                whileTap={{ scale: 0.97 }}
-                className="rounded-full bg-[#fc4c02] px-4 py-2 text-[12px] font-semibold text-white"
-              >
-                {stravaConnecting ? "Waiting…" : "Connect Strava"}
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
-      </Section>
-
-      <Section title="Mint server">
-        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
-          Polls your home Linux box over SSH (Tailscale host{" "}
-          <span className="font-medium">mint</span> by default). Requires{" "}
-          <span className="font-medium">ssh mint</span> to work from this PC.
-        </p>
-        <Row label="SSH host">
-          <input
-            type="text"
-            value={s.mint?.sshHost ?? "mint"}
-            onChange={(e) =>
-              void updateSettings({
-                mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), sshHost: e.target.value },
-              })
-            }
-            className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
-          />
-        </Row>
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.mint?.pollIntervalMs ?? 30_000)}
-            options={[
-              { value: "15000", label: "15s" },
-              { value: "30000", label: "30s" },
-              { value: "60000", label: "1m" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                mint: { ...(s.mint ?? { pollIntervalMs: 30_000, sshHost: "mint" }), pollIntervalMs: Number(v) },
-              })
-            }
-          />
-        </Row>
-      </Section>
-
-      <Section title="Raspberry Pi">
-        <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
-          TV Pi over SSH (<span className="font-medium">pi-home</span> on LAN). Away from home, set a
-          Tailscale SSH host here.
-        </p>
-        <Row label="SSH host">
-          <input
-            type="text"
-            value={s.pi?.sshHost ?? "pi-home"}
-            onChange={(e) =>
-              void updateSettings({
-                pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi-home" }), sshHost: e.target.value },
-              })
-            }
-            className="w-full max-w-[140px] rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
-          />
-        </Row>
-        <Row label="Refresh">
-          <Segmented
-            value={String(s.pi?.pollIntervalMs ?? 30_000)}
-            options={[
-              { value: "15000", label: "15s" },
-              { value: "30000", label: "30s" },
-              { value: "60000", label: "1m" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                pi: { ...(s.pi ?? { pollIntervalMs: 30_000, sshHost: "pi-home" }), pollIntervalMs: Number(v) },
-              })
-            }
-          />
-        </Row>
-      </Section>
-
-      <Section title="Spotify">
-        <Row label="Lyrics">
-          <Segmented
-            value={(s.spotify.showLyrics ?? true) ? "on" : "off"}
-            options={[
-              { value: "on", label: "On" },
-              { value: "off", label: "Off" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({
-                spotify: { ...s.spotify, showLyrics: v === "on" },
-              })
-            }
-          />
-        </Row>
-        <Row label="Poll">
-          <Segmented
-            value={String(s.spotify.pollIntervalMs)}
-            options={[
-              { value: "2000", label: "2s" },
-              { value: "4000", label: "4s" },
-              { value: "8000", label: "8s" },
-            ]}
-            onChange={(v) =>
-              void updateSettings({ spotify: { ...s.spotify, pollIntervalMs: Number(v) } })
-            }
-          />
-        </Row>
-        <div className="mt-3">
-          <AnimatePresence mode="wait" initial={false}>
-            {!spotifyConfigured ? (
-              <motion.p
-                key="spotify-unconfigured"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={notchUiFast}
-                className="text-[12px] text-black/45 dark:text-white/45"
-              >
-                Add Spotify keys to <span className="font-medium">.env</span> first.
-              </motion.p>
-            ) : spotifyConnected ? (
-              <motion.button
-                key="spotify-disconnect"
-                type="button"
-                onClick={onDisconnectSpotify}
-                initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={notchUiFast}
-                whileTap={{ scale: 0.97 }}
-                className="rounded-full bg-black/5 px-4 py-2 text-[12px] font-semibold dark:bg-white/10"
-              >
-                Disconnect Spotify
-              </motion.button>
-            ) : (
-              <motion.button
-                key="spotify-connect"
-                type="button"
-                onClick={onConnectSpotify}
-                initial={{ opacity: 0, y: 4, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                transition={notchUiFast}
-                whileTap={{ scale: 0.97 }}
-                className="rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white dark:bg-white dark:text-[#111]"
-              >
-                {connecting ? "Waiting…" : "Connect Spotify"}
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
-      </Section>
+          </Section>
+        </SettingsTile>
+      </SettingsShell>
 
       <div className="mt-auto pt-4 pb-1">
         <button
@@ -1004,14 +987,98 @@ export function SettingsPanel({
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function SettingsShell({ children }: { children: ReactNode }) {
+  const desktop = usePanelLayout() === "desktop"
+  if (!desktop) return <div className="flex flex-col">{children}</div>
+  return <BentoGrid className="gap-4">{children}</BentoGrid>
+}
+
+function SettingsTile({ col = 12, children }: { col?: BentoCol; children: ReactNode }) {
+  const desktop = usePanelLayout() === "desktop"
+  if (!desktop) return <>{children}</>
   return (
-    <section className="mb-5 border-b border-black/8 pb-5 last:mb-0 last:border-b-0 dark:border-white/10">
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
-        {title}
-      </p>
+    <BentoTile col={col} className={bentoPad()}>
+      {children}
+    </BentoTile>
+  )
+}
+
+function SettingsGroupLabel({ title }: { title: string }) {
+  const desktop = usePanelLayout() === "desktop"
+  if (desktop) {
+    return (
+      <div className="col-span-12 pt-1">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-black/35 dark:text-white/35">
+          {title}
+        </p>
+      </div>
+    )
+  }
+  return (
+    <p className="mb-1 mt-4 border-t border-black/6 pt-4 text-[10px] font-semibold uppercase tracking-[0.18em] text-black/35 first:mt-0 first:border-t-0 first:pt-0 dark:border-white/8">
+      {title}
+    </p>
+  )
+}
+
+function Section({
+  title,
+  description,
+  nested,
+  children,
+}: {
+  title: string
+  description?: string
+  nested?: boolean
+  children: ReactNode
+}) {
+  const desktop = usePanelLayout() === "desktop"
+  return (
+    <section
+      className={cn(
+        !desktop && "mb-5 border-b border-black/8 pb-5 last:mb-0 last:border-b-0 dark:border-white/10",
+        nested && desktop && "mt-5 border-t border-black/6 pt-5 dark:border-white/8",
+        nested && !desktop && "mt-4 border-t border-black/6 pt-4 dark:border-white/8",
+      )}
+    >
+      <div className={cn("mb-3", nested && "mb-2")}>
+        <p
+          className={cn(
+            "font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40",
+            nested ? "text-[10px]" : "text-[11px]",
+          )}
+        >
+          {title}
+        </p>
+        {description ? (
+          <p className="mt-1 text-[12px] leading-snug text-black/45 dark:text-white/45">{description}</p>
+        ) : null}
+      </div>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
+  )
+}
+
+function IslandFaceRow({
+  label,
+  on,
+  onChange,
+}: {
+  label: string
+  on: boolean
+  onChange: (on: boolean) => void
+}) {
+  return (
+    <Row label={label}>
+      <Segmented
+        value={on ? "on" : "off"}
+        options={[
+          { value: "on", label: "On" },
+          { value: "off", label: "Off" },
+        ]}
+        onChange={(v) => onChange(v === "on")}
+      />
+    </Row>
   )
 }
 

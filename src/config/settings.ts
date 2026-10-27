@@ -90,7 +90,7 @@ export type AppSettings = {
   }
   pi: {
     pollIntervalMs: number
-    /** SSH config host (e.g. pi-home on LAN) */
+    /** SSH config host (Tailscale first, e.g. pi) */
     sshHost: string
   }
   calendar: {
@@ -242,7 +242,7 @@ export const defaultSettings: AppSettings = {
   },
   pi: {
     pollIntervalMs: 30_000,
-    sshHost: "pi-home",
+    sshHost: "pi",
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,
