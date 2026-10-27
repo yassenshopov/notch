@@ -13,6 +13,38 @@
   --notch-duration-fast: 0.26s;
 }
 
+html.notch-desktop body {
+  user-select: text;
+}
+
+html.notch-desktop,
+html.notch-desktop body,
+html.notch-desktop #root {
+  background: #f7f7f5 !important;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+html.notch-desktop .desktop-scroll {
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+html.notch-desktop .desktop-scroll-sidebar {
+  scroll-padding-block: 0.75rem;
+  overscroll-behavior: contain;
+}
+
+html.notch-desktop.dark,
+html.notch-desktop.dark body,
+html.notch-desktop.dark #root {
+  background: #111111 !important;
+}
+
 html,
 body,
 #root {
@@ -366,4 +398,18 @@ body {
 
 .strava-osm-map .leaflet-control-attribution {
   display: none !important;
+}
+
+@keyframes pacman-chomp {
+  0%,
+  100% {
+    clip-path: polygon(50% 50%, 100% 5%, 100% 95%);
+  }
+  50% {
+    clip-path: polygon(50% 50%, 100% 47%, 100% 53%);
+  }
+}
+
+.pacman-chomp {
+  animation: pacman-chomp 0.22s ease-in-out infinite;
 }
