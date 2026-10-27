@@ -1,5 +1,7 @@
+import type { ReactNode } from "react"
 import type { AppSettings } from "../config/settings"
 import type { WeatherSnapshot } from "../lib/weather"
+import type { PanelLayout } from "../lib/panel-layout"
 import type { NotchPanel } from "../lib/panel-routing"
 import type { SpotifyStatus } from "../lib/spotify"
 import type { CursorStatus } from "../lib/cursor"
@@ -27,11 +29,16 @@ import { CalendarPanel } from "./CalendarPanel"
 import { BrowserMediaPanel } from "./BrowserMediaPanel"
 import { ControlsPanel } from "./ControlsPanel"
 import { SpotifyPanel } from "./SpotifyPanel"
+import { PanelLayoutContext } from "../lib/panel-layout"
+import { OpenFullScaleButton } from "./OpenFullScaleButton"
 import { WeatherPanel } from "./WeatherPanel"
+import { PacmanPanel } from "./PacmanPanel"
+import { PanelPageTransition } from "./PanelPageTransition"
 
 type Props = {
   activePanel: NotchPanel
   expanded: boolean
+  layout?: PanelLayout
   settings: AppSettings
   data: WeatherSnapshot | null
   error: string | null
@@ -76,9 +83,11 @@ type Props = {
   albumPalette: AlbumPalette | null
   spotifyPanelThemed: boolean
   action: (a: SpotifyAction) => Promise<unknown>
+  playUri: (uri: string) => Promise<unknown>
 }
 
 export function NotchActivePanel(props: Props) {
+  const layout = props.layout ?? "compact"
   const {
     activePanel,
     expanded,
@@ -126,10 +135,27 @@ export function NotchActivePanel(props: Props) {
     albumPalette,
     spotifyPanelThemed,
     action,
+    playUri,
   } = props
 
+  const wrap = (node: ReactNode) => (
+    <PanelLayoutContext.Provider value={layout}>
+      {layout === "compact" ? (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="mb-1 flex shrink-0 justify-end">
+            <OpenFullScaleButton panel={activePanel} />
+          </div>
+          <div className="min-h-0 flex-1">{node}</div>
+        </div>
+      ) : (
+        node
+      )}
+    </PanelLayoutContext.Provider>
+  )
+
+  let body: ReactNode
   if (activePanel === "settings") {
-    return (
+    body = (
       <SettingsPanel
         spotifyConnected={status.connected}
         spotifyConfigured={Boolean(status.configured)}
@@ -147,9 +173,8 @@ export function NotchActivePanel(props: Props) {
         onDisconnectStrava={() => void disconnectStrava()}
       />
     )
-  }
-  if (activePanel === "cursor") {
-    return (
+  } else if (activePanel === "cursor") {
+    body = (
       <CursorPanel
         status={cursorStatus}
         analyticsLoading={cursorAnalyticsLoading}
@@ -157,10 +182,12 @@ export function NotchActivePanel(props: Props) {
         onRefresh={() => void refreshCursor()}
       />
     )
-  }
-  if (activePanel === "clock") return <ClockPanel />
-  if (activePanel === "markets") {
-    return (
+  } else if (activePanel === "clock") {
+    body = <ClockPanel />
+  } else if (activePanel === "pacman") {
+    body = <PacmanPanel />
+  } else if (activePanel === "markets") {
+    body = (
       <MarketsPanel
         snapshot={marketsSnapshot}
         loading={marketsLoading}
@@ -169,9 +196,8 @@ export function NotchActivePanel(props: Props) {
         onRefresh={() => void refreshMarkets()}
       />
     )
-  }
-  if (activePanel === "github") {
-    return (
+  } else if (activePanel === "github") {
+    body = (
       <GitHubPanel
         status={githubStatus}
         loading={githubLoading}
@@ -179,9 +205,8 @@ export function NotchActivePanel(props: Props) {
         onRefresh={() => void refreshGithub()}
       />
     )
-  }
-  if (activePanel === "strava") {
-    return (
+  } else if (activePanel === "strava") {
+    body = (
       <StravaPanel
         status={stravaStatus}
         loading={stravaLoading}
@@ -194,9 +219,8 @@ export function NotchActivePanel(props: Props) {
         onDisconnect={() => void disconnectStrava()}
       />
     )
-  }
-  if (activePanel === "mint") {
-    return (
+  } else if (activePanel === "mint") {
+    body = (
       <MintPanel
         status={mintStatus}
         history={mintHistory}
@@ -205,9 +229,8 @@ export function NotchActivePanel(props: Props) {
         onRefresh={() => void refreshMint()}
       />
     )
-  }
-  if (activePanel === "pi") {
-    return (
+  } else if (activePanel === "pi") {
+    body = (
       <PiPanel
         status={piStatus}
         history={piHistory}
@@ -216,42 +239,51 @@ export function NotchActivePanel(props: Props) {
         onRefresh={() => void refreshPi()}
       />
     )
-  }
-  if (activePanel === "air" && data) return <AirQualityPanel data={data} />
-  if (activePanel === "calendar") {
-    return (
+  } else if (activePanel === "air" && data) {
+    body = <AirQualityPanel data={data} />
+  } else if (activePanel === "calendar") {
+    body = (
       <CalendarPanel
         snapshot={calendarSnapshot}
         refreshing={calendarRefreshing}
         onRefresh={() => void refreshCalendar(true)}
       />
     )
-  }
-  if (activePanel === "media") {
-    return (
-      <BrowserMediaPanel status={mediaStatus} onAction={(a) => void mediaAction(a)} />
+  } else if (activePanel === "media") {
+    body = <BrowserMediaPanel status={mediaStatus} onAction={(a) => void mediaAction(a)} />
+  } else if (activePanel === "controls") {
+    body = (
+      <ControlsPanel active={(expanded || layout === "desktop") && activePanel === "controls"} />
     )
-  }
-  if (activePanel === "controls") {
-    return <ControlsPanel active={expanded && activePanel === "controls"} />
-  }
-  if (activePanel === "spotify") {
-    return (
+  } else if (activePanel === "spotify") {
+    body = (
       <SpotifyPanel
         status={status}
         connecting={connecting}
         palette={spotifyPanelThemed ? albumPalette : null}
         onAction={(a) => void action(a)}
+        onPlayUri={(uri) => void playUri(uri)}
         onConnect={() => {
           void connect().catch(() => undefined)
         }}
       />
     )
+  } else if (data) {
+    body = <WeatherPanel data={data} />
+  } else {
+    body = (
+      <div className="flex flex-1 items-center justify-center text-sm text-black/40 dark:text-white/40">
+        {error ?? "Loading…"}
+      </div>
+    )
   }
-  if (data) return <WeatherPanel data={data} />
+
   return (
-    <div className="flex flex-1 items-center justify-center text-sm text-black/40 dark:text-white/40">
-      {error ?? "Loading…"}
-    </div>
+    <PanelPageTransition
+      panelKey={activePanel}
+      className={layout === "compact" ? "flex h-full min-h-0 flex-col" : undefined}
+    >
+      {wrap(body)}
+    </PanelPageTransition>
   )
 }

@@ -38,6 +38,17 @@ export const notchUiFast = {
   ease: ISLAND_EASE,
 }
 
+/** Full-scale / notch panel page changes */
+export const panelPageEnter = {
+  duration: 0.34,
+  ease: ISLAND_EASE,
+}
+
+export const panelPageExit = {
+  duration: 0.22,
+  ease: ISLAND_EASE,
+}
+
 /** Placement / corner form morph */
 export const notchPlacementMorph = {
   duration: 0.48,

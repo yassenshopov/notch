@@ -15,6 +15,7 @@ export type NotchPanel =
   | "air"
   | "calendar"
   | "controls"
+  | "pacman"
   | "settings"
 
 export function panelForCollapsedTap(args: {
@@ -52,6 +53,61 @@ export function panelForCollapsedTap(args: {
       return "calendar"
     default:
       return "weather"
+  }
+}
+
+export const DESKTOP_NAV_PANELS: NotchPanel[] = [
+  "weather",
+  "spotify",
+  "media",
+  "air",
+  "calendar",
+  "cursor",
+  "clock",
+  "markets",
+  "github",
+  "strava",
+  "mint",
+  "pi",
+  "controls",
+  "pacman",
+  "settings",
+]
+
+export function panelLabel(panel: NotchPanel): string {
+  switch (panel) {
+    case "weather":
+      return "Weather"
+    case "spotify":
+      return "Spotify"
+    case "media":
+      return "Browser media"
+    case "cursor":
+      return "Cursor"
+    case "clock":
+      return "Clock"
+    case "markets":
+      return "Markets"
+    case "github":
+      return "GitHub"
+    case "strava":
+      return "Strava"
+    case "mint":
+      return "Mint server"
+    case "pi":
+      return "Pi server"
+    case "air":
+      return "Air quality"
+    case "calendar":
+      return "Calendar"
+    case "controls":
+      return "Controls"
+    case "pacman":
+      return "Pac-Man"
+    case "settings":
+      return "Settings"
+    default:
+      return panel
   }
 }
 

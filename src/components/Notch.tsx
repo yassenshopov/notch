@@ -2,6 +2,7 @@ import { Icon } from "@iconify/react"
 import {
   CalendarDays,
   CloudSun,
+  Gamepad2,
   Leaf,
   LineChart,
   Settings,
@@ -86,6 +87,7 @@ const RAIL_PANELS_LEFT: Panel[] = [
   "calendar",
   "cursor",
   "clock",
+  "pacman",
 ]
 
 const RAIL_PANELS_RIGHT: Panel[] = [
@@ -109,7 +111,7 @@ export function Notch() {
   const placementRaw = useNotchPlacement()
   const placement = useMemo(() => withPlacementForm(placementRaw), [placementRaw])
   const { data, loading, error, refresh } = useWeather()
-  const { status, playing, connect, action, disconnect } = useSpotify()
+  const { status, playing, connect, action, playUri, disconnect } = useSpotify()
   const mediaPoll = settings.media.enabled && !playing
   const {
     status: mediaStatus,
@@ -525,6 +527,7 @@ export function Notch() {
       albumPalette={albumPalette}
       spotifyPanelThemed={spotifyPanelThemed}
       action={action}
+      playUri={playUri}
     />
   )
 
@@ -1116,6 +1119,8 @@ function railTabIcon(panel: Panel) {
       return <Icon icon="simple-icons:cursor" className="size-4" aria-hidden />
     case "clock":
       return <Timer className="size-4" strokeWidth={1.75} />
+    case "pacman":
+      return <Gamepad2 className="size-4" strokeWidth={1.75} />
     case "markets":
       return <LineChart className="size-4" strokeWidth={1.75} />
     case "github":
@@ -1141,6 +1146,7 @@ const RAIL_TAB_LABELS: Record<Panel, string> = {
   calendar: "Calendar",
   cursor: "Cursor",
   clock: "Clock",
+  pacman: "Pac-Man",
   markets: "Markets",
   github: "GitHub",
   strava: "Strava",
