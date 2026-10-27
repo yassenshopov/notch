@@ -12,7 +12,9 @@ import {
 } from "../lib/markets"
 import { cn, formatHour, formatShortDate } from "../lib/utils"
 import { MarketAssetAvatar } from "./MarketAssetAvatar"
+import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
+import { PanelHeaderActions } from "./PanelHeaderActions"
 
 type Props = {
   snapshot: MarketsSnapshot
@@ -31,6 +33,8 @@ const RANGES: { id: MarketChartRange; label: string }[] = [
 ]
 
 export function MarketsPanel({ snapshot, loading, refreshing, hasWatchlist, onRefresh }: Props) {
+  const layout = usePanelLayout()
+  const desktop = layout === "desktop"
   const quotes = snapshot.quotes
   const [selected, setSelected] = useState<MarketQuote | null>(null)
   const [range, setRange] = useState<MarketChartRange>("1w")
@@ -184,22 +188,29 @@ export function MarketsPanel({ snapshot, loading, refreshing, hasWatchlist, onRe
                   Watchlist — tap a symbol for the chart.
                 </p>
               </div>
-              <button
-                type="button"
-                aria-label="Refresh markets"
-                disabled={refreshing}
-                onClick={onRefresh}
-                className="rounded-full p-2 text-black/40 hover:bg-black/5 hover:text-black/70 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
-              >
-                <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
-              </button>
+              <PanelHeaderActions>
+                <button
+                  type="button"
+                  aria-label="Refresh markets"
+                  disabled={refreshing}
+                  onClick={onRefresh}
+                  className="rounded-full p-2 text-black/40 hover:bg-black/5 hover:text-black/70 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
+                >
+                  <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+                </button>
+              </PanelHeaderActions>
             </header>
 
             {snapshot.error ? (
               <p className="text-[12px] text-red-400">{formatMarketsError(snapshot.error)}</p>
             ) : null}
 
-            <div className="flex flex-col gap-2">
+            <div
+              className={cn(
+                "flex flex-col gap-2",
+                desktop && "grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3",
+              )}
+            >
               {quotes.length === 0 && !loading && !hasWatchlist ? (
                 <p className="text-[12px] text-black/45 dark:text-white/45">
                   Add symbols in Settings → Markets.

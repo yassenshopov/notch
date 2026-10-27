@@ -24,6 +24,8 @@ import { CountryFlag } from "./CountryFlag"
 import { MetricChart } from "./MetricChart"
 import { SunPath } from "./SunPath"
 import { WeatherIcon } from "./WeatherIcon"
+import { usePanelLayout } from "../lib/panel-layout"
+import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { WindArrow } from "./WindArrow"
 
 type Props = {
@@ -44,6 +46,8 @@ const METRICS: { id: WeatherMetric; label: string }[] = [
 
 export function WeatherPanel({ data }: Props) {
   const settings = useSettings()
+  const layout = usePanelLayout()
+  const desktop = layout === "desktop"
   const unit = settings.temperatureUnit
   const todayIndex = Math.max(0, data.days.findIndex((d) => d.isToday))
   const [selectedIndex, setSelectedIndex] = useState(todayIndex)
@@ -69,9 +73,84 @@ export function WeatherPanel({ data }: Props) {
     setMetric((current) => (current === id ? null : id))
   }
 
+  const dayStrip = (
+    <div className="mt-auto flex justify-between gap-0.5 border-t border-black/8 pt-2 pb-0.5 dark:border-white/10">
+      {data.days.slice(0, 6).map((d, index) => {
+        const active = index === selectedIndex
+        return (
+          <button
+            key={d.date}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              selectDay(index)
+            }}
+            className={cn(
+              "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 transition-colors",
+              active
+                ? "bg-black/8 dark:bg-white/12"
+                : "hover:bg-black/4 dark:hover:bg-white/6",
+            )}
+          >
+            <span
+              className={cn(
+                "text-[10px]",
+                active ? "font-semibold text-current" : "text-black/40 dark:text-white/40",
+              )}
+            >
+              {d.isToday ? "Today" : formatShortDate(d.date)}
+            </span>
+            <span className="text-[11px] font-semibold tabular-nums">
+              {Math.round(d.low)}°/{Math.round(d.high)}°
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (desktop) {
+    return (
+      <div className="flex h-full flex-col">
+        <BentoGrid>
+          <BentoTile col={12} className={bentoPad()} surface={false}>
+            <div className="min-h-0 overflow-hidden">
+              <AnimatePresence mode="wait" custom={direction} initial={false}>
+                <motion.div
+                  key={day.date}
+                  custom={direction}
+                  initial={{ opacity: 0, x: direction >= 0 ? 28 : -28 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: direction >= 0 ? -28 : 28 }}
+                  transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.8 }}
+                  className="flex min-h-0 flex-col"
+                >
+                  <DayBody
+                    day={day}
+                    locationLabel={data.locationLabel}
+                    countryCode={data.countryCode}
+                    unit={unit}
+                    windUnit={settings.windSpeedUnit}
+                    clockFormat={settings.clock.format}
+                    metric={metric}
+                    onToggleMetric={toggleMetric}
+                    previousSunset={data.days[selectedIndex - 1]?.sunset ?? null}
+                    nextSunrise={data.days[selectedIndex + 1]?.sunrise ?? null}
+                    desktop
+                  />
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </BentoTile>
+          <BentoTile col={12} className={bentoPad("pt-2")} surface={false}>{dayStrip}</BentoTile>
+        </BentoGrid>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className={cn("min-h-0 flex-1 overflow-hidden", desktop && "lg:max-w-none")}>
         <AnimatePresence mode="wait" custom={direction} initial={false}>
           <motion.div
             key={day.date}
@@ -93,44 +172,13 @@ export function WeatherPanel({ data }: Props) {
               onToggleMetric={toggleMetric}
               previousSunset={data.days[selectedIndex - 1]?.sunset ?? null}
               nextSunrise={data.days[selectedIndex + 1]?.sunrise ?? null}
+              desktop={desktop}
             />
           </motion.div>
         </AnimatePresence>
       </div>
 
-      <div className="mt-auto flex justify-between gap-0.5 border-t border-black/8 pt-2 pb-0.5 dark:border-white/10">
-        {data.days.slice(0, 6).map((d, index) => {
-          const active = index === selectedIndex
-          return (
-            <button
-              key={d.date}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                selectDay(index)
-              }}
-              className={cn(
-                "flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1 transition-colors",
-                active
-                  ? "bg-black/8 dark:bg-white/12"
-                  : "hover:bg-black/4 dark:hover:bg-white/6",
-              )}
-            >
-              <span
-                className={cn(
-                  "text-[10px]",
-                  active ? "font-semibold text-current" : "text-black/40 dark:text-white/40",
-                )}
-              >
-                {d.isToday ? "Today" : formatShortDate(d.date)}
-              </span>
-              <span className="text-[11px] font-semibold tabular-nums">
-                {Math.round(d.low)}°/{Math.round(d.high)}°
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      {dayStrip}
     </div>
   )
 }
@@ -146,6 +194,7 @@ function DayBody({
   onToggleMetric,
   previousSunset,
   nextSunrise,
+  desktop,
 }: {
   day: DayForecast
   locationLabel: string
@@ -157,6 +206,7 @@ function DayBody({
   onToggleMetric: (id: WeatherMetric) => void
   previousSunset: string | null
   nextSunrise: string | null
+  desktop?: boolean
 }) {
   const dateLabel = day.isToday
     ? formatDateLong(new Date())
@@ -197,8 +247,13 @@ function DayBody({
   }
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="mb-1 flex shrink-0 items-start justify-between gap-3 pr-10">
+    <div
+      className={cn(
+        desktop ? "grid min-h-full grid-cols-12 gap-6" : "flex min-h-full flex-col",
+      )}
+    >
+      <div className={cn(desktop ? "col-span-12 flex flex-col lg:col-span-8" : "contents")}>
+      <header className="mb-1 flex shrink-0 items-start justify-between gap-3 pr-10 lg:pr-0">
         <div className="min-w-0">
           <p className="flex min-w-0 items-center gap-2 text-[15px] font-semibold tracking-tight">
             <CountryFlag code={countryCode} className="h-3 w-[1.125rem]" />
@@ -273,8 +328,15 @@ function DayBody({
           )}
         </AnimatePresence>
       </div>
+      </div>
 
-      <div className="mt-3 grid shrink-0 grid-cols-2 gap-x-5 gap-y-0 border-t border-black/8 pt-2 dark:border-white/10">
+      <div
+        className={cn(
+          desktop
+            ? "col-span-12 flex flex-col gap-1 border-black/8 lg:col-span-4 lg:border-l lg:pl-6 dark:border-white/10"
+            : "mt-3 grid shrink-0 grid-cols-2 gap-x-5 gap-y-0 border-t border-black/8 pt-2 dark:border-white/10",
+        )}
+      >
         {METRICS.map(({ id, label }) => (
           <DetailButton
             key={id}

@@ -11,7 +11,9 @@ import {
 } from "../lib/air-quality"
 import type { DayForecast, WeatherSnapshot } from "../lib/weather"
 import { cn, formatHour } from "../lib/utils"
+import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
+import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 
 type Props = {
   data: WeatherSnapshot
@@ -28,6 +30,7 @@ const POLLEN_TYPES: PollenType[] = [
 
 export function AirQualityPanel({ data }: Props) {
   const settings = useSettings()
+  const desktop = usePanelLayout() === "desktop"
   const today = data.days.find((d) => d.isToday) ?? data.days[0]
   if (!today) return null
 
@@ -49,19 +52,8 @@ export function AirQualityPanel({ data }: Props) {
   const clockFormat = settings.clock.format
   const chartStyle = settings.charts?.style ?? "line"
 
-  return (
-    <div
-      className="notch-scroll flex h-full flex-col pr-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <header className="mb-4 pr-10">
-        <p className="text-[15px] font-semibold tracking-tight">Air quality</p>
-        <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-          {data.locationLabel} · hourly AQI, UV & pollen
-        </p>
-      </header>
-
-      <section className="mb-5 rounded-2xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+  const nowBlock = (
+      <section className="rounded-2xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03] lg:border-0 lg:bg-transparent lg:p-0">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
           Now
         </p>
@@ -87,30 +79,10 @@ export function AirQualityPanel({ data }: Props) {
           />
         </div>
       </section>
+  )
 
-      {aqiPoints.length > 1 ? (
-        <ChartBlock
-          title="AQI today"
-          subtitle={today.aqi != null ? formatAqi(today.aqi, today.aqiScale) : undefined}
-          points={aqiPoints}
-          chartStyle={chartStyle}
-          clockFormat={clockFormat}
-          formatValue={(v) => String(Math.round(v))}
-        />
-      ) : null}
-
-      {uvPoints.length > 1 ? (
-        <ChartBlock
-          title="UV index"
-          subtitle={formatUv(today.uvIndex)}
-          points={uvPoints}
-          chartStyle={chartStyle}
-          clockFormat={clockFormat}
-          formatValue={(v) => String(Math.round(v * 10) / 10)}
-        />
-      ) : null}
-
-      <section className="mt-5">
+  const pollenBlock = (
+      <section>
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
           Pollen by type
         </p>
@@ -135,6 +107,85 @@ export function AirQualityPanel({ data }: Props) {
           )}
         </ul>
       </section>
+  )
+
+  if (desktop) {
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <BentoGrid>
+          <BentoTile col={4} className={bentoPad()}>
+            <p className="mb-3 text-[12px] text-black/45 dark:text-white/45">
+              {data.locationLabel}
+            </p>
+            {nowBlock}
+          </BentoTile>
+          {aqiPoints.length > 1 ? (
+            <BentoTile col={8} className={bentoPad()}>
+              <ChartBlock
+                title="AQI today"
+                subtitle={today.aqi != null ? formatAqi(today.aqi, today.aqiScale) : undefined}
+                points={aqiPoints}
+                chartStyle={chartStyle}
+                clockFormat={clockFormat}
+                formatValue={(v) => String(Math.round(v))}
+              />
+            </BentoTile>
+          ) : null}
+          {uvPoints.length > 1 ? (
+            <BentoTile col={6} className={bentoPad()}>
+              <ChartBlock
+                title="UV index"
+                subtitle={formatUv(today.uvIndex)}
+                points={uvPoints}
+                chartStyle={chartStyle}
+                clockFormat={clockFormat}
+                formatValue={(v) => String(Math.round(v * 10) / 10)}
+              />
+            </BentoTile>
+          ) : null}
+          <BentoTile col={6} className={bentoPad()}>{pollenBlock}</BentoTile>
+        </BentoGrid>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="notch-scroll flex h-full flex-col pr-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <header className="mb-4 pr-10">
+        <p className="text-[15px] font-semibold tracking-tight">Air quality</p>
+        <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
+          {data.locationLabel} · hourly AQI, UV & pollen
+        </p>
+      </header>
+
+      <div className="mb-5">{nowBlock}</div>
+
+      {aqiPoints.length > 1 ? (
+        <ChartBlock
+          title="AQI today"
+          subtitle={today.aqi != null ? formatAqi(today.aqi, today.aqiScale) : undefined}
+          points={aqiPoints}
+          chartStyle={chartStyle}
+          clockFormat={clockFormat}
+          formatValue={(v) => String(Math.round(v))}
+        />
+      ) : null}
+
+      {uvPoints.length > 1 ? (
+        <ChartBlock
+          title="UV index"
+          subtitle={formatUv(today.uvIndex)}
+          points={uvPoints}
+          chartStyle={chartStyle}
+          clockFormat={clockFormat}
+          formatValue={(v) => String(Math.round(v * 10) / 10)}
+        />
+      ) : null}
+
+      <div className="mt-5">{pollenBlock}</div>
     </div>
   )
 }

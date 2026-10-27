@@ -8,7 +8,7 @@ export async function fetchPiStatus(options?: {
 }): Promise<PiServerStatus> {
   const bridge = window.notch?.pi
   if (!bridge) {
-    return { ...emptyServerStats(options?.host ?? "pi-home"), error: "notch_bridge_unavailable" }
+    return { ...emptyServerStats(options?.host ?? "pi"), error: "notch_bridge_unavailable" }
   }
   return bridge.status(options)
 }

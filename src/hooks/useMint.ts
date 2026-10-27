@@ -3,7 +3,7 @@ import { useSettings } from "../config/settings-store"
 import { fetchMintStatus, type MintServerStatus } from "../lib/mint"
 import {
   emptyServerStatsHistory,
-  pushServerStatsHistory,
+  historyAfterServerStatus,
   type ServerStatsHistory,
 } from "../lib/server-stats-history"
 import { emptyServerStats } from "../lib/server-stats"
@@ -26,7 +26,7 @@ export function useMint(active = true) {
         })
         setStatus(data)
         if (data.connected) {
-          setHistory((h) => pushServerStatsHistory(h, data))
+          setHistory((h) => historyAfterServerStatus(data, h))
         } else {
           setHistory(emptyServerStatsHistory())
         }

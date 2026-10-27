@@ -9,13 +9,17 @@ import {
 } from "lucide-react"
 import type { ReactNode } from "react"
 import { useSystemControls } from "../hooks/useSystemControls"
+import { usePanelLayout } from "../lib/panel-layout"
 import { cn } from "../lib/utils"
+import { PanelPageHeader } from "./desktop/PanelPageHeader"
+import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 
 type Props = {
   active: boolean
 }
 
 export function ControlsPanel({ active }: Props) {
+  const desktop = usePanelLayout() === "desktop"
   const {
     status,
     loading,
@@ -47,18 +51,16 @@ export function ControlsPanel({ active }: Props) {
     )
   }
 
-  return (
-    <div
-      className="notch-scroll flex h-full flex-col pr-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <header className="mb-4 pr-10">
-        <p className="text-[15px] font-semibold tracking-tight">Controls</p>
-        <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-          Volume, display, mic & devices.
-        </p>
-      </header>
+  const header = (
+    <PanelPageHeader className="mb-4 pr-10">
+      <p className="text-[15px] font-semibold tracking-tight">Controls</p>
+      <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
+        Volume, display, mic & devices.
+      </p>
+    </PanelPageHeader>
+  )
 
+  const primaryControls = (
       <div className="flex flex-col gap-4">
         <ControlRow
           icon={
@@ -122,7 +124,11 @@ export function ControlsPanel({ active }: Props) {
             </IconToggle>
           }
         />
+      </div>
+  )
 
+  const deviceControls = (
+      <div className="flex flex-col gap-4">
         {status.playback.length > 0 ? (
           <section>
             <RowLabel icon={<Speaker className="size-3.5" />} title="Output" />
@@ -184,6 +190,27 @@ export function ControlsPanel({ active }: Props) {
           </section>
         ) : null}
       </div>
+  )
+
+  if (desktop) {
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <BentoGrid>
+          <BentoTile col={6} className={bentoPad()}>{primaryControls}</BentoTile>
+          <BentoTile col={6} className={bentoPad()}>{deviceControls}</BentoTile>
+        </BentoGrid>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="notch-scroll flex h-full flex-col pr-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {header}
+      {primaryControls}
+      {deviceControls}
     </div>
   )
 }

@@ -14,7 +14,7 @@ export function MintPanel(props: Props) {
   return (
     <ServerStatsPanel
       title="Mint server"
-      sshHint="Needs Tailscale and ssh mint from this PC."
+      sshHint="Needs Tailscale on this PC and ssh mint (falls back to mint-home on LAN)."
       tertiary="mirrors"
       flavor="mint"
       {...props}

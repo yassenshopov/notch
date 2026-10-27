@@ -3,14 +3,14 @@ import { useSettings } from "../config/settings-store"
 import { emptyServerStats } from "../lib/server-stats"
 import {
   emptyServerStatsHistory,
-  pushServerStatsHistory,
+  historyAfterServerStatus,
   type ServerStatsHistory,
 } from "../lib/server-stats-history"
 import { fetchPiStatus, type PiServerStatus } from "../lib/pi"
 
 export function usePi(active = true) {
   const settings = useSettings()
-  const host = settings.pi?.sshHost ?? "pi-home"
+  const host = settings.pi?.sshHost ?? "pi"
   const [status, setStatus] = useState<PiServerStatus>(() => emptyServerStats(host))
   const [history, setHistory] = useState<ServerStatsHistory>(() => emptyServerStatsHistory())
   const [loading, setLoading] = useState(true)
@@ -23,7 +23,7 @@ export function usePi(active = true) {
         const data = await fetchPiStatus({ force, host })
         setStatus(data)
         if (data.connected) {
-          setHistory((h) => pushServerStatsHistory(h, data))
+          setHistory((h) => historyAfterServerStatus(data, h))
         } else {
           setHistory(emptyServerStatsHistory())
         }

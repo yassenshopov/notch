@@ -14,7 +14,7 @@ export function PiPanel(props: Props) {
   return (
     <ServerStatsPanel
       title="Raspberry Pi"
-      sshHint="Needs ssh pi-home (or a Tailscale SSH host) from this PC."
+      sshHint="Uses ssh pi-ts (Tailscale), then pi-home on LAN, then pi. Install Tailscale on this PC if pi-ts fails."
       tertiary="temp"
       flavor="pi"
       {...props}

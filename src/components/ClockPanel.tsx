@@ -4,9 +4,12 @@ import { updateSettings, useSettings } from "../config/settings-store"
 import { useTimerEngine } from "../hooks/useTimerEngine"
 import { QUICK_TIMER_MS } from "../lib/timers"
 import { cn } from "../lib/utils"
+import { usePanelLayout } from "../lib/panel-layout"
+import { PanelPageHeader } from "./desktop/PanelPageHeader"
 
 export function ClockPanel() {
   const settings = useSettings()
+  const desktop = usePanelLayout() === "desktop"
   const {
     session,
     active: timerActive,
@@ -22,17 +25,17 @@ export function ClockPanel() {
 
   const p = settings.timers.pomodoro
 
-  return (
+  const body = (
     <div
-      className="notch-scroll flex h-full flex-col pr-1"
+      className={cn("flex h-full flex-col pr-1", !desktop && "notch-scroll")}
       onClick={(e) => e.stopPropagation()}
     >
-      <header className="mb-4 pr-10">
+      <PanelPageHeader className="mb-4 pr-10">
         <p className="text-[15px] font-semibold tracking-tight">Clock & timers</p>
         <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
           Pomodoro, countdowns, stopwatch & local time.
         </p>
-      </header>
+      </PanelPageHeader>
 
       <div className="mb-5 rounded-2xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex items-start justify-between gap-2">
@@ -153,6 +156,16 @@ export function ClockPanel() {
       </section>
     </div>
   )
+
+  if (desktop) {
+    return (
+      <div className="min-h-0" onClick={(e) => e.stopPropagation()}>
+        {body}
+      </div>
+    )
+  }
+
+  return body
 }
 
 function SectionLabel({ title }: { title: string }) {
