@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react"
 import L from "leaflet"
 import { MapContainer, Polyline, TileLayer, useMap } from "react-leaflet"
 import type { LatLngExpression } from "leaflet"
-import { getStravaMapTileLayerProps } from "../lib/strava-map-tiles"
+import { useStravaMapTiles } from "../hooks/useStravaMapTiles"
 import type { StravaHeatmap, StravaHeatmapBounds } from "../lib/strava"
 import { decodePolyline } from "../lib/strava"
 import { cn } from "../lib/utils"
@@ -55,7 +55,7 @@ function RouteDensityLayer({ polylines }: { polylines: string[] }) {
 }
 
 export function StravaRouteHeatmap({ heatmap, className, height = 200 }: Props) {
-  const mapTile = useMemo(() => getStravaMapTileLayerProps(), [])
+  const mapTile = useStravaMapTiles()
   const polylines = heatmap?.polylines ?? []
   const bounds = heatmap?.bounds
 
@@ -104,7 +104,7 @@ export function StravaRouteHeatmap({ heatmap, className, height = 200 }: Props) 
         zoomControl={false}
         attributionControl={false}
       >
-        <TileLayer url={mapTile.url} subdomains={mapTile.subdomains} />
+        <TileLayer key={mapTile.url} url={mapTile.url} subdomains={mapTile.subdomains} />
         <RouteDensityLayer polylines={polylines} />
         <FitHeatBounds bounds={bounds} />
       </MapContainer>

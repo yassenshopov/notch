@@ -18,6 +18,8 @@ type Props = {
   calendar?: StravaCalendar | null
   activities?: StravaCalendarActivity[]
   variant: "mini" | "panel"
+  /** When false, calendar sits flush on the page (desktop). */
+  surface?: boolean
   className?: string
 }
 
@@ -41,6 +43,7 @@ export function StravaActivityCalendar({
   calendar: calendarProp,
   activities = [],
   variant,
+  surface = true,
   className,
 }: Props) {
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()))
@@ -85,7 +88,9 @@ export function StravaActivityCalendar({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-black/8 bg-black/[0.03] p-3 dark:border-white/10 dark:bg-white/[0.04]",
+        surface &&
+          "rounded-2xl border border-black/8 bg-black/[0.03] p-3 dark:border-white/10 dark:bg-white/[0.04]",
+        !surface && "min-w-0",
         className,
       )}
     >

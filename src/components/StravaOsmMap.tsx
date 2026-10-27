@@ -2,7 +2,7 @@ import { useEffect, useMemo } from "react"
 import L from "leaflet"
 import { MapContainer, Polyline, TileLayer, useMap } from "react-leaflet"
 import type { LatLngExpression } from "leaflet"
-import { getStravaMapTileLayerProps } from "../lib/strava-map-tiles"
+import { useStravaMapTiles } from "../hooks/useStravaMapTiles"
 import { decodePolyline } from "../lib/strava"
 import { cn } from "../lib/utils"
 
@@ -25,7 +25,7 @@ function FitRouteBounds({ positions }: { positions: LatLngExpression[] }) {
 }
 
 export function StravaOsmMap({ polyline, className, height = 168 }: Props) {
-  const mapTile = useMemo(() => getStravaMapTileLayerProps(), [])
+  const mapTile = useStravaMapTiles()
   const positions = useMemo(() => {
     if (!polyline) return [] as LatLngExpression[]
     return decodePolyline(polyline).map((p) => [p.lat, p.lng] as LatLngExpression)
@@ -68,7 +68,7 @@ export function StravaOsmMap({ polyline, className, height = 168 }: Props) {
         zoomControl={false}
         attributionControl={false}
       >
-        <TileLayer url={mapTile.url} subdomains={mapTile.subdomains} />
+        <TileLayer key={mapTile.url} url={mapTile.url} subdomains={mapTile.subdomains} />
         <Polyline
           positions={positions}
           pathOptions={{ color: "#fc4c02", weight: 4, opacity: 0.92 }}
