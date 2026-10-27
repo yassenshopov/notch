@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react"
+import { createPortal } from "react-dom"
+import { ChartHoverTooltip } from "./ChartHoverTooltip"
 import type { ChartStyle } from "../config/settings"
 import { useSettings } from "../config/settings-store"
 import {
@@ -58,6 +60,25 @@ function interpolateTimeX(
 const VIEW_W = 100
 const VIEW_H = 56
 
+function ChartHoverDot({ x, y, color }: { x: number; y: number; color: string }) {
+  if (typeof document === "undefined") return null
+  return createPortal(
+    <>
+      <div
+        aria-hidden
+        className="pointer-events-none fixed z-[9998] size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ left: x, top: y, backgroundColor: color, opacity: 0.2 }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed z-[9998] size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{ left: x, top: y, backgroundColor: color }}
+      />
+    </>,
+    document.body,
+  )
+}
+
 export function MetricChart({
   points,
   variant = "line",
@@ -73,10 +94,12 @@ export function MetricChart({
   const clockFormat = useSettings().clock.format
   const formatTime = formatTimeProp ?? ((iso: string) => formatHour(iso, clockFormat))
   const [hovered, setHovered] = useState<number | null>(null)
+  const [hoverAnchor, setHoverAnchor] = useState<{ x: number; y: number } | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   useEffect(() => {
     setHovered(null)
+    setHoverAnchor(null)
   }, [points, variant])
 
   useEffect(() => {
@@ -190,7 +213,15 @@ export function MetricChart({
         best = i
       }
     }
+    const coord = chart.coords[best]
+    const bar = chart.bars[best]
+    const plotX = variant === "bar" && bar ? bar.cx : coord.x
+    const plotY = variant === "bar" && bar ? bar.y : coord.y
     setHovered(best)
+    setHoverAnchor({
+      x: rect.left + (plotX / VIEW_W) * rect.width,
+      y: rect.top + (plotY / VIEW_H) * rect.height,
+    })
   }
 
   const onChartMouseMove = (e: MouseEvent<SVGSVGElement>) => {
@@ -212,18 +243,6 @@ export function MetricChart({
   }
 
   const hoverCoord = hovered != null ? chart.coords[hovered] : null
-  const hoverBar = hovered != null ? chart.bars[hovered] : null
-  const tooltipLeftPct = hoverCoord
-    ? variant === "bar" && hoverBar
-      ? (hoverBar.cx / VIEW_W) * 100
-      : (hoverCoord.x / VIEW_W) * 100
-    : 0
-  const tooltipTopPct = hoverCoord
-    ? variant === "bar" && hoverBar
-      ? (hoverBar.y / VIEW_H) * 100
-      : (hoverCoord.y / VIEW_H) * 100
-    : 0
-
   return (
     <div
       className={cn(
@@ -250,13 +269,14 @@ export function MetricChart({
           compact ? "h-[4.25rem] min-h-0" : "min-h-[9rem] h-full",
         )}
       >
-        {hoverCoord ? (
-          <div
-            className="pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center gap-0.5 rounded-lg bg-[#111111] px-2 py-1 text-center shadow-md dark:bg-white"
-            style={{
-              left: `${tooltipLeftPct}%`,
-              top: `calc(${tooltipTopPct}% - 6px)`,
-            }}
+        {hoverCoord && hoverAnchor ? (
+          <>
+          <ChartHoverDot x={hoverAnchor.x} y={hoverAnchor.y} color={accent} />
+          <ChartHoverTooltip
+            anchorX={hoverAnchor.x}
+            anchorY={hoverAnchor.y}
+            open
+            className="bg-[#111111] dark:bg-white"
           >
             <span className="text-[9px] font-medium leading-none text-white/55 dark:text-black/45">
               {timeLabel(hoverCoord.time)}
@@ -264,7 +284,8 @@ export function MetricChart({
             <span className="text-[11px] font-semibold leading-none tabular-nums text-white dark:text-black">
               {formatValue(hoverCoord.value)}
             </span>
-          </div>
+          </ChartHoverTooltip>
+          </>
         ) : null}
         <svg
           viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
@@ -278,7 +299,10 @@ export function MetricChart({
             variant === "bar" ? "Bar chart" : variant === "area" ? "Area chart" : "Line chart"
           }
           onMouseMove={onChartMouseMove}
-          onMouseLeave={() => setHovered(null)}
+          onMouseLeave={() => {
+            setHovered(null)
+            setHoverAnchor(null)
+          }}
         >
           {variant === "area" ? (
             <defs>
@@ -332,21 +356,6 @@ export function MetricChart({
                     vectorEffect="non-scaling-stroke"
                     pointerEvents="none"
                   />
-                  <circle
-                    cx={hoverCoord.x}
-                    cy={hoverCoord.y}
-                    r={5}
-                    fill={accent}
-                    opacity={0.2}
-                    pointerEvents="none"
-                  />
-                  <circle
-                    cx={hoverCoord.x}
-                    cy={hoverCoord.y}
-                    r={3}
-                    fill={accent}
-                    pointerEvents="none"
-                  />
                 </>
               ) : null}
             </>
@@ -363,25 +372,6 @@ export function MetricChart({
                 vectorEffect="non-scaling-stroke"
                 pointerEvents="none"
               />
-              {hoverCoord ? (
-                <>
-                  <circle
-                    cx={hoverCoord.x}
-                    cy={hoverCoord.y}
-                    r={5}
-                    fill={accent}
-                    opacity={0.2}
-                    pointerEvents="none"
-                  />
-                  <circle
-                    cx={hoverCoord.x}
-                    cy={hoverCoord.y}
-                    r={3}
-                    fill={accent}
-                    pointerEvents="none"
-                  />
-                </>
-              ) : null}
             </>
           )}
           {chart.nowX != null ? (
