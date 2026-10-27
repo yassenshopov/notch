@@ -46,3 +46,46 @@ export function pushServerStatsHistory(
     swapPct: pushPoint(history.swapPct, time, status.swapUsedPct, maxPoints),
   }
 }
+
+function parsePoint(raw: unknown): ServerStatsMetricPoint | null {
+  if (!raw || typeof raw !== "object") return null
+  const row = raw as { time?: unknown; value?: unknown }
+  if (typeof row.time !== "string" || row.time.length === 0) return null
+  const value = Number(row.value)
+  if (!Number.isFinite(value)) return null
+  return { time: row.time, value }
+}
+
+function parseSeries(raw: unknown, maxPoints = MAX_POINTS): ServerStatsMetricPoint[] {
+  if (!Array.isArray(raw)) return []
+  const points: ServerStatsMetricPoint[] = []
+  for (const item of raw) {
+    const p = parsePoint(item)
+    if (p) points.push(p)
+  }
+  if (points.length > maxPoints) return points.slice(points.length - maxPoints)
+  return points
+}
+
+/** Trend series persisted on the server (~24h, sampled every minute + on SSH poll). */
+export function historyFromServerTrend(raw: unknown, maxPoints = MAX_POINTS): ServerStatsHistory | null {
+  if (!raw || typeof raw !== "object") return null
+  const trend = raw as Record<string, unknown>
+  const memPct = parseSeries(trend.memPct, maxPoints)
+  const diskPct = parseSeries(trend.diskPct, maxPoints)
+  const load1 = parseSeries(trend.load1, maxPoints)
+  const cpuTempC = parseSeries(trend.cpuTempC, maxPoints)
+  const swapPct = parseSeries(trend.swapPct, maxPoints)
+  const total = memPct.length + diskPct.length + load1.length + cpuTempC.length + swapPct.length
+  if (total === 0) return null
+  return { memPct, diskPct, load1, cpuTempC, swapPct }
+}
+
+export function historyAfterServerStatus(
+  status: ServerStatsStatus & { trend?: unknown },
+  local: ServerStatsHistory,
+): ServerStatsHistory {
+  const fromServer = historyFromServerTrend(status.trend)
+  if (fromServer) return fromServer
+  return pushServerStatsHistory(local, status)
+}

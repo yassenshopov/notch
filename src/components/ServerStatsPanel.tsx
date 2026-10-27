@@ -11,7 +11,9 @@ import {
   seriesTimeSpanMs,
   type ChartYAxisKind,
 } from "../lib/chart-axis"
+import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
+import { PanelHeaderActions } from "./PanelHeaderActions"
 
 type Props = {
   title: string
@@ -156,16 +158,33 @@ export function ServerStatsPanel({
   tertiary = "mirrors",
   flavor = "pi",
 }: Props) {
+  const layout = usePanelLayout()
+  const desktop = layout === "desktop"
   const clockFormat = useSettings().clock.format
   const panelAccent = flavor === "mint" ? MINT_PANEL_GREEN : PI_PANEL_RED
-
+  if (!status.connected && loading) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+        <Server className="mb-2 size-8 text-black/30 dark:text-white/30" strokeWidth={1.5} />
+        <p className="text-[15px] font-semibold">{title}</p>
+        <p className="mt-2 text-[12px] text-black/40 dark:text-white/40">Connecting over SSH…</p>
+      </div>
+    )
+  }
   if (!status.connected) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
         <Server className="mb-2 size-8 text-black/30 dark:text-white/30" strokeWidth={1.5} />
         <p className="text-[15px] font-semibold">{title}</p>
         <p className="mt-2 text-[12px] text-black/45 dark:text-white/45">
-          SSH to <span className="font-medium">{status.host}</span> failed.
+          Could not reach the server over SSH
+          {status.host ? (
+            <>
+              {" "}
+              (<span className="font-medium">{status.host}</span>)
+            </>
+          ) : null}
+          .
         </p>
         {status.error ? (
           <p className="mt-1 max-w-[280px] break-all text-[11px] text-red-400/90">{status.error}</p>
@@ -209,29 +228,30 @@ export function ServerStatsPanel({
     status.cpuTempC != null ||
     history.cpuTempC.length > 0
 
-  return (
-    <div
-      className="notch-scroll flex h-full flex-col pr-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <header className="mb-4 flex items-start justify-between gap-2 pr-8">
+  const panelBody = (
+    <>
+      <header className="mb-4 flex items-start justify-between gap-2 pr-8 lg:mb-0 lg:pr-0">
         <div>
-          <p className="text-[15px] font-semibold tracking-tight">{name}</p>
+          {!desktop ? (
+            <p className="text-[15px] font-semibold tracking-tight">{name}</p>
+          ) : null}
           <p className="text-[12px] text-black/45 dark:text-white/45">
             {status.host}
             {status.tailscaleIp ? ` · ${status.tailscaleIp}` : ""}
             {status.cpuCount != null ? ` · ${status.cpuCount} cores` : ""}
           </p>
         </div>
-        <button
-          type="button"
-          aria-label={`Refresh ${title}`}
-          disabled={refreshing}
-          onClick={onRefresh}
-          className="rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
-        >
-          <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
-        </button>
+        <PanelHeaderActions>
+          <button
+            type="button"
+            aria-label={`Refresh ${title}`}
+            disabled={refreshing}
+            onClick={onRefresh}
+            className="rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
+          >
+            <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+          </button>
+        </PanelHeaderActions>
       </header>
 
       {loading ? (
@@ -387,7 +407,7 @@ export function ServerStatsPanel({
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-black/35 dark:text-white/35">
               Session trends
             </p>
-            <div className="flex min-w-0 flex-col gap-2">
+            <div className={cn("flex min-w-0 flex-col gap-2", desktop && "lg:grid lg:grid-cols-2 lg:gap-3")}>
               <TrendChart
                 label="Memory %"
                 points={history.memPct}
@@ -440,13 +460,30 @@ export function ServerStatsPanel({
             </div>
             {history.memPct.length < 2 ? (
               <p className="mt-2 text-[11px] text-black/35 dark:text-white/35">
-                Charts fill in as polls arrive ({history.memPct.length} sample
-                {history.memPct.length === 1 ? "" : "s"}).
+                Trend builds on the server (minute samples, ~24h).{" "}
+                {history.memPct.length === 1 ? "One point so far." : "Waiting for samples…"}
               </p>
             ) : null}
           </div>
         </div>
       )}
+    </>
+  )
+
+  if (desktop) {
+    return (
+      <div className="min-h-0" onClick={(e) => e.stopPropagation()}>
+        {panelBody}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="notch-scroll flex h-full flex-col pr-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {panelBody}
     </div>
   )
 }

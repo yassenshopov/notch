@@ -23,6 +23,8 @@ export type ServerStatsStatus = {
   cpuCount: number | null
   processCount: number | null
   error?: string | null
+  /** Filled by remote stats script from on-disk trend samples */
+  trend?: unknown
 }
 
 export function formatUptime(seconds: number | null): string {

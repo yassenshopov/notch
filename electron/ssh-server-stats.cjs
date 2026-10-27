@@ -1,10 +1,37 @@
 const { execFile } = require("child_process")
+const fs = require("fs")
+const path = require("path")
 const { promisify } = require("util")
 
 const execFileAsync = promisify(execFile)
 
+function resolveSshExecutable() {
+  const fromEnv = process.env.NOTCH_SSH_PATH
+  if (typeof fromEnv === "string" && fromEnv.trim()) {
+    const p = fromEnv.trim()
+    if (fs.existsSync(p)) return p
+  }
+  const candidates = []
+  if (process.platform === "win32") {
+    const windir = process.env.WINDIR || "C:\\Windows"
+    candidates.push(
+      path.join(windir, "System32", "OpenSSH", "ssh.exe"),
+      path.join(process.env["ProgramFiles"] || "C:\\Program Files", "Git", "usr", "bin", "ssh.exe"),
+    )
+  }
+  candidates.push("ssh")
+  for (const candidate of candidates) {
+    if (candidate === "ssh") return candidate
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return "ssh"
+}
+
+const SSH_BIN = resolveSshExecutable()
+
 function createSshServerStats({
   defaultHost,
+  fallbackHosts = [],
   defaultScript,
   envHostKey,
   envScriptKey,
@@ -27,9 +54,14 @@ function createSshServerStats({
 
   async function fetchStats(host) {
     const { stdout } = await execFileAsync(
-      "ssh",
-      ["-o", "BatchMode=yes", "-o", "ConnectTimeout=12", host, statsScript()],
-      { timeout: 22_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+      SSH_BIN,
+      ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, statsScript()],
+      {
+        timeout: 45_000,
+        windowsHide: true,
+        maxBuffer: 4 * 1024 * 1024,
+        env: process.env,
+      },
     )
     const line = stdout.trim().split("\n").pop()
     return JSON.parse(line)
@@ -64,32 +96,50 @@ function createSshServerStats({
     }
   }
 
+  function resolveHosts(options) {
+    const primary =
+      typeof options.host === "string" && options.host.trim() ? options.host.trim() : sshHost()
+    const seen = new Set()
+    const hosts = []
+    // LAN fallbacks first (faster at home); Tailscale primary still tried when away.
+    for (const h of [...fallbackHosts, primary]) {
+      if (!h || seen.has(h)) continue
+      seen.add(h)
+      hosts.push(h)
+    }
+    return hosts
+  }
+
   async function status(options = {}) {
     const force = options.force === true
-    const host =
-      typeof options.host === "string" && options.host.trim() ? options.host.trim() : sshHost()
+    const hosts = resolveHosts(options)
+    const hostKey = hosts.join(",")
     const now = Date.now()
-    if (!force && cache.payload && cache.host === host && now - cache.at < CACHE_MS) {
+    if (!force && cache.payload && cache.host === hostKey && now - cache.at < CACHE_MS) {
       return cache.payload
     }
 
-    try {
-      const stats = await fetchStats(host)
-      const payload = {
-        configured: true,
-        connected: true,
-        host,
-        error: null,
-        ...stats,
+    let lastErr = errorTag
+    for (const host of hosts) {
+      try {
+        const stats = await fetchStats(host)
+        const payload = {
+          configured: true,
+          connected: true,
+          host,
+          error: null,
+          ...stats,
+        }
+        cache = { at: now, host: hostKey, payload }
+        return payload
+      } catch (err) {
+        lastErr = err instanceof Error ? err.message : errorTag
       }
-      cache = { at: now, host, payload }
-      return payload
-    } catch (err) {
-      const message = err instanceof Error ? err.message : errorTag
-      const payload = disconnected(host, message)
-      cache = { at: now, host, payload }
-      return payload
     }
+
+    const payload = disconnected(hosts[0] ?? defaultHost, lastErr)
+    cache = { at: now, host: hostKey, payload }
+    return payload
   }
 
   return { status, configured: () => true }
