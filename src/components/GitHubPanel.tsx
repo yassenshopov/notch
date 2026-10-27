@@ -1,8 +1,15 @@
+import { useMemo, useState } from "react"
 import { ExternalLink, RefreshCw } from "lucide-react"
 import { openGitHubUrl, type GitHubStatus } from "../lib/github"
 import { cn } from "../lib/utils"
 import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
+import { usePanelLayout } from "../lib/panel-layout"
 import { GitHubTodayPanel } from "./GitHubTodayPanel"
+import { PanelHeaderActions } from "./PanelHeaderActions"
+import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
+import { useGitHubInsights } from "../hooks/useGitHubInsights"
+import { useTheme } from "../hooks/useTheme"
+import { GitHubRepoActivityCharts } from "./GitHubRepoActivityCharts"
 
 type Props = {
   status: GitHubStatus
@@ -12,6 +19,21 @@ type Props = {
 }
 
 export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
+  const layout = usePanelLayout()
+  const heatmapVariant = layout === "desktop" ? "desktop" : "panel"
+  const dark = useTheme()
+  const [chartYear, setChartYear] = useState(() => new Date().getFullYear())
+  const insightsActive = layout === "desktop" && status.connected
+  const {
+    insights,
+    loading: insightsLoading,
+    refresh: refreshInsights,
+  } = useGitHubInsights(insightsActive, chartYear)
+  const yearOptions = useMemo(
+    () => insights.years.map((y) => y.year),
+    [insights.years],
+  )
+
   if (!status.configured) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -35,12 +57,8 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
     )
   }
 
-  return (
-    <div
-      className="notch-scroll flex h-full flex-col pr-1"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <header className="mb-4 flex items-start justify-between gap-2 pr-8">
+  const header = (
+      <header className="mb-4 flex items-start justify-between gap-2 pr-8 lg:mb-0 lg:pr-0">
         <div className="flex items-center gap-2.5">
           {status.avatarUrl ? (
             <img
@@ -54,38 +72,21 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
             <p className="text-[12px] text-black/45 dark:text-white/45">@{status.login}</p>
           </div>
         </div>
-        <button
-          type="button"
-          aria-label="Refresh GitHub"
-          disabled={refreshing}
-          onClick={onRefresh}
-          className="rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
-        >
-          <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
-        </button>
+        <PanelHeaderActions>
+          <button
+            type="button"
+            aria-label="Refresh GitHub"
+            disabled={refreshing}
+            onClick={onRefresh}
+            className="rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
+          >
+            <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+          </button>
+        </PanelHeaderActions>
       </header>
+  )
 
-      <GitHubTodayPanel
-        weeks={status.contributions?.weeks ?? []}
-        breakdown={status.todayBreakdown}
-        loading={loading}
-        className="mb-4"
-      />
-
-      {status.contributions?.weeks?.length ? (
-        <section className="mb-4">
-          <div className="mb-2 flex items-baseline justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
-              Contributions
-            </p>
-            <span className="text-[11px] tabular-nums text-black/35 dark:text-white/35">
-              {status.contributions.total}
-            </span>
-          </div>
-          <GitHubContributionHeatmap weeks={status.contributions.weeks ?? []} variant="panel" />
-        </section>
-      ) : null}
-
+  const prSection = (
       <Section title="Pull requests" count={status.pullRequests.length}>
         {status.pullRequests.length === 0 ? (
           <EmptyRow text="No open PRs on your radar." />
@@ -100,8 +101,10 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
           ))
         )}
       </Section>
+  )
 
-      <Section title="Notifications" count={status.notifications.length} className="mt-4">
+  const notificationsSection = (
+      <Section title="Notifications" count={status.notifications.length} className="mt-4 lg:mt-0">
         {status.notifications.length === 0 ? (
           <EmptyRow text="Inbox zero." />
         ) : (
@@ -116,6 +119,149 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
           ))
         )}
       </Section>
+  )
+
+  const handleRefresh = () => {
+    onRefresh()
+    if (insightsActive) refreshInsights()
+  }
+
+  const refreshButton = (
+    <button
+      type="button"
+      aria-label="Refresh GitHub"
+      disabled={refreshing || insightsLoading}
+      onClick={handleRefresh}
+      className="rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
+    >
+      <RefreshCw className={cn("size-4", (refreshing || insightsLoading) && "animate-spin")} />
+    </button>
+  )
+
+  if (layout === "desktop") {
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+      <BentoGrid>
+        <BentoTile col={4} className={bentoPad()}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2.5">
+              {status.avatarUrl ? (
+                <img
+                  src={status.avatarUrl}
+                  alt=""
+                  className="size-9 rounded-full border border-black/10 dark:border-white/15"
+                />
+              ) : null}
+              <p className="truncate text-[12px] text-black/45 dark:text-white/45">@{status.login}</p>
+            </div>
+            <PanelHeaderActions>{refreshButton}</PanelHeaderActions>
+          </div>
+          <GitHubTodayPanel
+            weeks={status.contributions?.weeks ?? []}
+            breakdown={status.todayBreakdown}
+            loading={loading}
+          />
+        </BentoTile>
+        {status.contributions?.weeks?.length ? (
+          <BentoTile col={8} className={bentoPad()}>
+            <div className="mb-2 flex items-baseline justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
+                Last 12 months
+              </p>
+              <span className="text-[11px] tabular-nums text-black/35 dark:text-white/35">
+                {status.contributions.total}
+              </span>
+            </div>
+            <GitHubContributionHeatmap
+              weeks={status.contributions.weeks ?? []}
+              variant={heatmapVariant}
+            />
+          </BentoTile>
+        ) : null}
+        {insights.years.length > 0 ? (
+          <BentoTile col={12} className={bentoPad()}>
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
+              Contributions by year
+            </p>
+            <div className="flex flex-col gap-6">
+              {insights.years.map((row) => (
+                <div key={row.year}>
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <p className="text-[13px] font-semibold tabular-nums">{row.year}</p>
+                    <span className="text-[11px] tabular-nums text-black/35 dark:text-white/35">
+                      {row.total}
+                    </span>
+                  </div>
+                  <GitHubContributionHeatmap weeks={row.weeks} variant="year" weekLimit={53} />
+                </div>
+              ))}
+            </div>
+          </BentoTile>
+        ) : insightsLoading ? (
+          <BentoTile col={12} className={bentoPad()}>
+            <p className="text-[12px] text-black/45 dark:text-white/45">
+              Loading yearly heatmaps… (first load can take ~30s)
+            </p>
+          </BentoTile>
+        ) : insights.error && insights.years.length === 0 ? (
+          <BentoTile col={12} className={bentoPad()}>
+            <p className="text-[12px] text-red-400/90">
+              Couldn&apos;t load yearly heatmaps ({insights.error}). Restart Notch, then refresh.
+            </p>
+          </BentoTile>
+        ) : null}
+        <BentoTile col={12} className={bentoPad()}>
+          <GitHubRepoActivityCharts
+            year={insights.chartYear || chartYear}
+            repoTotals={insights.repoTotals}
+            repoSeries={insights.repoSeries}
+            monthLabels={insights.monthLabels}
+            dark={dark}
+            loading={insightsLoading}
+            error={insights.error}
+            yearOptions={yearOptions}
+            onYearChange={setChartYear}
+          />
+        </BentoTile>
+        <BentoTile col={6} className={bentoPad()}>{prSection}</BentoTile>
+        <BentoTile col={6} className={bentoPad()}>{notificationsSection}</BentoTile>
+      </BentoGrid>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="notch-scroll flex h-full flex-col pr-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {header}
+      <div className="mb-4">
+        <GitHubTodayPanel
+          weeks={status.contributions?.weeks ?? []}
+          breakdown={status.todayBreakdown}
+          loading={loading}
+          className="mb-4"
+        />
+        {status.contributions?.weeks?.length ? (
+          <section className="mb-4">
+            <div className="mb-2 flex items-baseline justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
+                Contributions
+              </p>
+              <span className="text-[11px] tabular-nums text-black/35 dark:text-white/35">
+                {status.contributions.total}
+              </span>
+            </div>
+            <GitHubContributionHeatmap
+              weeks={status.contributions.weeks ?? []}
+              variant={heatmapVariant}
+            />
+          </section>
+        ) : null}
+      </div>
+      {prSection}
+      {notificationsSection}
     </div>
   )
 }

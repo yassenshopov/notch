@@ -152,6 +152,42 @@ export function normalizeGitHubContributions(
   return { total: raw.total ?? 0, days, weeks }
 }
 
+export type GitHubContributionYear = {
+  year: number
+  total: number
+  weeks: GitHubContributionWeek[]
+}
+
+export type GitHubRepoTotal = {
+  repo: string
+  url: string
+  count: number
+}
+
+export type GitHubRepoMonthPoint = {
+  month: string
+  count: number
+}
+
+export type GitHubRepoSeries = {
+  repo: string
+  url: string
+  total: number
+  months: GitHubRepoMonthPoint[]
+}
+
+export type GitHubActivityInsights = {
+  configured: boolean
+  connected: boolean
+  years: GitHubContributionYear[]
+  chartYear: number
+  repoTotals: GitHubRepoTotal[]
+  repoSeries: GitHubRepoSeries[]
+  monthLabels: string[]
+  error?: string
+  message?: string
+}
+
 export type GitHubStatus = {
   configured: boolean
   connected: boolean
@@ -161,11 +197,16 @@ export type GitHubStatus = {
   pullRequests: GitHubPullRequest[]
   contributions: GitHubContributions | null
   todayBreakdown: GitHubTodayBreakdown | null
+  insights?: GitHubActivityInsights
   error?: string
   message?: string
 }
 
-export async function fetchGitHubStatus(options?: { force?: boolean }): Promise<GitHubStatus> {
+export async function fetchGitHubStatus(options?: {
+  force?: boolean
+  includeInsights?: boolean
+  year?: number
+}): Promise<GitHubStatus> {
   const bridge = window.notch?.github
   if (!bridge) {
     return {
@@ -189,4 +230,70 @@ export async function fetchGitHubStatus(options?: { force?: boolean }): Promise<
 
 export function openGitHubUrl(url: string) {
   void window.notch?.github?.openUrl(url)
+}
+
+const idleInsights: GitHubActivityInsights = {
+  configured: false,
+  connected: false,
+  years: [],
+  chartYear: new Date().getFullYear(),
+  repoTotals: [],
+  repoSeries: [],
+  monthLabels: [],
+}
+
+function normalizeInsightsPayload(
+  data: Partial<GitHubActivityInsights> | undefined,
+): GitHubActivityInsights {
+  if (!data) return { ...idleInsights, error: "insights_unavailable" }
+  const years = (data.years ?? []).map((row) => ({
+    ...row,
+    weeks: row.weeks ?? [],
+  }))
+  return {
+    configured: data.configured ?? true,
+    connected: data.connected ?? true,
+    years,
+    chartYear: data.chartYear ?? new Date().getFullYear(),
+    repoTotals: data.repoTotals ?? [],
+    repoSeries: data.repoSeries ?? [],
+    monthLabels: data.monthLabels ?? [],
+    error: data.error,
+    message: data.message,
+  }
+}
+
+export async function fetchGitHubInsights(options?: {
+  force?: boolean
+  year?: number
+}): Promise<GitHubActivityInsights> {
+  const bridge = window.notch?.github
+  if (!bridge) {
+    return { ...idleInsights, error: "no_electron" }
+  }
+
+  if (bridge.insights) {
+    const data = await bridge.insights(options)
+    return normalizeInsightsPayload(data)
+  }
+
+  const status = await bridge.status({
+    force: options?.force,
+    includeInsights: true,
+    year: options?.year,
+  })
+  return normalizeInsightsPayload(status.insights)
+}
+
+export function formatRepoMonthLabel(monthKey: string) {
+  const [y, m] = monthKey.split("-").map(Number)
+  if (!y || !m) return monthKey
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(undefined, {
+    month: "short",
+  })
+}
+
+export function shortRepoName(full: string) {
+  const parts = full.split("/")
+  return parts.length > 1 ? parts[parts.length - 1] : full
 }

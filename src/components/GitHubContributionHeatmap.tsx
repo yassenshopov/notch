@@ -1,12 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import { clampFixedTooltipPosition } from "../lib/chart-tooltip-position"
 import type { GitHubContributionDay, GitHubContributionWeek } from "../lib/github"
 import { contributionLevelClass, formatContributionCount, maxContributionCount } from "../lib/github"
 import { cn } from "../lib/utils"
 
 type Props = {
   weeks?: GitHubContributionWeek[]
-  variant: "mini" | "panel"
+  variant: "mini" | "panel" | "desktop" | "year" | "year"
+  /** Override default week column cap (e.g. full calendar year). */
+  weekLimit?: number
   className?: string
 }
 
@@ -88,17 +91,34 @@ function HeatmapTooltip({
   day: GitHubContributionDay
   anchorX: number
   anchorY: number
-  variant: "mini" | "panel"
+  variant: "mini" | "panel" | "desktop" | "year"
 }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [style, setStyle] = useState<{ left: number; top: number; transform: string } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!ref.current) return
+    const rect = ref.current.getBoundingClientRect()
+    setStyle(
+      clampFixedTooltipPosition(anchorX, anchorY, rect, {
+        preferAbove: false,
+        gap: variant === "mini" ? 6 : 8,
+      }),
+    )
+  }, [anchorX, anchorY, variant, day.date, day.count])
+
   return (
     <div
+      ref={ref}
       className={cn(
-        "pointer-events-none fixed z-[9999] flex max-w-[min(16rem,calc(100vw-2rem))] -translate-x-1/2 flex-col gap-0.5 rounded-xl border border-black/10 bg-[#f7f7f5] px-2.5 py-2 shadow-lg dark:border-white/12 dark:bg-[#111111]",
+        "pointer-events-none fixed z-[9999] flex max-w-[min(16rem,calc(100vw-2rem))] flex-col gap-0.5 rounded-xl border border-black/10 bg-[#f7f7f5] px-2.5 py-2 shadow-lg dark:border-white/12 dark:bg-[#111111]",
+        !style && "invisible",
       )}
-      style={{
-        left: anchorX,
-        top: anchorY + (variant === "mini" ? 6 : 8),
-      }}
+      style={
+        style
+          ? { left: style.left, top: style.top, transform: style.transform }
+          : { left: anchorX, top: anchorY, transform: "translateX(-50%)" }
+      }
     >
       <span
         className="absolute -top-1.5 left-1/2 size-2.5 -translate-x-1/2 rotate-45 border border-black/10 border-b-0 border-r-0 bg-[#f7f7f5] dark:border-white/12 dark:bg-[#111111]"
@@ -124,10 +144,25 @@ function HeatmapTooltip({
   )
 }
 
-export function GitHubContributionHeatmap({ weeks = [], variant, className }: Props) {
-  const weekCount = variant === "mini" ? 12 : 26
-  const cellPx = variant === "mini" ? 2 : 9
-  const gap = variant === "mini" ? "gap-px" : "gap-[3px]"
+export function GitHubContributionHeatmap({
+  weeks = [],
+  variant,
+  weekLimit,
+  className,
+}: Props) {
+  const defaultWeekCount =
+    variant === "mini" ? 12 : variant === "desktop" || variant === "year" ? 53 : 26
+  const weekCount = weekLimit ?? defaultWeekCount
+  const cellPx =
+    variant === "mini" ? 2 : variant === "year" ? 9 : variant === "desktop" ? 11 : 9
+  const gap =
+    variant === "mini"
+      ? "gap-px"
+      : variant === "desktop"
+        ? "gap-1"
+        : variant === "year"
+          ? "gap-[3px]"
+          : "gap-[3px]"
   const cellStyle = {
     width: cellPx,
     height: cellPx,
@@ -216,11 +251,11 @@ export function GitHubContributionHeatmap({ weeks = [], variant, className }: Pr
                   "box-border shrink-0 rounded-[1px] transition-[box-shadow,transform]",
                   isPad ? "bg-transparent" : contributionLevelClass(day.count, maxCount),
                   active && "ring-1 ring-black/35 dark:ring-white/45",
-                  !isPad && variant === "panel" && "cursor-crosshair",
+                  !isPad && (variant === "panel" || variant === "year") && "cursor-crosshair",
                 )}
                 onMouseEnter={(e) => showTip(day, e.currentTarget)}
                 onFocus={(e) => showTip(day, e.currentTarget)}
-                tabIndex={!isPad && variant === "panel" ? 0 : -1}
+                tabIndex={!isPad && (variant === "panel" || variant === "year") ? 0 : -1}
               />
             )
           }),

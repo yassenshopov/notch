@@ -437,7 +437,7 @@ async function status(options = {}) {
     const normalizedContributions = normalizeContributions(contributions)
     const todayBreakdown = await loadTodayBreakdown(force, normalizedContributions)
 
-    return {
+    const payload = {
       configured: true,
       connected: true,
       login: inbox.login,
@@ -447,6 +447,15 @@ async function status(options = {}) {
       contributions: normalizedContributions,
       todayBreakdown,
     }
+
+    if (options.includeInsights === true) {
+      payload.insights = await loadActivityInsights({
+        force,
+        year: options.year,
+      })
+    }
+
+    return payload
   } catch (err) {
     return {
       configured: true,
@@ -462,4 +471,302 @@ async function status(options = {}) {
   }
 }
 
-module.exports = { status, configured: () => Boolean(token()) }
+const INSIGHTS_TTL_MS = 60 * 60_000
+const INSIGHTS_STALE_MS = 12 * 60 * 60_000
+
+function yearContributionRangeIso(year) {
+  const from = `${year}-01-01T00:00:00.000Z`
+  const now = new Date()
+  if (year > now.getFullYear()) return null
+  if (year < 1970) return null
+  const isCurrent = year === now.getFullYear()
+  const to = isCurrent
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString()
+    : `${year + 1}-01-01T00:00:00.000Z`
+  return { from, to }
+}
+
+function accountStartYear(createdAt) {
+  const d = createdAt ? new Date(createdAt) : null
+  const y = d && Number.isFinite(d.getTime()) ? d.getUTCFullYear() : new Date().getUTCFullYear() - 4
+  return Math.min(y, new Date().getFullYear())
+}
+
+async function fetchContributionsForRange(from, to) {
+  const data = await ghGraphql(
+    `query ($from: DateTime!, $to: DateTime!) {
+      viewer {
+        contributionsCollection(from: $from, to: $to) {
+          contributionCalendar {
+            totalContributions
+            weeks {
+              contributionDays {
+                contributionCount
+                date
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { from, to },
+  )
+  const cal = data?.viewer?.contributionsCollection?.contributionCalendar
+  if (!cal) return null
+  const { weeks, days } = mapContributionWeeks(cal.weeks)
+  return {
+    total: cal.totalContributions ?? 0,
+    days,
+    weeks,
+  }
+}
+
+async function fetchContributionsForYear(year) {
+  const range = yearContributionRangeIso(year)
+  if (!range) return null
+  return fetchContributionsForRange(range.from, range.to)
+}
+
+const REPO_CONTRIBUTION_FIELDS = `
+        commitContributionsByRepository(maxRepositories: 30) {
+          repository { nameWithOwner url }
+          contributions { totalCount }
+        }
+        pullRequestContributionsByRepository(maxRepositories: 30) {
+          repository { nameWithOwner url }
+          contributions { totalCount }
+        }
+        issueContributionsByRepository(maxRepositories: 30) {
+          repository { nameWithOwner url }
+          contributions { totalCount }
+        }
+        pullRequestReviewContributionsByRepository(maxRepositories: 30) {
+          repository { nameWithOwner url }
+          contributions { totalCount }
+        }`
+
+const REPO_COMMIT_FIELDS = `
+        commitContributionsByRepository(maxRepositories: 30) {
+          repository { nameWithOwner url }
+          contributions { totalCount }
+        }`
+
+async function fetchRepoTotalsForRange(from, to) {
+  const fullQuery = `query ($from: DateTime!, $to: DateTime!) {
+      viewer {
+        contributionsCollection(from: $from, to: $to) {
+          ${REPO_CONTRIBUTION_FIELDS}
+        }
+      }
+    }`
+  const commitsQuery = `query ($from: DateTime!, $to: DateTime!) {
+      viewer {
+        contributionsCollection(from: $from, to: $to) {
+          ${REPO_COMMIT_FIELDS}
+        }
+      }
+    }`
+
+  let col
+  try {
+    const data = await ghGraphql(fullQuery, { from, to })
+    col = data?.viewer?.contributionsCollection
+  } catch {
+    const data = await ghGraphql(commitsQuery, { from, to })
+    col = data?.viewer?.contributionsCollection
+  }
+  if (!col) return []
+  return mergeContributionsByRepository([
+    col.commitContributionsByRepository,
+    col.pullRequestContributionsByRepository,
+    col.issueContributionsByRepository,
+    col.pullRequestReviewContributionsByRepository,
+  ])
+}
+
+function monthRangesForYear(year) {
+  const now = new Date()
+  const lastMonth = year === now.getUTCFullYear() ? now.getUTCMonth() : 11
+  const ranges = []
+  for (let m = 0; m <= lastMonth; m++) {
+    const from = new Date(Date.UTC(year, m, 1)).toISOString()
+    const to = new Date(Date.UTC(year, m + 1, 1)).toISOString()
+    const key = `${year}-${String(m + 1).padStart(2, "0")}`
+    ranges.push({ key, from, to, alias: `m${m}` })
+  }
+  return ranges
+}
+
+async function fetchRepoTotalsForMonth(from, to) {
+  const data = await ghGraphql(
+    `query ($from: DateTime!, $to: DateTime!) {
+      viewer {
+        contributionsCollection(from: $from, to: $to) {
+          ${REPO_COMMIT_FIELDS}
+        }
+      }
+    }`,
+    { from, to },
+  )
+  const col = data?.viewer?.contributionsCollection
+  if (!col) return []
+  return mergeContributionsByRepository([col.commitContributionsByRepository])
+}
+
+async function fetchRepoMonthlySeries(year) {
+  const months = monthRangesForYear(year)
+  if (!months.length) return { months: [], series: [] }
+
+  const monthKeys = months.map((m) => m.key)
+  const totalsByRepo = new Map()
+
+  for (const m of months) {
+    const repos = await fetchRepoTotalsForMonth(m.from, m.to)
+    for (const row of repos) {
+      let entry = totalsByRepo.get(row.repo)
+      if (!entry) {
+        entry = { repo: row.repo, url: row.url, byMonth: new Map() }
+        totalsByRepo.set(row.repo, entry)
+      }
+      entry.byMonth.set(m.key, (entry.byMonth.get(m.key) ?? 0) + row.count)
+    }
+  }
+
+  const ranked = [...totalsByRepo.values()]
+    .map((entry) => ({
+      repo: entry.repo,
+      url: entry.url,
+      total: [...entry.byMonth.values()].reduce((s, n) => s + n, 0),
+      byMonth: entry.byMonth,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8)
+
+  const series = ranked.map((row) => ({
+    repo: row.repo,
+    url: row.url,
+    total: row.total,
+    months: monthKeys.map((key) => ({ month: key, count: row.byMonth.get(key) ?? 0 })),
+  }))
+
+  return { months: monthKeys, series }
+}
+
+async function loadContributionYears(force) {
+  const cacheKey = "github:insights:years:v1"
+  if (force) cache.invalidate(cacheKey)
+  return cache.get(cacheKey, {
+    ttlMs: INSIGHTS_TTL_MS,
+    staleMs: INSIGHTS_STALE_MS,
+    force,
+    fetcher: async () => {
+      const user = await gh("/user")
+      const startYear = accountStartYear(user.created_at)
+      const endYear = new Date().getFullYear()
+      const yearNums = []
+      for (let y = endYear; y >= startYear; y--) yearNums.push(y)
+      const yearPayloads = await Promise.all(
+        yearNums.map(async (y) => {
+          const contributions = await fetchContributionsForYear(y)
+          if (!contributions) return null
+          return { year: y, total: contributions.total, weeks: contributions.weeks }
+        }),
+      )
+      return yearPayloads.filter(Boolean)
+    },
+  })
+}
+
+async function loadRepoChartsForYear(year, force) {
+  const cacheKey = `github:insights:repos:v1:${year}`
+  if (force) cache.invalidate(cacheKey)
+  return cache.get(cacheKey, {
+    ttlMs: INSIGHTS_TTL_MS,
+    staleMs: INSIGHTS_STALE_MS,
+    force,
+    fetcher: async () => {
+      const range = yearContributionRangeIso(year)
+      const repoTotals = range ? await fetchRepoTotalsForRange(range.from, range.to) : []
+      const { months, series } = await fetchRepoMonthlySeries(year)
+      return {
+        repoTotals: repoTotals.slice(0, 12),
+        repoSeries: series,
+        monthLabels: months,
+      }
+    },
+  })
+}
+
+async function loadActivityInsights(options = {}) {
+  const force = options.force === true
+  const year =
+    typeof options.year === "number" && Number.isFinite(options.year)
+      ? Math.floor(options.year)
+      : new Date().getFullYear()
+
+  let years = []
+  let charts = { repoTotals: [], repoSeries: [], monthLabels: [] }
+  let yearsError
+  let chartsError
+
+  try {
+    years = await loadContributionYears(force)
+  } catch (err) {
+    yearsError = err instanceof Error ? err.message : "github_years_error"
+  }
+
+  try {
+    charts = await loadRepoChartsForYear(year, force)
+  } catch (err) {
+    chartsError = err instanceof Error ? err.message : "github_charts_error"
+  }
+
+  const error = yearsError && chartsError ? `${yearsError}; ${chartsError}` : yearsError ?? chartsError
+
+  return {
+    years,
+    chartYear: year,
+    repoTotals: charts.repoTotals,
+    repoSeries: charts.repoSeries,
+    monthLabels: charts.monthLabels,
+    error,
+  }
+}
+
+async function activityInsights(options = {}) {
+  const configured = Boolean(token())
+  if (!configured) {
+    return {
+      configured: false,
+      connected: false,
+      years: [],
+      chartYear: new Date().getFullYear(),
+      repoTotals: [],
+      repoSeries: [],
+      monthLabels: [],
+      message: "Add GITHUB_TOKEN to .env",
+    }
+  }
+
+  try {
+    const payload = await loadActivityInsights(options)
+    return {
+      configured: true,
+      connected: true,
+      ...payload,
+    }
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      years: [],
+      chartYear: new Date().getFullYear(),
+      repoTotals: [],
+      repoSeries: [],
+      monthLabels: [],
+      error: err instanceof Error ? err.message : "github_insights_error",
+    }
+  }
+}
+
+module.exports = { status, activityInsights, configured: () => Boolean(token()) }
