@@ -7,6 +7,7 @@ const SCOPES = [
   "user-read-currently-playing",
   "user-read-playback-state",
   "user-modify-playback-state",
+  "user-read-recently-played",
 ].join(" ")
 
 const CALLBACK_PORT = 43110
@@ -114,12 +115,8 @@ async function spotifyFetch(endpoint, options = {}) {
   return res
 }
 
-function mapPlayback(data) {
-  if (!data || !data.item) {
-    return { connected: true, isPlaying: false, track: null }
-  }
-
-  const item = data.item
+function mapTrack(item) {
+  if (!item) return null
   const artists = (item.artists || []).map((a) => a.name).join(", ")
   const images = item.album?.images || []
   const art =
@@ -128,18 +125,31 @@ function mapPlayback(data) {
     null
 
   return {
+    id: item.id,
+    name: item.name,
+    artists,
+    album: item.album?.name ?? "",
+    artUrl: art,
+    uri: item.uri,
+  }
+}
+
+function mapPlayback(data) {
+  if (!data || !data.item) {
+    return { connected: true, isPlaying: false, track: null }
+  }
+
+  const track = mapTrack(data.item)
+  if (!track) {
+    return { connected: true, isPlaying: false, track: null }
+  }
+
+  return {
     connected: true,
     isPlaying: Boolean(data.is_playing),
     progressMs: data.progress_ms ?? 0,
-    durationMs: item.duration_ms ?? 0,
-    track: {
-      id: item.id,
-      name: item.name,
-      artists,
-      album: item.album?.name ?? "",
-      artUrl: art,
-      uri: item.uri,
-    },
+    durationMs: data.item.duration_ms ?? 0,
+    track,
   }
 }
 
@@ -152,7 +162,7 @@ async function getCurrentlyPlaying() {
   }
 
   try {
-    const res = await spotifyFetch("/me/player/currently-playing")
+    const res = await spotifyFetch("/me/player")
     if (res.status === 204) {
       return { connected: true, configured: true, isPlaying: false, track: null }
     }
@@ -176,6 +186,51 @@ async function getCurrentlyPlaying() {
     }
     throw err
   }
+}
+
+async function getRecentlyPlayed(limit = 6) {
+  if (!isConfigured() || !isConnected()) {
+    return []
+  }
+
+  try {
+    const capped = Math.min(Math.max(1, limit), 20)
+    const res = await spotifyFetch(`/me/player/recently-played?limit=${capped}`)
+    if (res.status === 401) {
+      clearTokens()
+      return []
+    }
+    if (!res.ok) {
+      return []
+    }
+    const data = await res.json()
+    const items = data.items || []
+    const seen = new Set()
+    const out = []
+    for (const row of items) {
+      const track = mapTrack(row.track)
+      if (!track || seen.has(track.id)) continue
+      seen.add(track.id)
+      out.push({ track, playedAt: row.played_at ?? null })
+    }
+    return out
+  } catch (err) {
+    if (err.code === "not_connected") return []
+    throw err
+  }
+}
+
+async function playUri(uri) {
+  if (!uri) throw new Error("missing_uri")
+  const res = await spotifyFetch("/me/player/play", {
+    method: "PUT",
+    body: JSON.stringify({ uris: [uri] }),
+  })
+  if (!res.ok && res.status !== 204 && res.status !== 404) {
+    const text = await res.text()
+    throw new Error(text || `Spotify ${res.status}`)
+  }
+  return getCurrentlyPlaying()
 }
 
 async function playbackAction(action) {
@@ -322,6 +377,8 @@ module.exports = {
   isConfigured,
   isConnected,
   getCurrentlyPlaying,
+  getRecentlyPlayed,
+  playUri,
   playbackAction,
   startAuth,
   disconnect,

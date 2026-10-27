@@ -3,6 +3,7 @@ import { useSettings } from "../config/settings-store"
 import {
   connectSpotify,
   fetchSpotifyStatus,
+  playSpotifyUri,
   spotifyAction,
   type SpotifyAction,
   type SpotifyStatus,
@@ -71,6 +72,14 @@ export function useSpotify() {
     return next
   }, [])
 
+  const playUri = useCallback(async (uri: string) => {
+    const next = await playSpotifyUri(uri)
+    setStatus(next)
+    setProgressMs(next.progressMs ?? 0)
+    lastTick.current = Date.now()
+    return next
+  }, [])
+
   return {
     status: {
       ...status,
@@ -80,6 +89,7 @@ export function useSpotify() {
     connect,
     disconnect,
     action,
+    playUri,
     playing: Boolean(status.isPlaying && status.track),
   }
 }

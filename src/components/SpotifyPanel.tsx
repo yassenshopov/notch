@@ -1,24 +1,40 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import type { CSSProperties, ReactNode } from "react"
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
 import { useSettings } from "../config/settings-store"
 import { useSpotifyLyrics } from "../hooks/useSpotifyLyrics"
 import type { AlbumPalette } from "../lib/album-color"
-import { formatMs, type SpotifyStatus } from "../lib/spotify"
+import {
+  fetchSpotifyRecentlyPlayed,
+  formatMs,
+  type SpotifyRecentItem,
+  type SpotifyStatus,
+} from "../lib/spotify"
 import { cn } from "../lib/utils"
 import { EqualizerBars } from "./EqualizerBars"
+import { usePanelLayout } from "../lib/panel-layout"
+import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { SpotifyLyrics } from "./SpotifyLyrics"
 
 type Props = {
   status: SpotifyStatus
   onAction: (action: "play" | "pause" | "next" | "previous") => void
+  onPlayUri: (uri: string) => void
   onConnect: () => void
   connecting?: boolean
   palette?: AlbumPalette | null
 }
 
-export function SpotifyPanel({ status, onAction, onConnect, connecting, palette }: Props) {
+export function SpotifyPanel({
+  status,
+  onAction,
+  onPlayUri,
+  onConnect,
+  connecting,
+  palette,
+}: Props) {
   const settings = useSettings()
+  const desktop = usePanelLayout() === "desktop"
   const showLyrics = settings.spotify.showLyrics ?? true
   const track = status.track
   const duration = status.durationMs ?? 0
@@ -64,7 +80,12 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
   }
 
   if (!track) {
-    return <EmptyState title="Spotify" body="Nothing playing right now." />
+    return (
+      <SpotifyIdlePanel
+        onAction={onAction}
+        onPlayUri={onPlayUri}
+      />
+    )
   }
 
   const progress = Math.min(duration, status.progressMs ?? 0)
@@ -81,9 +102,9 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
       } as CSSProperties)
     : undefined
 
-  return (
-    <div className="flex h-full min-h-0 flex-col pb-2" style={style}>
-      <header className="flex shrink-0 items-center justify-between gap-3 pr-10">
+  const nowPlaying = (
+    <div className={cn("flex min-h-0 flex-col pb-2", desktop && "h-full")} style={style}>
+      <header className="flex shrink-0 items-center justify-between gap-3 pr-10 lg:pr-0">
         <p
           className={cn(
             "text-[11px] font-semibold uppercase tracking-[0.16em]",
@@ -112,7 +133,7 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col items-center",
-          showLyrics ? "mt-3" : "mt-5",
+          showLyrics && !desktop ? "mt-3" : "mt-5",
         )}
       >
         <AnimatePresence mode="wait" initial={false}>
@@ -177,7 +198,7 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
           </motion.div>
         </AnimatePresence>
 
-        {showLyrics ? (
+        {showLyrics && !desktop ? (
           <SpotifyLyrics
             lyrics={lyrics}
             loading={lyricsLoading}
@@ -186,7 +207,7 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
           />
         ) : null}
 
-        <div className={cn("mt-auto w-full shrink-0", showLyrics ? "pt-3" : "pt-8")}>
+        <div className={cn("mt-auto w-full shrink-0", showLyrics && !desktop ? "pt-3" : "pt-8")}>
           <div
             className={cn(
               "h-[3px] overflow-hidden rounded-full",
@@ -242,6 +263,129 @@ export function SpotifyPanel({ status, onAction, onConnect, connecting, palette 
             />
           </div>
         </div>
+      </div>
+    </div>
+  )
+
+  if (desktop) {
+    return (
+      <BentoGrid>
+        <BentoTile col={5} className={bentoPad()}>{nowPlaying}</BentoTile>
+        <BentoTile col={7} className={bentoPad()}>
+          {showLyrics ? (
+            <SpotifyLyrics
+              lyrics={lyrics}
+              loading={lyricsLoading}
+              progressMs={progress}
+              themed={themed}
+            />
+          ) : (
+            <p className="text-[13px] text-black/45 dark:text-white/45">
+              Enable lyrics in Settings to see them here.
+            </p>
+          )}
+        </BentoTile>
+      </BentoGrid>
+    )
+  }
+
+  return nowPlaying
+}
+
+function SpotifyIdlePanel({
+  onAction,
+  onPlayUri,
+}: {
+  onAction: (action: "play" | "pause" | "next" | "previous") => void
+  onPlayUri: (uri: string) => void
+}) {
+  const [recent, setRecent] = useState<SpotifyRecentItem[]>([])
+  const [recentLoading, setRecentLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setRecentLoading(true)
+    void fetchSpotifyRecentlyPlayed(6)
+      .then((items) => {
+        if (!cancelled) setRecent(items)
+      })
+      .catch(() => {
+        if (!cancelled) setRecent([])
+      })
+      .finally(() => {
+        if (!cancelled) setRecentLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return (
+    <div
+      className="notch-scroll flex h-full min-h-0 flex-col pr-1"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <header className="shrink-0 pr-10">
+        <p className="text-[15px] font-semibold tracking-tight">Spotify</p>
+        <p className="mt-1 text-[12px] leading-relaxed text-black/45 dark:text-white/45">
+          Nothing playing — resume playback or jump back into something recent.
+        </p>
+      </header>
+
+      <div className="mt-6 flex shrink-0 items-center justify-center gap-5">
+        <Control label="Previous" onClick={() => onAction("previous")} icon={<SkipBack className="size-[18px]" strokeWidth={1.75} />} />
+        <Control
+          label="Play"
+          primary
+          onClick={() => onAction("play")}
+          icon={<Play className="size-5 translate-x-[1px]" strokeWidth={1.75} fill="currentColor" />}
+        />
+        <Control label="Next" onClick={() => onAction("next")} icon={<SkipForward className="size-[18px]" strokeWidth={1.75} />} />
+      </div>
+
+      <div className="mt-6 min-h-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/40 dark:text-white/40">
+          Listen again
+        </p>
+        {recentLoading ? (
+          <p className="mt-4 text-[13px] text-black/35 dark:text-white/35">Loading recent tracks…</p>
+        ) : recent.length === 0 ? (
+          <p className="mt-4 text-[13px] leading-relaxed text-black/45 dark:text-white/45">
+            Open Spotify on this PC or your phone, then hit Play here to wake your active device.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-1">
+            {recent.map(({ track }) => (
+              <li key={track.id}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPlayUri(track.uri)
+                  }}
+                  className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-black/[0.04] active:bg-black/[0.06] dark:hover:bg-white/[0.06] dark:active:bg-white/[0.08]"
+                >
+                  <div className="size-11 shrink-0 overflow-hidden rounded-xl bg-black/5 dark:bg-white/10">
+                    {track.artUrl ? (
+                      <img src={track.artUrl} alt="" className="size-full object-cover" draggable={false} />
+                    ) : (
+                      <div className="flex size-full items-center justify-center text-[10px] text-black/30 dark:text-white/30">
+                        ♪
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium leading-tight">{track.name}</p>
+                    <p className="mt-0.5 truncate text-[12px] text-black/45 dark:text-white/45">
+                      {track.artists}
+                    </p>
+                  </div>
+                  <Play className="size-4 shrink-0 opacity-35" strokeWidth={1.75} aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
