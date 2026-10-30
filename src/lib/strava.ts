@@ -64,6 +64,7 @@ export type StravaHeatmapBounds = {
 }
 
 export type StravaHeatmapRoute = {
+  id?: number
   polyline: string
   type: string
 }
@@ -114,6 +115,8 @@ export type StravaStatus = {
   calendar: StravaCalendar | null
   calendarActivities: { id: number; type: string; startDate: string }[]
   heatmap: StravaHeatmap | null
+  heatmapRouteCount?: number
+  activitiesSyncedAt?: number | null
   featuredActivity: StravaActivitySummary | null
   activities: StravaActivitySummary[]
   monthDistance: number

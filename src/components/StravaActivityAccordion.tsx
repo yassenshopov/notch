@@ -1,16 +1,9 @@
-import { ChevronDown, ExternalLink } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { useState } from "react"
 import type { StravaActivitySummary } from "../lib/strava"
-import {
-  activityKind,
-  fetchStravaActivity,
-  formatDistance,
-  formatDuration,
-  formatPace,
-  openStravaUrl,
-} from "../lib/strava"
+import { activityKind, formatDistance } from "../lib/strava"
 import { cn } from "../lib/utils"
-import { StravaOsmMap } from "./StravaOsmMap"
+import { StravaActivityRoutePanel } from "./StravaActivityRoutePanel"
 import { StravaRouteThumbnail } from "./StravaRouteThumbnail"
 
 type Props = {
@@ -23,11 +16,6 @@ type Props = {
 function formatActivityDate(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-}
-
-function formatSpeedKmh(metersPerSecond: number) {
-  if (!metersPerSecond || !Number.isFinite(metersPerSecond)) return "—"
-  return `${(metersPerSecond * 3.6).toFixed(1)} km/h`
 }
 
 function kindLabel(type: string) {
@@ -46,28 +34,9 @@ export function StravaActivityAccordion({
 }: Props) {
   const plain = listStyle === "plain"
   const [openId, setOpenId] = useState<number | null>(null)
-  const [details, setDetails] = useState<Record<number, StravaActivitySummary>>({})
-  const [loadingId, setLoadingId] = useState<number | null>(null)
 
   const toggle = (activity: StravaActivitySummary) => {
-    if (openId === activity.id) {
-      setOpenId(null)
-      return
-    }
-    setOpenId(activity.id)
-    if (details[activity.id]) return
-
-    setLoadingId(activity.id)
-    void fetchStravaActivity(activity.id)
-      .then((detail) => {
-        setDetails((prev) => ({ ...prev, [activity.id]: detail }))
-      })
-      .catch(() => {
-        setDetails((prev) => ({ ...prev, [activity.id]: activity }))
-      })
-      .finally(() => {
-        setLoadingId((id) => (id === activity.id ? null : id))
-      })
+    setOpenId((id) => (id === activity.id ? null : activity.id))
   }
 
   if (loading && activities.length === 0) {
@@ -82,9 +51,6 @@ export function StravaActivityAccordion({
     <ul className={cn(plain ? "divide-y divide-black/8 dark:divide-white/10" : "space-y-1.5")}>
       {activities.map((activity) => {
         const open = openId === activity.id
-        const detail = details[activity.id] ?? activity
-        const mapLoading = open && loadingId === activity.id
-        const kind = activityKind(detail.type)
 
         return (
           <li
@@ -109,9 +75,7 @@ export function StravaActivityAccordion({
                   {formatDistance(activity.distance)}
                 </span>
               </span>
-              {!open ? (
-                <StravaRouteThumbnail polyline={detail.polyline ?? activity.polyline} />
-              ) : null}
+              {!open ? <StravaRouteThumbnail polyline={activity.polyline} /> : null}
               <ChevronDown
                 className={cn(
                   "size-4 shrink-0 text-black/35 transition-transform dark:text-white/35",
@@ -124,66 +88,18 @@ export function StravaActivityAccordion({
             {open ? (
               <div
                 className={cn(
-                  "pb-3 pt-2",
+                  "pb-4 pt-2",
                   plain
                     ? "border-t border-black/6 dark:border-white/8"
-                    : "border-t border-black/6 px-2.5 pb-2.5 pt-2 dark:border-white/8",
+                    : "border-t border-black/6 px-2.5 pb-3 pt-2 dark:border-white/8",
                 )}
               >
-                {mapLoading ? (
-                  <div
-                    className="mb-2 flex items-center justify-center rounded-xl border border-black/8 bg-black/[0.03] text-[11px] text-black/40 dark:border-white/10 dark:bg-white/[0.03] dark:text-white/40"
-                    style={{ height: 168 }}
-                  >
-                    Loading map…
-                  </div>
-                ) : (
-                  <StravaOsmMap
-                    polyline={detail.polyline}
-                    activityType={detail.type}
-                    className="mb-2"
-                    height={plain ? 220 : 168}
-                    interactive={plain}
-                    playback={plain}
-                  />
-                )}
-
-                <div className="mb-2 grid grid-cols-2 gap-1.5">
-                  <MiniStat label="Distance" value={formatDistance(detail.distance)} />
-                  <MiniStat label="Moving time" value={formatDuration(detail.movingTime)} />
-                  <MiniStat
-                    label={kind === "run" ? "Pace" : "Avg speed"}
-                    value={
-                      kind === "run" && detail.distance > 0
-                        ? formatPace(detail.movingTime / (detail.distance / 1000))
-                        : formatSpeedKmh(detail.averageSpeed)
-                    }
-                  />
-                  <MiniStat label="Elevation" value={`${Math.round(detail.elevation)} m`} />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => openStravaUrl(detail.url)}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#fc4c02] hover:underline"
-                >
-                  Open on Strava
-                  <ExternalLink className="size-3" aria-hidden />
-                </button>
+                <StravaActivityRoutePanel activity={activity} />
               </div>
             ) : null}
           </li>
         )
       })}
     </ul>
-  )
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg bg-black/[0.03] px-2 py-1.5 dark:bg-white/[0.04]">
-      <p className="text-[10px] text-black/40 dark:text-white/40">{label}</p>
-      <p className="text-[11px] font-semibold tabular-nums">{value}</p>
-    </div>
   )
 }

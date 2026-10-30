@@ -13,6 +13,33 @@ const STATUS_TTL_MS = 3 * 60_000
 const STATUS_STALE_MS = 15 * 60_000
 const ACTIVITY_DETAIL_TTL_MS = 30 * 60_000
 const ACTIVITY_DETAIL_STALE_MS = 24 * 60 * 60_000
+const ACTIVITIES_PAGE_SIZE = 200
+const ACTIVITIES_MAX_SYNC_PAGES = 50
+
+function activitiesIndexPath() {
+  return path.join(app.getPath("userData"), "strava-activities-index.json")
+}
+
+function heatmapCachePath() {
+  return path.join(app.getPath("userData"), "strava-heatmap-cache.json")
+}
+
+function readActivityIndex() {
+  try {
+    return JSON.parse(fs.readFileSync(activitiesIndexPath(), "utf8"))
+  } catch {
+    return null
+  }
+}
+
+function writeActivityIndex(payload) {
+  fs.writeFileSync(activitiesIndexPath(), JSON.stringify(payload), "utf8")
+}
+
+function writeHeatmapCache(heatmap) {
+  fs.writeFileSync(heatmapCachePath(), JSON.stringify(heatmap), "utf8")
+}
+
 function tokenPath() {
   return path.join(app.getPath("userData"), "strava-tokens.json")
 }
@@ -394,9 +421,15 @@ function buildRouteHeatmap(activities) {
 
   for (const a of activities) {
     if (!a.polyline) continue
-    routes.push({ polyline: a.polyline, type: a.type })
-    for (const p of decodePolyline(a.polyline)) {
-      boundsPoints.push(p)
+    routes.push({ id: a.id, polyline: a.polyline, type: a.type })
+    if (Number.isFinite(a.startLat) && Number.isFinite(a.startLng)) {
+      boundsPoints.push({ lat: a.startLat, lng: a.startLng })
+      continue
+    }
+    const pts = decodePolyline(a.polyline)
+    if (pts.length >= 1) {
+      boundsPoints.push(pts[0])
+      if (pts.length > 1) boundsPoints.push(pts[pts.length - 1])
     }
   }
 
@@ -429,19 +462,72 @@ function buildRouteHeatmap(activities) {
   }
 }
 
-async function fetchStatusPayload() {
+async function syncActivityIndex(athleteId, { force = false } = {}) {
+  const existing = readActivityIndex()
+  const merged = new Map()
+
+  if (existing?.athleteId === athleteId && Array.isArray(existing.activities)) {
+    for (const a of existing.activities) {
+      if (a?.id) merged.set(a.id, a)
+    }
+  }
+
+  let page = 1
+  while (page <= ACTIVITIES_MAX_SYNC_PAGES) {
+    const res = await stravaFetch(
+      `/athlete/activities?per_page=${ACTIVITIES_PAGE_SIZE}&page=${page}`,
+    )
+    if (!res.ok) {
+      throw new Error(`strava_http_${res.status}`)
+    }
+    const raw = await res.json()
+    if (!Array.isArray(raw) || raw.length === 0) break
+
+    let pageAllKnown = true
+    for (const row of raw) {
+      const mapped = mapActivity(row)
+      if (!merged.has(mapped.id)) pageAllKnown = false
+      merged.set(mapped.id, mapped)
+    }
+
+    if (pageAllKnown && !force) break
+    if (raw.length < ACTIVITIES_PAGE_SIZE) break
+    page += 1
+  }
+
+  const activities = [...merged.values()].sort(
+    (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),
+  )
+
+  writeActivityIndex({
+    athleteId,
+    syncedAt: Date.now(),
+    activities,
+  })
+
+  return activities
+}
+
+function buildHeatmapForActivities(activities) {
+  return buildRouteHeatmap(activities.filter((a) => a.polyline))
+}
+
+async function fetchStatusPayload(options = {}) {
+  const force = options.force === true
   const athleteRes = await stravaFetch("/athlete")
   if (!athleteRes.ok) throw new Error(`strava_http_${athleteRes.status}`)
   const athlete = await athleteRes.json()
 
-  const [activitiesRes, statsRes] = await Promise.all([
-    stravaFetch("/athlete/activities?per_page=80"),
+  const [activities, statsRes] = await Promise.all([
+    syncActivityIndex(athlete.id, { force }).catch((err) => {
+      const cached = readActivityIndex()
+      if (cached?.athleteId === athlete.id && Array.isArray(cached.activities)) {
+        return cached.activities
+      }
+      throw err
+    }),
     stravaFetch(`/athletes/${athlete.id}/stats`),
   ])
-
-  if (!activitiesRes.ok) throw new Error(`strava_http_${activitiesRes.status}`)
-  const rawActivities = await activitiesRes.json()
-  const activities = (rawActivities ?? []).map(mapActivity)
 
   let stats = null
   if (statsRes.ok) {
@@ -458,7 +544,10 @@ async function fetchStatusPayload() {
 
   const streak = computeStreak(activities)
   const calendar = buildMonthCalendar(activities)
-  const heatmap = buildRouteHeatmap(activities.slice(0, 40))
+  const heatmap = buildHeatmapForActivities(activities)
+  writeHeatmapCache(heatmap)
+
+  const indexMeta = readActivityIndex()
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -477,8 +566,10 @@ async function fetchStatusPayload() {
       startDate: a.startDate,
     })),
     heatmap,
+    heatmapRouteCount: heatmap.routes?.length ?? 0,
+    activitiesSyncedAt: indexMeta?.syncedAt ?? null,
     featuredActivity: activities.find((a) => a.polyline) ?? activities[0] ?? null,
-    activities: activities.slice(0, 20),
+    activities,
     monthDistance: recent30.reduce((sum, a) => sum + (a.distance || 0), 0),
   }
 }
@@ -525,11 +616,11 @@ async function status(options = {}) {
   }
 
   try {
-    const data = await cache.get("strava:status:v5", {
+    const data = await cache.get("strava:status:v6", {
       ttlMs: STATUS_TTL_MS,
       staleMs: STATUS_STALE_MS,
       force,
-      fetcher: fetchStatusPayload,
+      fetcher: () => fetchStatusPayload({ force }),
     })
     return { configured: true, connected: true, ...data }
   } catch (err) {
@@ -652,8 +743,20 @@ function startAuth() {
 function disconnect() {
   clearTokens()
   cache.invalidate?.("strava:status:v4")
+  cache.invalidate?.("strava:status:v5")
+  cache.invalidate?.("strava:status:v6")
   cache.invalidatePrefix?.("strava:activity:")
   cache.invalidatePrefix?.("strava:activity-streams:")
+  try {
+    fs.unlinkSync(activitiesIndexPath())
+  } catch {
+    // ignore
+  }
+  try {
+    fs.unlinkSync(heatmapCachePath())
+  } catch {
+    // ignore
+  }
   return status()
 }
 

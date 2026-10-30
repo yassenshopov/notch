@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import type { StravaRoutePlaybackGeometry } from "../lib/strava-route-playback"
-import { useSmoothedScalar } from "../hooks/useSmoothedScalar"
 import { activityRouteColor, type StravaActivityStreams, type StravaActivitySummary } from "../lib/strava"
 import { buildStravaPlaybackSnapshot } from "../lib/strava-playback-stats"
 import { cn } from "../lib/utils"
@@ -31,6 +30,7 @@ function PlaybackScrubTrack({
   onScrubEnd?: () => void
 }) {
   const pct = Math.min(100, Math.max(0, progress * 100))
+  const rangeValue = Math.round(progress * 1000)
 
   return (
     <div className="strava-playback-widget-scrub-track relative mt-3 h-11 w-full">
@@ -39,12 +39,12 @@ function PlaybackScrubTrack({
         aria-hidden
       >
         <div
-          className="h-full rounded-full"
+          className="h-full rounded-full will-change-[width]"
           style={{ width: `${pct}%`, backgroundColor: accent }}
         />
       </div>
       <div
-        className="pointer-events-none absolute top-1/2 size-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2.5px] border-white shadow-md dark:border-white/95"
+        className="pointer-events-none absolute top-1/2 size-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-[2.5px] border-white shadow-md will-change-[left] dark:border-white/95"
         style={{ left: `${pct}%`, backgroundColor: accent }}
         aria-hidden
       />
@@ -53,7 +53,7 @@ function PlaybackScrubTrack({
         min={0}
         max={1000}
         step={1}
-        value={Math.round(progress * 1000)}
+        value={rangeValue}
         onChange={(e) => onSeek(Number(e.target.value) / 1000)}
         onPointerDown={() => onScrubStart?.()}
         onPointerUp={() => onScrubEnd?.()}
@@ -62,7 +62,7 @@ function PlaybackScrubTrack({
         aria-label="Scrub route playback"
         aria-valuemin={0}
         aria-valuemax={1000}
-        aria-valuenow={Math.round(progress * 1000)}
+        aria-valuenow={rangeValue}
       />
     </div>
   )
@@ -78,17 +78,9 @@ export function StravaPlaybackStatsWidget({
   onScrubEnd,
   className,
 }: Props) {
-  const [scrubbing, setScrubbing] = useState(false)
-
-  const displayProgress = useSmoothedScalar(progress, {
-    enabled: !scrubbing,
-    durationMs: 360,
-  })
-  const scrubProgress = scrubbing ? progress : displayProgress
-
   const snapshot = useMemo(
-    () => buildStravaPlaybackSnapshot(activity, displayProgress, geometry, streams),
-    [activity, displayProgress, geometry, streams],
+    () => buildStravaPlaybackSnapshot(activity, progress, geometry, streams),
+    [activity, progress, geometry, streams],
   )
 
   const accent = activityRouteColor(activity.type)
@@ -115,17 +107,11 @@ export function StravaPlaybackStatsWidget({
       </div>
 
       <PlaybackScrubTrack
-        progress={scrubProgress}
+        progress={progress}
         accent={accent}
         onSeek={onSeek}
-        onScrubStart={() => {
-          setScrubbing(true)
-          onScrubStart?.()
-        }}
-        onScrubEnd={() => {
-          setScrubbing(false)
-          onScrubEnd?.()
-        }}
+        onScrubStart={() => onScrubStart?.()}
+        onScrubEnd={() => onScrubEnd?.()}
       />
 
       <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px] transition-opacity duration-300">
@@ -147,7 +133,7 @@ export function StravaPlaybackStatsWidget({
         {snapshot.live.map((metric) => {
           const playhead =
             metric.series && metric.series.length > 1
-              ? displayProgress * (metric.series.length - 1)
+              ? progress * (metric.series.length - 1)
               : 0
           return (
             <div key={metric.label}>

@@ -2,39 +2,56 @@ import { useEffect, useRef, useState } from "react"
 
 type Options = {
   enabled?: boolean
+  /** Time constant for exponential smoothing (ms); lower = snappier */
   durationMs?: number
 }
 
+/**
+ * Smoothly follows a moving target without restarting an ease on every target change.
+ */
 export function useSmoothedScalar(target: number, { enabled = true, durationMs = 320 }: Options = {}) {
   const [value, setValue] = useState(target)
+  const targetRef = useRef(target)
   const valueRef = useRef(target)
-  valueRef.current = value
+  targetRef.current = target
 
   useEffect(() => {
     if (!enabled) {
-      setValue(target)
+      valueRef.current = targetRef.current
+      setValue(targetRef.current)
       return
     }
 
-    const from = valueRef.current
-    if (Math.abs(from - target) < 0.0004) {
-      setValue(target)
-      return
-    }
-
-    const start = performance.now()
     let raf = 0
+    let last = performance.now()
 
     const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs)
-      const eased = 1 - (1 - t) ** 3
-      setValue(from + (target - from) * eased)
-      if (t < 1) raf = requestAnimationFrame(tick)
+      const dt = Math.min(48, now - last)
+      last = now
+
+      const t = targetRef.current
+      let v = valueRef.current
+      const diff = t - v
+
+      if (Math.abs(diff) < 0.00035) {
+        if (v !== t) {
+          v = t
+          valueRef.current = t
+          setValue(t)
+        }
+      } else {
+        const alpha = 1 - Math.exp(-dt / Math.max(16, durationMs))
+        v = v + diff * alpha
+        valueRef.current = v
+        setValue(v)
+      }
+
+      raf = requestAnimationFrame(tick)
     }
 
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [target, enabled, durationMs])
+  }, [enabled, durationMs])
 
   return enabled ? value : target
 }

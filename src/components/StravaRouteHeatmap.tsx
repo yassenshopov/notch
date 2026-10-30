@@ -39,6 +39,7 @@ function RouteDensityLayer({ routes }: { routes: StravaHeatmapRoute[] }) {
     () =>
       routes
         .map((route) => ({
+          id: route.id,
           type: route.type,
           positions: decodePolyline(route.polyline).map(
             (p) => [p.lat, p.lng] as LatLngExpression,
@@ -52,7 +53,7 @@ function RouteDensityLayer({ routes }: { routes: StravaHeatmapRoute[] }) {
     <>
       {decoded.map((route, index) => (
         <Polyline
-          key={index}
+          key={route.id ?? index}
           positions={route.positions}
           pathOptions={{
             color: activityRouteColor(route.type || "Run"),
