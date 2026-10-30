@@ -46,9 +46,9 @@ contextBridge.exposeInMainWorld("notch", {
     status: () => ipcRenderer.invoke("spotify:status"),
     connect: () => ipcRenderer.invoke("spotify:connect"),
     disconnect: () => ipcRenderer.invoke("spotify:disconnect"),
-    action: (action) => ipcRenderer.invoke("spotify:action", action),
+    action: (action, options) => ipcRenderer.invoke("spotify:action", action, options),
     recentlyPlayed: (limit) => ipcRenderer.invoke("spotify:recently-played", limit),
-    playUri: (uri) => ipcRenderer.invoke("spotify:play-uri", uri),
+    playUri: (uri, options) => ipcRenderer.invoke("spotify:play-uri", uri, options),
     lyrics: (query) => ipcRenderer.invoke("spotify:lyrics", query),
   },
   settings: {
@@ -76,10 +76,19 @@ contextBridge.exposeInMainWorld("notch", {
   },
   pi: {
     status: (options) => ipcRenderer.invoke("pi:status", options),
+    displayMode: (options) => ipcRenderer.invoke("pi-display:mode", options),
+    displaySetMode: (mode, options) => ipcRenderer.invoke("pi-display:set-mode", mode, options),
+    displayNowPlaying: (options) => ipcRenderer.invoke("pi-display:now-playing", options),
+  },
+  piDisplay: {
+    mode: (options) => ipcRenderer.invoke("pi-display:mode", options),
+    setMode: (mode, options) => ipcRenderer.invoke("pi-display:set-mode", mode, options),
+    nowPlaying: (options) => ipcRenderer.invoke("pi-display:now-playing", options),
   },
   strava: {
     status: (options) => ipcRenderer.invoke("strava:status", options),
     activity: (activityId) => ipcRenderer.invoke("strava:activity", activityId),
+    activityStreams: (activityId) => ipcRenderer.invoke("strava:activity-streams", activityId),
     connect: () => ipcRenderer.invoke("strava:connect"),
     disconnect: () => ipcRenderer.invoke("strava:disconnect"),
     openUrl: (url) => ipcRenderer.invoke("strava:open-url", url),

@@ -12,6 +12,7 @@ export function StravaRouteMap({ activity, className, height = 168 }: Props) {
   return (
     <StravaOsmMap
       polyline={activity?.polyline ?? null}
+      activityType={activity?.type ?? null}
       className={cn(className)}
       height={height}
     />

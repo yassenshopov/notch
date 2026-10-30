@@ -269,23 +269,47 @@ export function SpotifyPanel({
 
   if (desktop) {
     return (
-      <BentoGrid>
-        <BentoTile col={5} className={bentoPad()}>{nowPlaying}</BentoTile>
-        <BentoTile col={7} className={bentoPad()}>
-          {showLyrics ? (
-            <SpotifyLyrics
-              lyrics={lyrics}
-              loading={lyricsLoading}
-              progressMs={progress}
-              themed={themed}
+      <div className="relative overflow-hidden rounded-3xl">
+        {track.artUrl ? (
+          <div className="pointer-events-none absolute inset-0" aria-hidden>
+            <img
+              src={track.artUrl}
+              alt=""
+              className="size-full scale-110 object-cover opacity-[0.22] blur-3xl dark:opacity-[0.16]"
+              draggable={false}
             />
-          ) : (
-            <p className="text-[13px] text-black/45 dark:text-white/45">
-              Enable lyrics in Settings to see them here.
-            </p>
-          )}
-        </BentoTile>
-      </BentoGrid>
+          </div>
+        ) : null}
+        <BentoGrid className="relative">
+          <BentoTile col={5} className={bentoPad()}>{nowPlaying}</BentoTile>
+          <BentoTile col={7} className={bentoPad("min-h-[22rem]")}>
+            {showLyrics ? (
+              <SpotifyLyrics
+                lyrics={lyrics}
+                loading={lyricsLoading}
+                progressMs={progress}
+                themed={themed}
+              />
+            ) : track.artUrl ? (
+              <div className="flex h-full min-h-[20rem] flex-col items-center justify-center">
+                <img
+                  src={track.artUrl}
+                  alt=""
+                  className="max-h-[min(28rem,70vh)] w-auto max-w-full rounded-[32px] shadow-2xl"
+                  draggable={false}
+                />
+                <p className="mt-4 text-[12px] text-black/40 dark:text-white/40">
+                  Ambient art — turn on lyrics in Settings for synced text.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[13px] text-black/45 dark:text-white/45">
+                Enable lyrics in Settings to see them here.
+              </p>
+            )}
+          </BentoTile>
+        </BentoGrid>
+      </div>
     )
   }
 
@@ -319,6 +343,68 @@ function SpotifyIdlePanel({
       cancelled = true
     }
   }, [])
+
+  const desktop = usePanelLayout() === "desktop"
+
+  if (desktop) {
+    return (
+      <BentoGrid>
+        <BentoTile col={5} className={bentoPad()}>
+          <header className="shrink-0">
+            <p className="text-[15px] font-semibold tracking-tight">Spotify</p>
+            <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">Nothing playing right now.</p>
+          </header>
+          <div className="mt-6 flex items-center justify-center gap-5">
+            <Control label="Previous" onClick={() => onAction("previous")} icon={<SkipBack className="size-[18px]" strokeWidth={1.75} />} />
+            <Control
+              label="Play"
+              primary
+              onClick={() => onAction("play")}
+              icon={<Play className="size-5 translate-x-[1px]" strokeWidth={1.75} fill="currentColor" />}
+            />
+            <Control label="Next" onClick={() => onAction("next")} icon={<SkipForward className="size-[18px]" strokeWidth={1.75} />} />
+          </div>
+        </BentoTile>
+        <BentoTile col={7} className={bentoPad()} scroll>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/40 dark:text-white/40">
+            Listen again
+          </p>
+          {recentLoading ? (
+            <p className="mt-4 text-[13px] text-black/35 dark:text-white/35">Loading recent tracks…</p>
+          ) : recent.length === 0 ? (
+            <p className="mt-4 text-[13px] leading-relaxed text-black/45 dark:text-white/45">
+              Open Spotify and hit Play to wake your active device.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-1">
+              {recent.map(({ track: t }) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onPlayUri(t.uri)
+                    }}
+                    className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  >
+                    <div className="size-11 shrink-0 overflow-hidden rounded-xl bg-black/5 dark:bg-white/10">
+                      {t.artUrl ? (
+                        <img src={t.artUrl} alt="" className="size-full object-cover" draggable={false} />
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[14px] font-medium">{t.name}</p>
+                      <p className="truncate text-[12px] text-black/45 dark:text-white/45">{t.artists}</p>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </BentoTile>
+      </BentoGrid>
+    )
+  }
 
   return (
     <div

@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react"
-import type { ThemeMode } from "../config/settings"
 import { useSettings } from "../config/settings-store"
-
-function resolveDark(mode: ThemeMode) {
-  if (mode === "dark") return true
-  if (mode === "light") return false
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-}
+import { resolveDark } from "../lib/theme"
 
 export function useTheme() {
   const { theme } = useSettings()

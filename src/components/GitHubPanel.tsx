@@ -10,6 +10,8 @@ import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { useGitHubInsights } from "../hooks/useGitHubInsights"
 import { useTheme } from "../hooks/useTheme"
 import { GitHubRepoActivityCharts } from "./GitHubRepoActivityCharts"
+import { GitHubContributionStats } from "./GitHubContributionStats"
+import { maskLogin, usePrivacyMode } from "../lib/privacy"
 
 type Props = {
   status: GitHubStatus
@@ -33,6 +35,8 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
     () => insights.years.map((y) => y.year),
     [insights.years],
   )
+  const privacy = usePrivacyMode()
+  const loginLabel = status.login ? `@${maskLogin(status.login, privacy)}` : ""
 
   if (!status.configured) {
     return (
@@ -69,7 +73,7 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
           ) : null}
           <div>
             <p className="text-[15px] font-semibold tracking-tight">GitHub</p>
-            <p className="text-[12px] text-black/45 dark:text-white/45">@{status.login}</p>
+            <p className="text-[12px] text-black/45 dark:text-white/45">{loginLabel}</p>
           </div>
         </div>
         <PanelHeaderActions>
@@ -152,7 +156,7 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
                   className="size-9 rounded-full border border-black/10 dark:border-white/15"
                 />
               ) : null}
-              <p className="truncate text-[12px] text-black/45 dark:text-white/45">@{status.login}</p>
+              <p className="truncate text-[12px] text-black/45 dark:text-white/45">{loginLabel}</p>
             </div>
             <PanelHeaderActions>{refreshButton}</PanelHeaderActions>
           </div>
@@ -162,6 +166,14 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh }: Props) {
             loading={loading}
           />
         </BentoTile>
+        {status.contributions?.weeks?.length ? (
+          <BentoTile col={12} className={bentoPad()} surface={false}>
+            <GitHubContributionStats
+              weeks={status.contributions.weeks}
+              years={insights.years}
+            />
+          </BentoTile>
+        ) : null}
         {status.contributions?.weeks?.length ? (
           <BentoTile col={8} className={bentoPad()}>
             <div className="mb-2 flex items-baseline justify-between">

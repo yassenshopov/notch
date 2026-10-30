@@ -1139,6 +1139,7 @@ function railTabIcon(panel: Panel) {
 }
 
 const RAIL_TAB_LABELS: Record<Panel, string> = {
+  overview: "Today",
   weather: "Weather",
   spotify: "Spotify",
   media: "YouTube",

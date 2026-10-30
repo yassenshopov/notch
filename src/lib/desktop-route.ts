@@ -1,6 +1,7 @@
 import type { NotchPanel } from "./panel-routing"
 
 const PANEL_IDS = new Set<NotchPanel>([
+  "overview",
   "weather",
   "spotify",
   "media",
@@ -31,6 +32,6 @@ export function desktopHashForPanel(panel: NotchPanel) {
 export function readDesktopRouteFromLocation(): { isDesktop: boolean; panel: NotchPanel } {
   const hash = window.location.hash.replace(/^#/, "")
   const match = hash.match(/^\/desktop\/([^/?]+)/)
-  const panel = parsePanelId(match?.[1]) ?? "weather"
+  const panel = parsePanelId(match?.[1]) ?? "overview"
   return { isDesktop: Boolean(match), panel }
 }

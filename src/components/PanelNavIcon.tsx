@@ -3,6 +3,7 @@ import {
   CalendarDays,
   CloudSun,
   Gamepad2,
+  LayoutDashboard,
   Leaf,
   LineChart,
   Settings,
@@ -18,6 +19,8 @@ type Props = {
 
 export function PanelNavIcon({ panel, className = "size-4" }: Props) {
   switch (panel) {
+    case "overview":
+      return <LayoutDashboard className={className} strokeWidth={1.75} />
     case "weather":
       return <CloudSun className={className} strokeWidth={1.75} />
     case "spotify":

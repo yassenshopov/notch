@@ -138,7 +138,14 @@ export function StravaActivityAccordion({
                     Loading map…
                   </div>
                 ) : (
-                  <StravaOsmMap polyline={detail.polyline} className="mb-2" height={168} />
+                  <StravaOsmMap
+                    polyline={detail.polyline}
+                    activityType={detail.type}
+                    className="mb-2"
+                    height={plain ? 220 : 168}
+                    interactive={plain}
+                    playback={plain}
+                  />
                 )}
 
                 <div className="mb-2 grid grid-cols-2 gap-1.5">

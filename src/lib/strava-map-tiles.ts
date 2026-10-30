@@ -15,6 +15,18 @@ function cartoApiKey(): string {
   return ""
 }
 
+export function stravaLeafletInteraction(interactive = false) {
+  return {
+    scrollWheelZoom: interactive,
+    dragging: interactive,
+    doubleClickZoom: interactive,
+    touchZoom: interactive,
+    boxZoom: interactive,
+    keyboard: interactive,
+    zoomControl: interactive,
+  }
+}
+
 export function getStravaMapTileLayerProps(apiKeyOverride?: string): StravaMapTileLayerProps {
   const apiKey = (apiKeyOverride ?? cartoApiKey()).trim()
   const url = apiKey

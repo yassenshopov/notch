@@ -43,7 +43,7 @@ export function DesktopSidebar({
   return (
     <aside
       className={cn(
-        "flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r transition-[width] duration-300 ease-[var(--notch-ease)]",
+        "flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-r transition-[width,background-color,border-color,color] duration-300 ease-[var(--notch-ease)]",
         sidebar,
         collapsed ? "w-[3.75rem]" : "w-[14.5rem]",
       )}

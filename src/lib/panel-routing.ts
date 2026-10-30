@@ -2,6 +2,7 @@ import type { IslandFace } from "../config/settings"
 import type { LiveActivity } from "./live-activities"
 
 export type NotchPanel =
+  | "overview"
   | "weather"
   | "spotify"
   | "media"
@@ -57,6 +58,7 @@ export function panelForCollapsedTap(args: {
 }
 
 export const DESKTOP_NAV_PANELS: NotchPanel[] = [
+  "overview",
   "weather",
   "spotify",
   "media",
@@ -76,6 +78,8 @@ export const DESKTOP_NAV_PANELS: NotchPanel[] = [
 
 export function panelLabel(panel: NotchPanel): string {
   switch (panel) {
+    case "overview":
+      return "Today"
     case "weather":
       return "Weather"
     case "spotify":

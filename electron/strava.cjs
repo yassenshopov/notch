@@ -139,11 +139,72 @@ function mapActivity(a) {
     startDate: a.start_date_local || a.start_date,
     distance: a.distance ?? 0,
     movingTime: a.moving_time ?? 0,
+    elapsedTime: a.elapsed_time ?? 0,
     elevation: a.total_elevation_gain ?? 0,
     averageSpeed: a.average_speed ?? 0,
+    maxSpeed: a.max_speed ?? 0,
+    averageCadence: a.average_cadence ?? null,
+    averageWatts: a.average_watts ?? null,
+    weightedAverageWatts: a.weighted_average_watts ?? null,
+    averageHeartrate: a.average_heartrate ?? null,
+    maxHeartrate: a.max_heartrate ?? null,
+    calories: a.calories ?? null,
+    kilojoules: a.kilojoules ?? null,
+    elevHigh: a.elev_high ?? null,
+    elevLow: a.elev_low ?? null,
+    averageTemp: a.average_temp ?? null,
+    startLat: Array.isArray(a.start_latlng) ? a.start_latlng[0] : null,
+    startLng: Array.isArray(a.start_latlng) ? a.start_latlng[1] : null,
+    sufferScore: a.suffer_score ?? null,
     polyline: a.map?.polyline || a.map?.summary_polyline || null,
     url: `https://www.strava.com/activities/${a.id}`,
   }
+}
+
+function mapActivityStreams(payload) {
+  let body = payload
+  if (Array.isArray(body)) {
+    body = Object.fromEntries(
+      body.filter((s) => s && typeof s.type === "string").map((s) => [s.type, s]),
+    )
+  }
+
+  const distance = body.distance?.data
+  if (!Array.isArray(distance) || distance.length < 2) {
+    return null
+  }
+  const time = body.time?.data
+
+  return {
+    time: Array.isArray(time) ? time : [],
+    distance,
+    altitude: body.altitude?.data,
+    velocitySmooth: body.velocity_smooth?.data,
+    heartrate: body.heartrate?.data,
+    cadence: body.cadence?.data,
+    watts: body.watts?.data,
+    gradeSmooth: body.grade_smooth?.data,
+    temp: body.temp?.data,
+  }
+}
+
+const ACTIVITY_STREAM_KEYS =
+  "time,distance,altitude,velocity_smooth,heartrate,cadence,watts,grade_smooth,temp"
+
+async function fetchActivityStreams(activityId) {
+  const res = await stravaFetch(
+    `/activities/${activityId}/streams?keys=${ACTIVITY_STREAM_KEYS}&key_by_type=true`,
+  )
+  if (res.status === 404) return null
+  if (!res.ok) {
+    const hint = await res.text().catch(() => "")
+    console.error(
+      `[strava] activity ${activityId} streams HTTP ${res.status}`,
+      hint.slice(0, 240),
+    )
+    return null
+  }
+  return mapActivityStreams(await res.json())
 }
 
 function localDateKey(iso) {
@@ -328,19 +389,19 @@ function densifyRoutePoints(points, stepMeters = 18) {
 }
 
 function buildRouteHeatmap(activities) {
-  const polylines = []
+  const routes = []
   const boundsPoints = []
 
   for (const a of activities) {
     if (!a.polyline) continue
-    polylines.push(a.polyline)
+    routes.push({ polyline: a.polyline, type: a.type })
     for (const p of decodePolyline(a.polyline)) {
       boundsPoints.push(p)
     }
   }
 
   if (boundsPoints.length < 2) {
-    return { polylines: [], bounds: null }
+    return { routes: [], bounds: null }
   }
 
   let minLat = boundsPoints[0].lat
@@ -364,7 +425,7 @@ function buildRouteHeatmap(activities) {
       minLng: minLng - padLng,
       maxLng: maxLng + padLng,
     },
-    polylines,
+    routes,
   }
 }
 
@@ -464,7 +525,7 @@ async function status(options = {}) {
   }
 
   try {
-    const data = await cache.get("strava:status:v4", {
+    const data = await cache.get("strava:status:v5", {
       ttlMs: STATUS_TTL_MS,
       staleMs: STATUS_STALE_MS,
       force,
@@ -592,7 +653,51 @@ function disconnect() {
   clearTokens()
   cache.invalidate?.("strava:status:v4")
   cache.invalidatePrefix?.("strava:activity:")
+  cache.invalidatePrefix?.("strava:activity-streams:")
   return status()
+}
+
+async function fetchWeatherTempC(startDate, lat, lng) {
+  if (!startDate || lat == null || lng == null) return null
+  const day = String(startDate).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
+
+  try {
+    const url = new URL("https://archive-api.open-meteo.com/v1/archive")
+    url.searchParams.set("latitude", String(lat))
+    url.searchParams.set("longitude", String(lng))
+    url.searchParams.set("start_date", day)
+    url.searchParams.set("end_date", day)
+    url.searchParams.set("hourly", "temperature_2m")
+    url.searchParams.set("timezone", "auto")
+
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const data = await res.json()
+    const times = data.hourly?.time
+    const temps = data.hourly?.temperature_2m
+    if (!Array.isArray(times) || !Array.isArray(temps) || times.length === 0) return null
+
+    const target = new Date(startDate)
+    if (Number.isNaN(target.getTime())) return temps[0] ?? null
+
+    let bestIdx = 0
+    let bestDelta = Number.POSITIVE_INFINITY
+    for (let i = 0; i < times.length; i++) {
+      const t = new Date(times[i])
+      if (Number.isNaN(t.getTime())) continue
+      const delta = Math.abs(t.getTime() - target.getTime())
+      if (delta < bestDelta) {
+        bestDelta = delta
+        bestIdx = i
+      }
+    }
+
+    const temp = temps[bestIdx]
+    return typeof temp === "number" && Number.isFinite(temp) ? temp : null
+  } catch {
+    return null
+  }
 }
 
 async function getActivity(activityId) {
@@ -601,7 +706,7 @@ async function getActivity(activityId) {
     throw new Error("invalid_activity_id")
   }
 
-  return cache.get(`strava:activity:${id}`, {
+  return cache.get(`strava:activity:v5:${id}`, {
     ttlMs: ACTIVITY_DETAIL_TTL_MS,
     staleMs: ACTIVITY_DETAIL_STALE_MS,
     fetcher: async () => {
@@ -609,8 +714,28 @@ async function getActivity(activityId) {
       if (!res.ok) {
         throw new Error(`strava_http_${res.status}`)
       }
-      return mapActivity(await res.json())
+      const activity = mapActivity(await res.json())
+      const streams = await fetchActivityStreams(id)
+      const weatherTempC = await fetchWeatherTempC(
+        activity.startDate,
+        activity.startLat,
+        activity.startLng,
+      )
+      return { ...activity, streams, weatherTempC }
     },
+  })
+}
+
+async function getActivityStreams(activityId) {
+  const id = Number(activityId)
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("invalid_activity_id")
+  }
+
+  return cache.get(`strava:activity-streams:${id}`, {
+    ttlMs: ACTIVITY_DETAIL_TTL_MS,
+    staleMs: ACTIVITY_DETAIL_STALE_MS,
+    fetcher: async () => fetchActivityStreams(id),
   })
 }
 
@@ -621,5 +746,6 @@ module.exports = {
   startAuth,
   disconnect,
   getActivity,
+  getActivityStreams,
   configured: () => isConfigured(),
 }

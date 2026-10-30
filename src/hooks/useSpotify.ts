@@ -64,8 +64,8 @@ export function useSpotify() {
     return next
   }, [])
 
-  const action = useCallback(async (name: SpotifyAction) => {
-    const next = await spotifyAction(name)
+  const action = useCallback(async (name: SpotifyAction, options?: { targetPi?: boolean }) => {
+    const next = await spotifyAction(name, options)
     setStatus(next)
     setProgressMs(next.progressMs ?? 0)
     lastTick.current = Date.now()

@@ -10,7 +10,7 @@ export const DESKTOP_NAV_GROUPS: DesktopNavGroup[] = [
   {
     id: "today",
     label: "Today",
-    panels: ["weather", "air", "calendar", "clock"],
+    panels: ["overview", "weather", "air", "calendar", "clock"],
   },
   {
     id: "media",

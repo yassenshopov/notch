@@ -34,9 +34,11 @@ import { OpenFullScaleButton } from "./OpenFullScaleButton"
 import { WeatherPanel } from "./WeatherPanel"
 import { PacmanPanel } from "./PacmanPanel"
 import { PanelPageTransition } from "./PanelPageTransition"
+import { DesktopOverviewPanel } from "./desktop/DesktopOverviewPanel"
 
 type Props = {
   activePanel: NotchPanel
+  onNavigatePanel?: (panel: NotchPanel) => void
   expanded: boolean
   layout?: PanelLayout
   settings: AppSettings
@@ -82,7 +84,7 @@ type Props = {
   mediaAction: (action: MediaSessionAction) => void
   albumPalette: AlbumPalette | null
   spotifyPanelThemed: boolean
-  action: (a: SpotifyAction) => Promise<unknown>
+  action: (a: SpotifyAction, options?: { targetPi?: boolean }) => Promise<unknown>
   playUri: (uri: string) => Promise<unknown>
 }
 
@@ -154,7 +156,28 @@ export function NotchActivePanel(props: Props) {
   )
 
   let body: ReactNode
-  if (activePanel === "settings") {
+  if (activePanel === "overview" && layout === "desktop") {
+    if (!props.onNavigatePanel) {
+      body = (
+        <div className="text-[13px] text-black/45 dark:text-white/45">Today overview is desktop-only.</div>
+      )
+    } else {
+    body = (
+      <DesktopOverviewPanel
+        onNavigate={props.onNavigatePanel}
+        weather={data}
+        weatherError={error}
+        spotify={status}
+        github={githubStatus}
+        cursor={cursorStatus}
+        strava={stravaStatus}
+        mint={mintStatus}
+        pi={piStatus}
+        calendar={calendarSnapshot}
+      />
+    )
+    }
+  } else if (activePanel === "settings") {
     body = (
       <SettingsPanel
         spotifyConnected={status.connected}
@@ -237,6 +260,8 @@ export function NotchActivePanel(props: Props) {
         loading={piLoading}
         refreshing={piRefreshing}
         onRefresh={() => void refreshPi()}
+        spotify={status}
+        onTvAction={(a) => void action(a, { targetPi: true })}
       />
     )
   } else if (activePanel === "air" && data) {

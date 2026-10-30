@@ -19,6 +19,11 @@ export type SpotifyStatus = {
 
 export type SpotifyAction = "play" | "pause" | "next" | "previous"
 
+export type SpotifyPlaybackOptions = {
+  /** Transfer playback to the Pi / Raspotify device before the action */
+  targetPi?: boolean
+}
+
 export type SpotifyRecentItem = {
   track: SpotifyTrack
   playedAt: string | null
@@ -38,11 +43,14 @@ export async function connectSpotify(): Promise<SpotifyStatus> {
   return window.notch.spotify.connect()
 }
 
-export async function spotifyAction(action: SpotifyAction): Promise<SpotifyStatus> {
+export async function spotifyAction(
+  action: SpotifyAction,
+  options?: SpotifyPlaybackOptions,
+): Promise<SpotifyStatus> {
   if (!window.notch?.spotify) {
     throw new Error("Spotify bridge unavailable")
   }
-  return window.notch.spotify.action(action)
+  return window.notch.spotify.action(action, options)
 }
 
 export async function fetchSpotifyRecentlyPlayed(limit = 6): Promise<SpotifyRecentItem[]> {
@@ -50,11 +58,14 @@ export async function fetchSpotifyRecentlyPlayed(limit = 6): Promise<SpotifyRece
   return window.notch.spotify.recentlyPlayed(limit)
 }
 
-export async function playSpotifyUri(uri: string): Promise<SpotifyStatus> {
+export async function playSpotifyUri(
+  uri: string,
+  options?: SpotifyPlaybackOptions,
+): Promise<SpotifyStatus> {
   if (!window.notch?.spotify?.playUri) {
     throw new Error("Spotify bridge unavailable")
   }
-  return window.notch.spotify.playUri(uri)
+  return window.notch.spotify.playUri(uri, options)
 }
 
 export function formatMs(ms: number) {

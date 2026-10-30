@@ -40,9 +40,11 @@ export function useNotchActivePanelProps(
   const mediaPoll = settings.media.enabled && !playing
   const { status: mediaStatus, action: mediaAction } = useMediaSession(mediaPoll)
 
+  const overviewPoll = mode === "desktop" && activePanel === "overview"
+
   const calendarPoll =
     mode === "desktop"
-      ? activePanel === "calendar"
+      ? activePanel === "calendar" || overviewPoll
       : Boolean(settings.calendar.icsUrl.trim()) &&
         (mode === "expanded"
           ? activePanel === "calendar"
@@ -55,11 +57,11 @@ export function useNotchActivePanelProps(
   } = useCalendar(calendarPoll)
 
   const faces = settings.island.faces
-  const marketsPoll = pollPanel("markets", activePanel, mode, faces.markets)
-  const githubPoll = pollPanel("github", activePanel, mode, faces.github)
-  const stravaPoll = pollPanel("strava", activePanel, mode, faces.strava ?? true)
-  const mintPoll = pollPanel("mint", activePanel, mode, faces.mint ?? true)
-  const piPoll = pollPanel("pi", activePanel, mode, faces.pi ?? true)
+  const marketsPoll = pollPanel("markets", activePanel, mode, faces.markets) || overviewPoll
+  const githubPoll = pollPanel("github", activePanel, mode, faces.github) || overviewPoll
+  const stravaPoll = pollPanel("strava", activePanel, mode, faces.strava ?? true) || overviewPoll
+  const mintPoll = pollPanel("mint", activePanel, mode, faces.mint ?? true) || overviewPoll
+  const piPoll = pollPanel("pi", activePanel, mode, faces.pi ?? true) || overviewPoll
 
   const {
     snapshot: marketsSnapshot,
@@ -96,7 +98,7 @@ export function useNotchActivePanelProps(
     refresh: refreshPi,
   } = usePi(piPoll)
 
-  const cursorPoll = pollPanel("cursor", activePanel, mode, true)
+  const cursorPoll = pollPanel("cursor", activePanel, mode, true) || overviewPoll
   const {
     status: cursorStatus,
     analyticsLoading: cursorAnalyticsLoading,

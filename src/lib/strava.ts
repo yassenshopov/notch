@@ -5,10 +5,40 @@ export type StravaActivitySummary = {
   startDate: string
   distance: number
   movingTime: number
+  elapsedTime?: number
   elevation: number
   averageSpeed: number
+  maxSpeed?: number
+  averageCadence?: number | null
+  averageWatts?: number | null
+  weightedAverageWatts?: number | null
+  averageHeartrate?: number | null
+  maxHeartrate?: number | null
+  calories?: number | null
+  kilojoules?: number | null
+  elevHigh?: number | null
+  elevLow?: number | null
+  averageTemp?: number | null
+  /** Estimated from Open-Meteo at activity start when Strava has no temp */
+  weatherTempC?: number | null
+  startLat?: number | null
+  startLng?: number | null
+  sufferScore?: number | null
   polyline: string | null
   url: string
+  streams?: StravaActivityStreams | null
+}
+
+export type StravaActivityStreams = {
+  time: number[]
+  distance: number[]
+  altitude?: number[]
+  velocitySmooth?: number[]
+  heartrate?: number[]
+  cadence?: number[]
+  watts?: number[]
+  gradeSmooth?: number[]
+  temp?: number[]
 }
 
 export type StravaCalendarCell = {
@@ -33,10 +63,35 @@ export type StravaHeatmapBounds = {
   maxLng: number
 }
 
+export type StravaHeatmapRoute = {
+  polyline: string
+  type: string
+}
+
 export type StravaHeatmap = {
   bounds: StravaHeatmapBounds | null
-  /** Encoded summary polylines for route-density overlay */
-  polylines: string[]
+  /** Encoded summary polylines with activity type for route-density overlay */
+  routes: StravaHeatmapRoute[]
+}
+
+type StravaHeatmapPayload = StravaHeatmap & { polylines?: string[] }
+
+/** Accept cached payloads that still use `polylines` (pre–activity-color heatmap). */
+export function normalizeStravaHeatmap(
+  heatmap: StravaHeatmapPayload | null | undefined,
+): StravaHeatmap | null {
+  if (!heatmap) return null
+  if (heatmap.routes?.length) {
+    return { bounds: heatmap.bounds, routes: heatmap.routes }
+  }
+  const legacy = heatmap.polylines?.filter(Boolean) ?? []
+  if (legacy.length > 0 && heatmap.bounds) {
+    return {
+      bounds: heatmap.bounds,
+      routes: legacy.map((polyline: string) => ({ polyline, type: "Run" })),
+    }
+  }
+  return { bounds: heatmap.bounds ?? null, routes: [] }
 }
 
 export type StravaStats = {
@@ -89,6 +144,11 @@ export function formatPace(secondsPerKm: number) {
   return `${m}:${String(s).padStart(2, "0")} /km`
 }
 
+export function formatSpeedKmh(metersPerSecond: number) {
+  if (!metersPerSecond || !Number.isFinite(metersPerSecond)) return "—"
+  return `${(metersPerSecond * 3.6).toFixed(1)} km/h`
+}
+
 export function activityKind(type: string): "run" | "ride" | "swim" | "workout" | "other" {
   const t = type.toLowerCase()
   if (t.includes("run") || t === "walk" || t === "hike") return "run"
@@ -104,6 +164,30 @@ export function activityKind(type: string): "run" | "ride" | "swim" | "workout" 
     return "workout"
   }
   return "other"
+}
+
+const ACTIVITY_KINDS = new Set(["run", "ride", "swim", "workout", "other"])
+
+export function activityRouteColor(
+  kindOrType: ReturnType<typeof activityKind> | string,
+): string {
+  const kind =
+    typeof kindOrType === "string" && ACTIVITY_KINDS.has(kindOrType)
+      ? (kindOrType as ReturnType<typeof activityKind>)
+      : activityKind(kindOrType)
+  switch (kind) {
+    case "ride":
+      return "#2563eb"
+    case "swim":
+      return "#0891b2"
+    case "workout":
+      return "#9333ea"
+    case "other":
+      return "#64748b"
+    case "run":
+    default:
+      return "#fc4c02"
+  }
 }
 
 function haversineMeters(
@@ -245,25 +329,44 @@ export function polylineToSvgPoints(
   }))
 }
 
+/** Densified lat/lng points for map playback and smooth SVG routes. */
+export function buildStravaRoutePath(encoded: string): { lat: number; lng: number }[] {
+  return densifyRoutePoints(decodePolyline(encoded))
+}
+
 const activityDetailCache = new Map<number, StravaActivitySummary>()
 const activityDetailInflight = new Map<number, Promise<StravaActivitySummary>>()
 
-export async function fetchStravaActivity(id: number): Promise<StravaActivitySummary> {
+export async function fetchStravaActivity(
+  id: number,
+  options?: { force?: boolean },
+): Promise<StravaActivitySummary> {
   const bridge = window.notch?.strava
   if (!bridge?.activity) {
     throw new Error("not_electron")
   }
 
+  if (options?.force) {
+    activityDetailCache.delete(id)
+    activityStreamsCache.delete(id)
+  }
+
   const cached = activityDetailCache.get(id)
-  if (cached) return cached
+  if (cached && "streams" in cached) return cached
+  if (cached) activityDetailCache.delete(id)
 
   const pending = activityDetailInflight.get(id)
   if (pending) return pending
 
-  const request = bridge.activity(id).then((activity) => {
-    activityDetailCache.set(id, activity)
+  const request = bridge.activity(id).then(async (activity) => {
+    let streams = activity.streams ?? null
+    if (activity.polyline && streams == null) {
+      streams = await fetchStravaActivityStreams(id, { force: options?.force })
+    }
+    const merged = { ...activity, streams }
+    activityDetailCache.set(id, merged)
     activityDetailInflight.delete(id)
-    return activity
+    return merged
   })
 
   activityDetailInflight.set(id, request)
@@ -272,6 +375,43 @@ export async function fetchStravaActivity(id: number): Promise<StravaActivitySum
   } catch (err) {
     activityDetailInflight.delete(id)
     throw err
+  }
+}
+
+const activityStreamsCache = new Map<number, StravaActivityStreams | null>()
+const activityStreamsInflight = new Map<number, Promise<StravaActivityStreams | null>>()
+
+export async function fetchStravaActivityStreams(
+  id: number,
+  options?: { force?: boolean },
+): Promise<StravaActivityStreams | null> {
+  const bridge = window.notch?.strava
+  if (!bridge?.activityStreams) {
+    return null
+  }
+
+  if (options?.force) {
+    activityStreamsCache.delete(id)
+  } else if (activityStreamsCache.has(id)) {
+    return activityStreamsCache.get(id) ?? null
+  }
+
+  const pending = activityStreamsInflight.get(id)
+  if (pending) return pending
+
+  const request = bridge.activityStreams(id).then((streams) => {
+    activityStreamsInflight.delete(id)
+    if (streams) activityStreamsCache.set(id, streams)
+    return streams
+  })
+
+  activityStreamsInflight.set(id, request)
+  try {
+    return await request
+  } catch {
+    activityStreamsInflight.delete(id)
+    activityStreamsCache.set(id, null)
+    return null
   }
 }
 

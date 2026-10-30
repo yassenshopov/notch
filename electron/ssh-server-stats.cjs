@@ -145,4 +145,18 @@ function createSshServerStats({
   return { status, configured: () => true }
 }
 
-module.exports = { createSshServerStats }
+async function execSshRemote(host, command, execOptions = {}) {
+  const { stdout } = await execFileAsync(
+    SSH_BIN,
+    ["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", host, command],
+    {
+      timeout: execOptions.timeout ?? 45_000,
+      windowsHide: true,
+      maxBuffer: 4 * 1024 * 1024,
+      env: process.env,
+    },
+  )
+  return stdout
+}
+
+module.exports = { createSshServerStats, execSshRemote }

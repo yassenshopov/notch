@@ -14,6 +14,8 @@ import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { PanelHeaderActions } from "./PanelHeaderActions"
 import { CursorModelBars } from "./CursorModelBars"
 import { MetricChart } from "./MetricChart"
+import { CursorCyclePace } from "./CursorCyclePace"
+import { maskEmail, usePrivacyMode } from "../lib/privacy"
 
 type Props = {
   status: CursorStatus
@@ -140,6 +142,7 @@ function UsageBar({
 export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }: Props) {
   const settings = useSettings()
   const desktop = usePanelLayout() === "desktop"
+  const privacy = usePrivacyMode()
 
   if (status.error === "no_electron") {
     return (
@@ -223,7 +226,7 @@ export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }:
       </p>
       {status.user?.email ? (
         <p className="mt-0.5 truncate text-[11px] text-black/35 dark:text-white/35">
-          {status.user.email}
+          {maskEmail(status.user.email, privacy)}
         </p>
       ) : null}
     </>
@@ -407,6 +410,9 @@ export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }:
               <PanelHeaderActions>{refreshButton}</PanelHeaderActions>
             </div>
             {quotaBlock}
+            <div className="mt-4">
+              <CursorCyclePace status={status} bare />
+            </div>
           </BentoTile>
           {tokensBlock ? (
             <BentoTile col={8} className={bentoPad()}>{tokensBlock}</BentoTile>
@@ -450,6 +456,7 @@ export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }:
 
       <div className="notch-scroll min-h-0 flex-1 flex flex-col gap-4 pr-1">
         {quotaBlock}
+        <CursorCyclePace status={status} />
         {analyticsFallback}
         {tokensBlock}
         {modelsBlock}

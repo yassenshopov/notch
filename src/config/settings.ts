@@ -56,6 +56,8 @@ export type NotchPlacement = {
 
 export type AppSettings = {
   appName: string
+  /** Hide emails, hosts, and sensitive usage when sharing screenshots */
+  privacyMode: boolean
   /** Open Notch when the OS starts (Electron login item) */
   launchAtLogin: boolean
   refreshIntervalMs: number
@@ -179,6 +181,8 @@ export type AppSettings = {
     lastAutoDate: string
     /** Set Windows desktop background after generating */
     applyAfterRegenerate: boolean
+    /** Copy the PNG to Linux Mint over SSH and set Cinnamon wallpaper */
+    syncToMint: boolean
     backgroundColor: string
     passedColor: string
     futureColor: string
@@ -209,6 +213,7 @@ export type AppSettings = {
 
 export const defaultSettings: AppSettings = {
   appName: "notch",
+  privacyMode: false,
   launchAtLogin: true,
   refreshIntervalMs: 10 * 60 * 1000,
   temperatureUnit: "celsius",
@@ -348,6 +353,7 @@ export const defaultSettings: AppSettings = {
     autoUpdateDaily: true,
     lastAutoDate: "",
     applyAfterRegenerate: true,
+    syncToMint: true,
     backgroundColor: "#ffffff",
     passedColor: "#373737",
     futureColor: "#d2d2d2",

@@ -45,6 +45,51 @@ html.notch-desktop.dark #root {
   background: #111111 !important;
 }
 
+html.notch-desktop,
+html.notch-desktop body,
+html.notch-desktop #root {
+  transition: background-color 0.48s var(--notch-ease);
+}
+
+html.notch-desktop::view-transition-old(root),
+html.notch-desktop::view-transition-new(root) {
+  animation-duration: 0.48s;
+  animation-timing-function: var(--notch-ease);
+}
+
+html.notch-desktop::view-transition-old(root) {
+  animation-name: notch-desktop-theme-fade-out;
+}
+
+html.notch-desktop::view-transition-new(root) {
+  animation-name: notch-desktop-theme-fade-in;
+}
+
+@keyframes notch-desktop-theme-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes notch-desktop-theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+html.notch-desktop.notch-theme-crossfade,
+html.notch-desktop.notch-theme-crossfade * {
+  transition-property: background-color, color, border-color, fill, stroke;
+  transition-duration: 0.48s;
+  transition-timing-function: var(--notch-ease);
+}
+
 html,
 body,
 #root {
@@ -398,6 +443,129 @@ body {
 
 .strava-osm-map .leaflet-control-attribution {
   display: none !important;
+}
+
+.strava-osm-map--interactive .leaflet-control-zoom {
+  border: none;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+}
+
+.strava-osm-map--interactive .leaflet-control-zoom a {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  font-size: 15px;
+  color: rgb(0 0 0 / 0.65);
+  background: rgb(255 255 255 / 0.94);
+  border-bottom: 1px solid rgb(0 0 0 / 0.08);
+}
+
+.strava-osm-map--interactive .leaflet-control-zoom a:last-child {
+  border-bottom: none;
+}
+
+.dark .strava-osm-map--interactive .leaflet-control-zoom a {
+  color: rgb(255 255 255 / 0.85);
+  background: rgb(30 30 30 / 0.92);
+  border-bottom-color: rgb(255 255 255 / 0.1);
+}
+
+.strava-route-playback__btn {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.92);
+  color: rgb(0 0 0 / 0.7);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+
+.strava-route-playback__btn:hover {
+  background: #fff;
+}
+
+.strava-route-playback__speed {
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.92);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgb(0 0 0 / 0.72);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+}
+
+.strava-route-playback__speed:hover {
+  background: #fff;
+}
+
+.strava-route-playback__scrub {
+  height: 4px;
+  appearance: none;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.28);
+}
+
+.strava-route-playback__scrub::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.strava-route-playback__scrub::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.12);
+}
+
+.strava-playback-widget-scrub-track {
+  touch-action: none;
+}
+
+.strava-playback-widget-scrub-input {
+  opacity: 0;
+}
+
+.strava-playback-widget-scrub-input::-webkit-slider-thumb {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+
+.strava-playback-widget-scrub-input::-moz-range-thumb {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.strava-playback-widget-scrub-input::-webkit-slider-runnable-track {
+  height: 44px;
+  background: transparent;
+}
+
+.strava-playback-widget-scrub-input::-moz-range-track {
+  height: 44px;
+  background: transparent;
+  border: none;
+}
+
+.strava-osm-map--playback .leaflet-container {
+  cursor: default;
 }
 
 @keyframes pacman-chomp {

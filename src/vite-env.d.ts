@@ -130,14 +130,17 @@ interface NotchBridge {
     status: () => Promise<SpotifyBridgeStatus>
     connect: () => Promise<SpotifyBridgeStatus>
     disconnect: () => Promise<SpotifyBridgeStatus>
-    action: (action: "play" | "pause" | "next" | "previous") => Promise<SpotifyBridgeStatus>
+    action: (
+      action: "play" | "pause" | "next" | "previous",
+      options?: { targetPi?: boolean },
+    ) => Promise<SpotifyBridgeStatus>
     recentlyPlayed: (limit?: number) => Promise<
       Array<{
         track: SpotifyBridgeStatus["track"] & { uri: string }
         playedAt: string | null
       }>
     >
-    playUri: (uri: string) => Promise<SpotifyBridgeStatus>
+    playUri: (uri: string, options?: { targetPi?: boolean }) => Promise<SpotifyBridgeStatus>
     lyrics: (query: {
       trackName: string
       artistName: string
@@ -179,10 +182,29 @@ interface NotchBridge {
   }
   pi: {
     status: (options?: { force?: boolean; host?: string }) => Promise<PiBridgeStatus>
+    displayMode?: (options?: { host?: string }) => Promise<import("./lib/pi-display").PiDisplayModeResult>
+    displaySetMode?: (
+      mode: number,
+      options?: { host?: string },
+    ) => Promise<import("./lib/pi-display").PiDisplayModeResult>
+    displayNowPlaying?: (
+      options?: { host?: string },
+    ) => Promise<import("./lib/pi-display").PiDisplayNowPlaying>
+  }
+  piDisplay: {
+    mode: (options?: { host?: string }) => Promise<import("./lib/pi-display").PiDisplayModeResult>
+    setMode: (
+      mode: number,
+      options?: { host?: string },
+    ) => Promise<import("./lib/pi-display").PiDisplayModeResult>
+    nowPlaying: (options?: { host?: string }) => Promise<import("./lib/pi-display").PiDisplayNowPlaying>
   }
   strava: {
     status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>
     activity: (activityId: number) => Promise<import("./lib/strava").StravaActivitySummary>
+    activityStreams: (
+      activityId: number,
+    ) => Promise<import("./lib/strava").StravaActivityStreams | null>
     connect: () => Promise<StravaBridgeStatus>
     disconnect: () => Promise<StravaBridgeStatus>
     openUrl: (url: string) => Promise<void>
@@ -228,6 +250,15 @@ interface NotchBridge {
           weeks: number
           applied: boolean
           applyError?: string
+          mintSync?: {
+            synced: boolean
+            host?: string
+            remotePath?: string
+            error?: string
+            skipped?: boolean
+            reason?: string
+            hostsTried?: string[]
+          }
         }
       | { ok: false; error: string }
     >

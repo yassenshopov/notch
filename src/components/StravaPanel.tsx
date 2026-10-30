@@ -1,12 +1,15 @@
-import { ExternalLink, Flame, RefreshCw } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Flame, RefreshCw } from "lucide-react"
 import type { StravaActivitySummary, StravaStatus } from "../lib/strava"
 import {
-  activityKind,
+  buildStravaRoutePath,
+  fetchStravaActivity,
   formatDistance,
-  formatDuration,
-  formatPace,
   openStravaUrl,
 } from "../lib/strava"
+import { buildStravaActivityTotalStats } from "../lib/strava-playback-stats"
+import { useStravaRoutePlayback } from "../hooks/useStravaRoutePlayback"
+import { StravaPlaybackStatsWidget } from "./StravaPlaybackStatsWidget"
 import { cn } from "../lib/utils"
 import { StravaActivityAccordion } from "./StravaActivityAccordion"
 import { StravaActivityCalendar } from "./StravaActivityCalendar"
@@ -137,6 +140,44 @@ export function StravaPanel({
   if (desktop) {
     const featured = status.featuredActivity
     const streakActivities = status.streak?.activitiesInStreak ?? 0
+    const quiet =
+      !loading &&
+      status.activities.length === 0 &&
+      !featured &&
+      status.monthDistance <= 0 &&
+      streakWeeks === 0
+
+    if (quiet) {
+      return (
+        <div className="flex flex-col items-center justify-center px-6 py-16 text-center" onClick={(e) => e.stopPropagation()}>
+          <span className="mb-4 flex size-14 items-center justify-center rounded-full bg-[#fc4c02]/12 text-[#fc4c02]">
+            <Flame className="size-7" strokeWidth={2} aria-hidden />
+          </span>
+          <h1 className="text-[22px] font-semibold tracking-tight">Ready for your next move</h1>
+          <p className="mt-2 max-w-md text-[14px] leading-relaxed text-black/45 dark:text-white/45">
+            No activities yet this month. Log a run, ride, or walk in Strava and your routes, streaks, and heatmap
+            will show up here.
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={onRefresh}
+              className="rounded-full border border-black/10 px-4 py-2 text-[13px] font-medium dark:border-white/15"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => openStravaUrl("https://www.strava.com/upload")}
+              className="rounded-full bg-[#fc4c02] px-4 py-2 text-[13px] font-semibold text-white"
+            >
+              Record activity
+            </button>
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div className="space-y-10" onClick={(e) => e.stopPropagation()}>
@@ -235,7 +276,12 @@ export function StravaPanel({
             <p className="mb-3 text-[12px] text-black/40 dark:text-white/40">
               Route density from your latest GPS activities
             </p>
-            <StravaRouteHeatmap heatmap={status.heatmap} height={380} className="rounded-2xl" />
+            <StravaRouteHeatmap
+              heatmap={status.heatmap}
+              height={380}
+              className="rounded-2xl"
+              interactive
+            />
           </section>
         </div>
 
@@ -378,52 +424,88 @@ function InlineStat({ label, value }: { label: string; value: string }) {
 }
 
 function FeaturedActivity({ activity }: { activity: StravaActivitySummary }) {
-  const kind = activityKind(activity.type)
-  const paceOrSpeed =
-    kind === "run" && activity.distance > 0
-      ? formatPace(activity.movingTime / (activity.distance / 1000))
-      : activity.averageSpeed > 0
-        ? `${(activity.averageSpeed * 3.6).toFixed(1)} km/h`
-        : "—"
+  const [detail, setDetail] = useState(activity)
 
-  const date = new Date(activity.startDate).toLocaleDateString(undefined, {
+  useEffect(() => {
+    setDetail(activity)
+  }, [activity])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchStravaActivity(activity.id, { force: true }).then((next) => {
+      if (!cancelled) setDetail(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activity.id])
+
+  const routePoints = useMemo(
+    () => (detail.polyline ? buildStravaRoutePath(detail.polyline) : []),
+    [detail.polyline],
+  )
+  const playback = useStravaRoutePlayback(routePoints)
+  const resumeAfterScrub = useRef(false)
+
+  const totalStats = useMemo(() => buildStravaActivityTotalStats(detail), [detail])
+
+  const date = new Date(detail.startDate).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
   })
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-      <StravaOsmMap polyline={activity.polyline} height={280} className="rounded-2xl" />
-      <div className="min-w-0">
-        <p className="text-[17px] font-semibold tracking-tight">{activity.name}</p>
-        <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-          {date} · {activity.type}
-        </p>
-        <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3">
-          <FeaturedMetric label="Distance" value={formatDistance(activity.distance)} />
-          <FeaturedMetric label="Moving time" value={formatDuration(activity.movingTime)} />
-          <FeaturedMetric label={kind === "run" ? "Pace" : "Avg speed"} value={paceOrSpeed} />
-          <FeaturedMetric label="Elevation" value={`${Math.round(activity.elevation)} m`} />
-        </dl>
+    <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
+      <StravaOsmMap
+        polyline={detail.polyline}
+        activityType={detail.type}
+        fillHeight
+        className="min-h-[280px] rounded-2xl lg:min-h-0"
+        interactive
+        playback
+        playbackController={playback}
+      />
+      <div className="flex min-w-0 flex-col">
         <button
           type="button"
-          onClick={() => openStravaUrl(activity.url)}
-          className="mt-5 inline-flex items-center gap-1.5 text-[12px] font-medium text-[#fc4c02] hover:underline"
+          onClick={() => openStravaUrl(detail.url)}
+          className="text-left text-[17px] font-semibold tracking-tight text-black hover:text-[#fc4c02] hover:underline dark:text-white"
         >
-          Open on Strava
-          <ExternalLink className="size-3.5" aria-hidden />
+          {detail.name}
         </button>
-      </div>
-    </div>
-  )
-}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="text-[12px] text-black/45 dark:text-white/45">
+            {date} · {detail.type}
+          </span>
+          {totalStats.map((stat) => (
+            <span
+              key={stat.label}
+              title={stat.label}
+              className="inline-flex max-w-full items-center rounded-full bg-black/[0.04] px-2 py-0.5 text-[10px] font-semibold tabular-nums text-black/70 dark:bg-white/[0.06] dark:text-white/80"
+            >
+              <span className="sr-only">{stat.label}: </span>
+              {stat.value}
+            </span>
+          ))}
+        </div>
 
-function FeaturedMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[11px] text-black/40 dark:text-white/40">{label}</dt>
-      <dd className="text-[14px] font-semibold tabular-nums">{value}</dd>
+        <StravaPlaybackStatsWidget
+          className="mt-5"
+          activity={detail}
+          progress={playback.progress}
+          geometry={playback.geometry}
+          streams={detail.streams ?? null}
+          onSeek={playback.seek}
+          onScrubStart={() => {
+            resumeAfterScrub.current = playback.playing
+            playback.pause()
+          }}
+          onScrubEnd={() => {
+            if (resumeAfterScrub.current) playback.play()
+          }}
+        />
+      </div>
     </div>
   )
 }

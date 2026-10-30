@@ -125,6 +125,19 @@ export function SettingsPanel({
                 onChange={(theme) => void updateSettings({ theme: theme as ThemeMode })}
               />
             </Row>
+            <Row label="Privacy mode">
+              <Segmented
+                value={s.privacyMode ? "on" : "off"}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+                onChange={(v) => void updateSettings({ privacyMode: v === "on" })}
+              />
+            </Row>
+            <p className="-mt-1 text-[11px] leading-snug text-black/40 dark:text-white/40">
+              Hides emails, SSH hosts, and logins in the desktop UI (handy for screenshots).
+            </p>
             <Row label="Time">
               <Segmented
                 value={s.clock.format}
@@ -919,6 +932,21 @@ export function SettingsPanel({
             onChange={(v) => patchWallpaper({ applyAfterRegenerate: v === "on" })}
           />
         </Row>
+        <Row label="Sync to Mint">
+          <Segmented
+            value={wallpaper.syncToMint !== false ? "on" : "off"}
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            onChange={(v) => patchWallpaper({ syncToMint: v === "on" })}
+          />
+        </Row>
+        <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">
+          After each generate, copies the PNG to your Mint laptop over SSH (
+          <span className="font-medium">~/Pictures/Notch</span>) and sets the Cinnamon wallpaper.
+          Uses the same SSH host as the Mint server panel (Tailscale fallbacks included).
+        </p>
         <div className="mt-1 flex flex-col gap-2">
           <motion.button
             type="button"
@@ -947,6 +975,12 @@ export function SettingsPanel({
                     note += " · desktop updated"
                   } else if (wallpaper.applyAfterRegenerate && result.applyError) {
                     note += ` · apply failed: ${result.applyError}`
+                  }
+                  const mint = result.mintSync
+                  if (mint?.synced) {
+                    note += ` · Mint synced (${mint.host})`
+                  } else if (wallpaper.syncToMint !== false && mint && !mint.skipped) {
+                    note += ` · Mint sync failed: ${mint.error ?? "unknown"}`
                   }
                   setWallpaperNote(note)
                 } catch (err) {

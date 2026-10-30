@@ -220,9 +220,77 @@ async function getRecentlyPlayed(limit = 6) {
   }
 }
 
-async function playUri(uri) {
+function piDeviceHints() {
+  const raw = process.env.NOTCH_PI_SPOTIFY_DEVICE || "raspotify,raspberry"
+  return raw
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function deviceMatchesPi(name) {
+  const n = String(name || "").toLowerCase()
+  return piDeviceHints().some((hint) => n.includes(hint))
+}
+
+async function listDevices() {
+  const res = await spotifyFetch("/me/player/devices")
+  if (res.status === 401) {
+    clearTokens()
+    return []
+  }
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.devices || []
+}
+
+async function findPiDeviceId() {
+  const devices = await listDevices()
+  for (const hint of piDeviceHints()) {
+    const match = devices.find((d) => String(d.name || "").toLowerCase().includes(hint))
+    if (match?.id) return match.id
+  }
+  return null
+}
+
+async function transferToPiDevice(play = false) {
+  const deviceId = await findPiDeviceId()
+  if (!deviceId) return false
+  const res = await spotifyFetch("/me/player", {
+    method: "PUT",
+    body: JSON.stringify({ device_ids: [deviceId], play }),
+  })
+  return res.ok || res.status === 204
+}
+
+async function ensurePiPlaybackDevice(action) {
+  const hints = piDeviceHints()
+  if (!hints.length) return
+
+  try {
+    const res = await spotifyFetch("/me/player")
+    if (res.status === 204) {
+      await transferToPiDevice(action === "play")
+      return
+    }
+    if (res.ok) {
+      const data = await res.json()
+      if (!deviceMatchesPi(data.device?.name)) {
+        await transferToPiDevice(action === "play")
+      }
+      return
+    }
+  } catch {
+    // fall through to transfer attempt
+  }
+  await transferToPiDevice(action === "play")
+}
+
+async function playUri(uri, options = {}) {
   if (!uri) throw new Error("missing_uri")
-  const res = await spotifyFetch("/me/player/play", {
+  const deviceId = options.targetPi ? await findPiDeviceId() : null
+  const path = deviceId ? `/me/player/play?device_id=${encodeURIComponent(deviceId)}` : "/me/player/play"
+  const res = await spotifyFetch(path, {
     method: "PUT",
     body: JSON.stringify({ uris: [uri] }),
   })
@@ -233,7 +301,10 @@ async function playUri(uri) {
   return getCurrentlyPlaying()
 }
 
-async function playbackAction(action) {
+async function playbackAction(action, options = {}) {
+  if (options.targetPi) {
+    await ensurePiPlaybackDevice(action)
+  }
   const endpoints = {
     play: { path: "/me/player/play", method: "PUT" },
     pause: { path: "/me/player/pause", method: "PUT" },

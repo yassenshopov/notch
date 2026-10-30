@@ -26,6 +26,7 @@ const {
   localDateKey: wallpaperLocalDateKey,
   startWallpaperDailyScheduler,
 } = require("./wallpaper-daily.cjs")
+const { syncWallpaperToMint } = require("./wallpaper-mint-sync.cjs")
 
 let yearWallpaperModule = null
 function getYearWallpaper() {
@@ -84,7 +85,18 @@ async function runWallpaperRegenerate(payload = {}) {
       apply,
       style,
     })
-    return { ok: true, ...result }
+
+    let mintSync = undefined
+    if (saved.syncToMint !== false) {
+      const mintSettings = settingsStore.readSettings()?.mint ?? {}
+      mintSync = await syncWallpaperToMint({
+        localPath: result.path,
+        year: result.year,
+        sshHost: mintSettings.sshHost,
+      })
+    }
+
+    return { ok: true, ...result, mintSync }
   } catch (err) {
     const message = err instanceof Error ? err.message : "wallpaper_error"
     if (/cannot find module ['"]pngjs['"]/i.test(message)) {
@@ -115,6 +127,7 @@ const markets = require("./markets.cjs")
 const github = require("./github.cjs")
 const mint = require("./mint.cjs")
 const pi = require("./pi.cjs")
+const piDisplay = require("./pi-display.cjs")
 const strava = require("./strava.cjs")
 const mediaSession = require("./media-session.cjs")
 const calendar = require("./calendar.cjs")
@@ -536,8 +549,8 @@ ipcMain.handle("spotify:connect", async () => {
 
 ipcMain.handle("spotify:disconnect", () => spotify.disconnect())
 
-ipcMain.handle("spotify:action", async (_event, action) => {
-  return spotify.playbackAction(action)
+ipcMain.handle("spotify:action", async (_event, action, options) => {
+  return spotify.playbackAction(action, options ?? {})
 })
 
 ipcMain.handle("spotify:recently-played", async (_event, limit) => {
@@ -548,8 +561,8 @@ ipcMain.handle("spotify:recently-played", async (_event, limit) => {
   }
 })
 
-ipcMain.handle("spotify:play-uri", async (_event, uri) => {
-  return spotify.playUri(uri)
+ipcMain.handle("spotify:play-uri", async (_event, uri, options) => {
+  return spotify.playUri(uri, options ?? {})
 })
 
 ipcMain.handle("spotify:lyrics", async (_event, query) => {
@@ -697,6 +710,59 @@ ipcMain.handle("mint:status", async (_event, options) => {
   }
 })
 
+ipcMain.handle("pi-display:mode", async (_event, options) => {
+  try {
+    return await piDisplay.getMode({
+      host: typeof options?.host === "string" ? options.host : undefined,
+    })
+  } catch (err) {
+    return {
+      connected: false,
+      host: "pi",
+      error: err instanceof Error ? err.message : "pi_display_error",
+      mode: null,
+    }
+  }
+})
+
+ipcMain.handle("pi-display:set-mode", async (_event, mode, options) => {
+  try {
+    return await piDisplay.setMode(mode, {
+      host: typeof options?.host === "string" ? options.host : undefined,
+    })
+  } catch (err) {
+    return {
+      connected: false,
+      host: "pi",
+      error: err instanceof Error ? err.message : "pi_display_error",
+      mode: null,
+      switched: false,
+    }
+  }
+})
+
+ipcMain.handle("pi-display:now-playing", async (_event, options) => {
+  try {
+    return await piDisplay.getNowPlaying({
+      host: typeof options?.host === "string" ? options.host : undefined,
+    })
+  } catch (err) {
+    return {
+      connected: false,
+      host: "pi",
+      error: err instanceof Error ? err.message : "pi_display_error",
+      playing: false,
+      mode: null,
+      track: null,
+      artist: null,
+      album: null,
+      artUrl: null,
+      progressMs: null,
+      durationMs: null,
+    }
+  }
+})
+
 ipcMain.handle("pi:status", async (_event, options) => {
   try {
     return await pi.status({
@@ -763,6 +829,14 @@ ipcMain.handle("strava:activity", async (_event, activityId) => {
     return await strava.getActivity(activityId)
   } catch (err) {
     throw err instanceof Error ? err : new Error("strava_activity_error")
+  }
+})
+
+ipcMain.handle("strava:activity-streams", async (_event, activityId) => {
+  try {
+    return await strava.getActivityStreams(activityId)
+  } catch (err) {
+    throw err instanceof Error ? err : new Error("strava_activity_streams_error")
   }
 })
 

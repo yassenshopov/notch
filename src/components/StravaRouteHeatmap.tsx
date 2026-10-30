@@ -3,15 +3,25 @@ import L from "leaflet"
 import { MapContainer, Polyline, TileLayer, useMap } from "react-leaflet"
 import type { LatLngExpression } from "leaflet"
 import { useStravaMapTiles } from "../hooks/useStravaMapTiles"
-import type { StravaHeatmap, StravaHeatmapBounds } from "../lib/strava"
-import { decodePolyline } from "../lib/strava"
+import type { StravaHeatmap, StravaHeatmapBounds, StravaHeatmapRoute } from "../lib/strava"
+import { activityRouteColor, decodePolyline, normalizeStravaHeatmap } from "../lib/strava"
+import { stravaLeafletInteraction } from "../lib/strava-map-tiles"
 import { cn } from "../lib/utils"
+import { StravaLeafletResize } from "./StravaLeafletResize"
 
 type Props = {
   heatmap: StravaHeatmap | null
   className?: string
   height?: number
+  interactive?: boolean
 }
+
+const LEGEND_ITEMS = [
+  { label: "Run", kind: "run" as const },
+  { label: "Ride", kind: "ride" as const },
+  { label: "Swim", kind: "swim" as const },
+  { label: "Other", kind: "other" as const },
+]
 
 function FitHeatBounds({ bounds }: { bounds: StravaHeatmapBounds }) {
   const map = useMap()
@@ -24,27 +34,30 @@ function FitHeatBounds({ bounds }: { bounds: StravaHeatmapBounds }) {
   return null
 }
 
-function RouteDensityLayer({ polylines }: { polylines: string[] }) {
-  const routes = useMemo(
+function RouteDensityLayer({ routes }: { routes: StravaHeatmapRoute[] }) {
+  const decoded = useMemo(
     () =>
-      polylines
-        .map((encoded) =>
-          decodePolyline(encoded).map((p) => [p.lat, p.lng] as LatLngExpression),
-        )
-        .filter((positions) => positions.length >= 2),
-    [polylines],
+      routes
+        .map((route) => ({
+          type: route.type,
+          positions: decodePolyline(route.polyline).map(
+            (p) => [p.lat, p.lng] as LatLngExpression,
+          ),
+        }))
+        .filter((route) => route.positions.length >= 2),
+    [routes],
   )
 
   return (
     <>
-      {routes.map((positions, index) => (
+      {decoded.map((route, index) => (
         <Polyline
           key={index}
-          positions={positions}
+          positions={route.positions}
           pathOptions={{
-            color: "#fc4c02",
+            color: activityRouteColor(route.type || "Run"),
             weight: 3,
-            opacity: 0.28,
+            opacity: 0.32,
             lineCap: "round",
             lineJoin: "round",
           }}
@@ -54,10 +67,17 @@ function RouteDensityLayer({ polylines }: { polylines: string[] }) {
   )
 }
 
-export function StravaRouteHeatmap({ heatmap, className, height = 200 }: Props) {
+export function StravaRouteHeatmap({
+  heatmap,
+  className,
+  height = 200,
+  interactive = false,
+}: Props) {
   const mapTile = useStravaMapTiles()
-  const polylines = heatmap?.polylines ?? []
-  const bounds = heatmap?.bounds
+  const interaction = stravaLeafletInteraction(interactive)
+  const normalized = normalizeStravaHeatmap(heatmap)
+  const routes = normalized?.routes ?? []
+  const bounds = normalized?.bounds
 
   const center = useMemo(() => {
     if (bounds) {
@@ -69,7 +89,7 @@ export function StravaRouteHeatmap({ heatmap, className, height = 200 }: Props) 
     return [51.5, -0.12] as [number, number]
   }, [bounds])
 
-  if (polylines.length === 0 || !bounds) {
+  if (routes.length === 0 || !bounds) {
     return (
       <div
         className={cn(
@@ -84,30 +104,43 @@ export function StravaRouteHeatmap({ heatmap, className, height = 200 }: Props) 
   }
 
   return (
-    <div
-      className={cn(
-        "strava-osm-map overflow-hidden rounded-xl border border-black/8 dark:border-white/10",
-        className,
-      )}
-      style={{ height }}
-    >
-      <MapContainer
-        center={center}
-        zoom={12}
-        className="size-full"
-        scrollWheelZoom={false}
-        dragging={false}
-        doubleClickZoom={false}
-        touchZoom={false}
-        boxZoom={false}
-        keyboard={false}
-        zoomControl={false}
-        attributionControl={false}
+    <div className={cn(interactive && "space-y-2")}>
+      <div
+        className={cn(
+          "strava-osm-map overflow-hidden rounded-xl border border-black/8 dark:border-white/10",
+          interactive && "strava-osm-map--interactive",
+          className,
+        )}
+        style={{ height }}
       >
-        <TileLayer key={mapTile.url} url={mapTile.url} subdomains={mapTile.subdomains} />
-        <RouteDensityLayer polylines={polylines} />
-        <FitHeatBounds bounds={bounds} />
-      </MapContainer>
+        <MapContainer
+          center={center}
+          zoom={12}
+          className="size-full"
+          style={{ height: "100%", width: "100%" }}
+          attributionControl={false}
+          {...interaction}
+        >
+          <TileLayer key={mapTile.url} url={mapTile.url} subdomains={mapTile.subdomains} />
+          <StravaLeafletResize />
+          <RouteDensityLayer routes={routes} />
+          <FitHeatBounds bounds={bounds} />
+        </MapContainer>
+      </div>
+      {interactive ? (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-black/45 dark:text-white/45">
+          {LEGEND_ITEMS.map((item) => (
+            <li key={item.kind} className="flex items-center gap-1.5">
+              <span
+                className="h-0.5 w-4 rounded-full"
+                style={{ backgroundColor: activityRouteColor(item.kind) }}
+                aria-hidden
+              />
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }

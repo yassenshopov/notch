@@ -27,6 +27,7 @@ import { WeatherIcon } from "./WeatherIcon"
 import { usePanelLayout } from "../lib/panel-layout"
 import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { WindArrow } from "./WindArrow"
+import { WeatherDayOverviewChart } from "./WeatherDayOverviewChart"
 
 type Props = {
   data: WeatherSnapshot
@@ -311,7 +312,21 @@ function DayBody({
                 onSelect={(id) => onToggleMetric(id)}
               />
 
-              <div className="mt-auto flex justify-between gap-1 pb-1 pt-4">
+              {desktop ? (
+                <WeatherDayOverviewChart
+                  day={day}
+                  unit={unit}
+                  clockFormat={clockFormat}
+                  className="mt-3 min-h-[6.5rem] flex-1"
+                />
+              ) : null}
+
+              <div
+                className={cn(
+                  "mt-auto flex justify-between gap-1 pb-1 pt-4",
+                  desktop && "shrink-0",
+                )}
+              >
                 {day.hourly.map((h) => (
                   <div key={h.time} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
                     <span className="text-[10px] text-black/40 dark:text-white/40">
