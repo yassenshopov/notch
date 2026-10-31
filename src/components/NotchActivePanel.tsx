@@ -23,6 +23,8 @@ import { MarketsPanel } from "./MarketsPanel"
 import { GitHubPanel } from "./GitHubPanel"
 import { StravaPanel } from "./StravaPanel"
 import { MintPanel } from "./MintPanel"
+import { WifiSensePanel } from "./WifiSensePanel"
+import type { WifiSenseLiveState } from "../lib/wifi-sense"
 import { PiPanel } from "./PiPanel"
 import { AirQualityPanel } from "./AirQualityPanel"
 import { CalendarPanel } from "./CalendarPanel"
@@ -72,6 +74,10 @@ type Props = {
   mintLoading: boolean
   mintRefreshing: boolean
   refreshMint: () => void
+  wifiSenseAgentUrl: string
+  wifiSenseState: WifiSenseLiveState
+  wifiSenseToken?: string
+  refreshWifiSense: () => void
   piStatus: PiServerStatus
   piHistory: ServerStatsHistory
   piLoading: boolean
@@ -124,6 +130,10 @@ export function NotchActivePanel(props: Props) {
     mintLoading,
     mintRefreshing,
     refreshMint,
+    wifiSenseAgentUrl,
+    wifiSenseState,
+    wifiSenseToken,
+    refreshWifiSense,
     piStatus,
     piHistory,
     piLoading,
@@ -250,6 +260,15 @@ export function NotchActivePanel(props: Props) {
         loading={mintLoading}
         refreshing={mintRefreshing}
         onRefresh={() => void refreshMint()}
+      />
+    )
+  } else if (activePanel === "wifi-sense") {
+    body = (
+      <WifiSensePanel
+        agentUrl={wifiSenseAgentUrl}
+        token={wifiSenseToken?.trim() || undefined}
+        state={wifiSenseState}
+        onRefreshStatus={() => void refreshWifiSense()}
       />
     )
   } else if (activePanel === "pi") {

@@ -12,6 +12,7 @@ export type NotchPanel =
   | "github"
   | "strava"
   | "mint"
+  | "wifi-sense"
   | "pi"
   | "air"
   | "calendar"
@@ -70,6 +71,7 @@ export const DESKTOP_NAV_PANELS: NotchPanel[] = [
   "github",
   "strava",
   "mint",
+  "wifi-sense",
   "pi",
   "controls",
   "pacman",
@@ -98,6 +100,8 @@ export function panelLabel(panel: NotchPanel): string {
       return "Strava"
     case "mint":
       return "Mint server"
+    case "wifi-sense":
+      return "Wi‑Fi Sense"
     case "pi":
       return "Pi server"
     case "air":

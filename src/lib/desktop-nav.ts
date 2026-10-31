@@ -30,7 +30,7 @@ export const DESKTOP_NAV_GROUPS: DesktopNavGroup[] = [
   {
     id: "servers",
     label: "Servers",
-    panels: ["mint", "pi"],
+    panels: ["mint", "wifi-sense", "pi"],
   },
   {
     id: "system",

@@ -11,6 +11,7 @@ const PANEL_IDS = new Set<NotchPanel>([
   "github",
   "strava",
   "mint",
+  "wifi-sense",
   "pi",
   "air",
   "calendar",

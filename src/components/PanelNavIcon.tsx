@@ -45,6 +45,8 @@ export function PanelNavIcon({ panel, className = "size-4" }: Props) {
       return <Icon icon="simple-icons:strava" className={className} aria-hidden />
     case "mint":
       return <Icon icon="simple-icons:linuxmint" className={className} aria-hidden />
+    case "wifi-sense":
+      return <Icon icon="mdi:wifi-strength-2" className={className} aria-hidden />
     case "pi":
       return <Icon icon="simple-icons:raspberrypi" className={className} aria-hidden />
     case "controls":

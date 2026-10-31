@@ -199,6 +199,7 @@ def collect(flavor: str) -> dict:
     disk_pct = int(df[4].rstrip("%")) if len(df) > 4 else 0
 
     ts_ip = run("tailscale ip -4 2>/dev/null") or run("/usr/bin/tailscale ip -4 2>/dev/null")
+    lan_ip = run("hostname -I 2>/dev/null | awk '{print $1}'")
 
     cpu_temp = read_cpu_temp_mint() if flavor == "mint" else read_cpu_temp_pi()
     cpu_count = int(run("nproc") or "1")
@@ -223,6 +224,7 @@ def collect(flavor: str) -> dict:
         "cpuCount": cpu_count,
         "processCount": process_count,
         "tailscaleIp": ts_ip or None,
+        "lanIp": lan_ip or None,
         "mirrorRepoCount": repos,
         "mirrorLastLog": mirror_last,
         "cpuTempC": cpu_temp,

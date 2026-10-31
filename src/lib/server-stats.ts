@@ -14,6 +14,8 @@ export type ServerStatsStatus = {
   diskUsedGb: number | null
   diskUsedPct: number | null
   tailscaleIp: string | null
+  /** Primary LAN IPv4 from the server (home network) */
+  lanIp?: string | null
   mirrorRepoCount: number | null
   mirrorLastLog: string | null
   cpuTempC?: number | null
@@ -23,6 +25,8 @@ export type ServerStatsStatus = {
   cpuCount: number | null
   processCount: number | null
   error?: string | null
+  /** Tailscale SSH check-in URL when BatchMode cannot authenticate */
+  sshHelpUrl?: string | null
   /** Filled by remote stats script from on-disk trend samples */
   trend?: unknown
 }

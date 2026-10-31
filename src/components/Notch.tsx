@@ -66,6 +66,7 @@ import { useMarkets } from "../hooks/useMarkets"
 import { useGithub } from "../hooks/useGithub"
 import { useStrava } from "../hooks/useStrava"
 import { useMint } from "../hooks/useMint"
+import { useWifiSense } from "../hooks/useWifiSense"
 import { usePi } from "../hooks/usePi"
 import { todayContributionCount } from "../lib/github"
 import { formatQuoteChange } from "../lib/markets"
@@ -95,6 +96,7 @@ const RAIL_PANELS_RIGHT: Panel[] = [
   "github",
   "strava",
   "mint",
+  "wifi-sense",
   "pi",
   "controls",
   "settings",
@@ -186,8 +188,12 @@ export function Notch() {
   const stravaPoll =
     (!expanded && (settings.island.faces.strava ?? true)) ||
     (expanded && activePanel === "strava")
+  const wifiSensePoll =
+    (settings.wifiSense?.enabled ?? true) && expanded && activePanel === "wifi-sense"
   const mintPoll =
-    (!expanded && (settings.island.faces.mint ?? true)) || (expanded && activePanel === "mint")
+    (!expanded && (settings.island.faces.mint ?? true)) ||
+    (expanded && activePanel === "mint") ||
+    (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim())
   const piPoll =
     (!expanded && (settings.island.faces.pi ?? true)) || (expanded && activePanel === "pi")
 
@@ -218,6 +224,14 @@ export function Notch() {
     refreshing: mintRefreshing,
     refresh: refreshMint,
   } = useMint(Boolean(mintPoll))
+  const {
+    agentUrl: wifiSenseAgentUrl,
+    state: wifiSenseState,
+    refreshStatus: refreshWifiSense,
+  } = useWifiSense(Boolean(wifiSensePoll), {
+    tailscaleIp: mintStatus.tailscaleIp,
+    lanIp: mintStatus.lanIp,
+  })
   const {
     status: piStatus,
     history: piHistory,
@@ -514,6 +528,10 @@ export function Notch() {
       mintLoading={mintLoading}
       mintRefreshing={mintRefreshing}
       refreshMint={refreshMint}
+      wifiSenseAgentUrl={wifiSenseAgentUrl}
+      wifiSenseState={wifiSenseState}
+      wifiSenseToken={settings.wifiSense?.token}
+      refreshWifiSense={refreshWifiSense}
       piStatus={piStatus}
       piHistory={piHistory}
       piLoading={piLoading}
@@ -1129,6 +1147,8 @@ function railTabIcon(panel: Panel) {
       return <Icon icon="simple-icons:strava" className="size-4" aria-hidden />
     case "mint":
       return <Icon icon="simple-icons:linuxmint" className="size-4" aria-hidden />
+    case "wifi-sense":
+      return <Icon icon="mdi:wifi-strength-2" className="size-4" aria-hidden />
     case "pi":
       return <Icon icon="simple-icons:raspberrypi" className="size-4" aria-hidden />
     case "controls":
@@ -1152,6 +1172,7 @@ const RAIL_TAB_LABELS: Record<Panel, string> = {
   github: "GitHub",
   strava: "Strava",
   mint: "Mint server",
+  "wifi-sense": "Wi‑Fi Sense",
   pi: "Raspberry Pi",
   controls: "Controls",
   settings: "Settings",

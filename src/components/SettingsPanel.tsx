@@ -744,6 +744,60 @@ export function SettingsPanel({
         </SettingsTile>
 
         <SettingsTile col={6}>
+          <Section title="Wi‑Fi Sense">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              Live link metrics from the Mint agent (managed RSSI — not CSI). Leave URL empty to use Mint
+              Tailscale IP on port 8765.
+            </p>
+            <Row label="Enabled">
+              <Segmented
+                value={(s.wifiSense?.enabled ?? true) ? "1" : "0"}
+                options={[
+                  { value: "1", label: "On" },
+                  { value: "0", label: "Off" },
+                ]}
+                onChange={(v) =>
+                  void updateSettings({
+                    wifiSense: {
+                      ...(s.wifiSense ?? {
+                        enabled: true,
+                        agentUrl: "",
+                        port: 8765,
+                        token: "",
+                        statusPollMs: 15_000,
+                      }),
+                      enabled: v === "1",
+                    },
+                  })
+                }
+              />
+            </Row>
+            <Row label="Agent URL">
+              <input
+                type="text"
+                placeholder="http://100.x.x.x:8765"
+                value={s.wifiSense?.agentUrl ?? ""}
+                onChange={(e) =>
+                  void updateSettings({
+                    wifiSense: {
+                      ...(s.wifiSense ?? {
+                        enabled: true,
+                        agentUrl: "",
+                        port: 8765,
+                        token: "",
+                        statusPollMs: 15_000,
+                      }),
+                      agentUrl: e.target.value,
+                    },
+                  })
+                }
+                className="w-full rounded-lg border border-black/10 bg-black/[0.03] px-2 py-1.5 text-[12px] dark:border-white/15 dark:bg-white/[0.06]"
+              />
+            </Row>
+          </Section>
+        </SettingsTile>
+
+        <SettingsTile col={6}>
           <Section title="Raspberry Pi">
             <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
               TV Pi over SSH. Default <span className="font-medium">pi</span> uses Tailscale (falls back to{" "}

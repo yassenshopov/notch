@@ -74,6 +74,9 @@ contextBridge.exposeInMainWorld("notch", {
   mint: {
     status: (options) => ipcRenderer.invoke("mint:status", options),
   },
+  wifiSense: {
+    post: (options) => ipcRenderer.invoke("wifi-sense:post", options),
+  },
   pi: {
     status: (options) => ipcRenderer.invoke("pi:status", options),
     displayMode: (options) => ipcRenderer.invoke("pi-display:mode", options),

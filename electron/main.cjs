@@ -126,6 +126,7 @@ const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
 const mint = require("./mint.cjs")
+const { agentPost: wifiSenseAgentPost } = require("./wifi-sense.cjs")
 const pi = require("./pi.cjs")
 const piDisplay = require("./pi-display.cjs")
 const strava = require("./strava.cjs")
@@ -708,6 +709,14 @@ ipcMain.handle("mint:status", async (_event, options) => {
       error: err instanceof Error ? err.message : "mint_error",
     }
   }
+})
+
+ipcMain.handle("wifi-sense:post", async (_event, options) => {
+  const agentUrl = typeof options?.agentUrl === "string" ? options.agentUrl : ""
+  const path = typeof options?.path === "string" ? options.path : ""
+  const token = typeof options?.token === "string" ? options.token : undefined
+  const body = options?.body
+  return wifiSenseAgentPost(agentUrl, path, token, body)
 })
 
 ipcMain.handle("pi-display:mode", async (_event, options) => {

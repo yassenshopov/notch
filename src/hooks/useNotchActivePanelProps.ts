@@ -12,6 +12,7 @@ import { usePi } from "./usePi"
 import { useSpotify } from "./useSpotify"
 import { useStrava } from "./useStrava"
 import { useWeather } from "./useWeather"
+import { useWifiSense } from "./useWifiSense"
 import type { ComponentProps } from "react"
 import type { NotchActivePanel } from "../components/NotchActivePanel"
 
@@ -60,7 +61,12 @@ export function useNotchActivePanelProps(
   const marketsPoll = pollPanel("markets", activePanel, mode, faces.markets) || overviewPoll
   const githubPoll = pollPanel("github", activePanel, mode, faces.github) || overviewPoll
   const stravaPoll = pollPanel("strava", activePanel, mode, faces.strava ?? true) || overviewPoll
-  const mintPoll = pollPanel("mint", activePanel, mode, faces.mint ?? true) || overviewPoll
+  const wifiSensePoll =
+    (settings.wifiSense?.enabled ?? true) && pollPanel("wifi-sense", activePanel, mode, false)
+  const mintPoll =
+    pollPanel("mint", activePanel, mode, faces.mint ?? true) ||
+    overviewPoll ||
+    (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim())
   const piPoll = pollPanel("pi", activePanel, mode, faces.pi ?? true) || overviewPoll
 
   const {
@@ -90,6 +96,14 @@ export function useNotchActivePanelProps(
     refreshing: mintRefreshing,
     refresh: refreshMint,
   } = useMint(mintPoll)
+  const {
+    agentUrl: wifiSenseAgentUrl,
+    state: wifiSenseState,
+    refreshStatus: refreshWifiSense,
+  } = useWifiSense(wifiSensePoll, {
+    tailscaleIp: mintStatus.tailscaleIp,
+    lanIp: mintStatus.lanIp,
+  })
   const {
     status: piStatus,
     history: piHistory,
@@ -162,6 +176,10 @@ export function useNotchActivePanelProps(
       mintLoading,
       mintRefreshing,
       refreshMint,
+      wifiSenseAgentUrl,
+      wifiSenseState,
+      wifiSenseToken: settings.wifiSense?.token,
+      refreshWifiSense,
       piStatus,
       piHistory,
       piLoading,
@@ -211,6 +229,10 @@ export function useNotchActivePanelProps(
       mintLoading,
       mintRefreshing,
       refreshMint,
+      wifiSenseAgentUrl,
+      wifiSenseState,
+      settings.wifiSense?.token,
+      refreshWifiSense,
       piStatus,
       piHistory,
       piLoading,

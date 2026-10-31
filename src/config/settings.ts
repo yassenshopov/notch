@@ -95,6 +95,14 @@ export type AppSettings = {
     /** SSH config host (Tailscale first, e.g. pi) */
     sshHost: string
   }
+  wifiSense: {
+    enabled: boolean
+    /** Empty = derive from Mint Tailscale IP */
+    agentUrl: string
+    port: number
+    token: string
+    statusPollMs: number
+  }
   calendar: {
     pollIntervalMs: number
     /** Secret ICS URL (e.g. Google Calendar → Integrate calendar) */
@@ -248,6 +256,13 @@ export const defaultSettings: AppSettings = {
   pi: {
     pollIntervalMs: 30_000,
     sshHost: "pi",
+  },
+  wifiSense: {
+    enabled: true,
+    agentUrl: "",
+    port: 8765,
+    token: "",
+    statusPollMs: 15_000,
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,

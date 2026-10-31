@@ -180,6 +180,14 @@ interface NotchBridge {
   mint: {
     status: (options?: { force?: boolean; host?: string }) => Promise<MintBridgeStatus>
   }
+  wifiSense: {
+    post: (options: {
+      agentUrl: string
+      path: string
+      token?: string
+      body?: unknown
+    }) => Promise<import("./lib/wifi-sense").WifiSensePostResult>
+  }
   pi: {
     status: (options?: { force?: boolean; host?: string }) => Promise<PiBridgeStatus>
     displayMode?: (options?: { host?: string }) => Promise<import("./lib/pi-display").PiDisplayModeResult>
