@@ -1,5 +1,6 @@
 import type { AppSettings, ClockFormat } from "../config/settings"
 import type { CursorStatus } from "./cursor"
+import { computeCursorCyclePace, formatCursorUsageAlert } from "./cursor-cycle"
 import { formatHour } from "./utils"
 import type { WeatherCode, WeatherSnapshot } from "./weather"
 
@@ -135,15 +136,16 @@ export function collectCursorUsageActivity(
   if (!status.connected || !status.usage?.enabled) return null
   if (status.billing?.isUnlimited) return null
 
-  const pct = Math.round(status.usage.totalPercentUsed)
   const threshold = settings.cursor.usageWarningPercent
-  if (pct < threshold) return null
+  const pace = computeCursorCyclePace(status.usage, status.billing)
+  const alert = formatCursorUsageAlert(status.usage, pace, threshold)
+  if (!alert) return null
 
   return {
-    id: `cursor-usage-${pct}`,
+    id: alert.id,
     kind: "cursor-usage",
     panel: "cursor",
-    label: `Cursor ${pct}% used`,
+    label: alert.label,
     priority: 100,
   }
 }

@@ -12,6 +12,54 @@ export type CursorCyclePace = {
   dailyUsedPercent: number
   projectedEndPercent: number
   onTrack: boolean
+  /** Days until included quota hits 100% at current daily rate (null if no usage yet) */
+  daysUntilDepletion: number | null
+}
+
+export function cursorUsageNeedsAttention(
+  usage: CursorUsagePlan,
+  pace: CursorCyclePace | null,
+  usageWarningPercent: number,
+): boolean {
+  const pct = Math.round(usage.totalPercentUsed)
+  if (pct >= usageWarningPercent) return true
+  return pace != null && !pace.onTrack
+}
+
+export function formatCursorUsageAlert(
+  usage: CursorUsagePlan,
+  pace: CursorCyclePace | null,
+  usageWarningPercent: number,
+): { id: string; label: string } | null {
+  const pct = Math.round(usage.totalPercentUsed)
+  const overThreshold = pct >= usageWarningPercent
+  const offPace = pace != null && !pace.onTrack
+  if (!overThreshold && !offPace) return null
+
+  if (offPace && pace) {
+    const projected = Math.round(pace.projectedEndPercent)
+    if (overThreshold) {
+      return {
+        id: `cursor-usage-${pct}-pace-${projected}`,
+        label: `Cursor ${pct}% · hot pace (~${projected}%)`,
+      }
+    }
+    const depletionDays =
+      pace.daysUntilDepletion != null ? Math.max(1, Math.round(pace.daysUntilDepletion)) : null
+    const runOutLabel =
+      depletionDays != null && depletionDays < pace.daysRemaining
+        ? `may run out in ~${depletionDays}d`
+        : `~${projected}% projected by renewal`
+    return {
+      id: `cursor-usage-pace-${projected}`,
+      label: `Cursor hot pace · ${runOutLabel}`,
+    }
+  }
+
+  return {
+    id: `cursor-usage-${pct}`,
+    label: `Cursor ${pct}% used`,
+  }
 }
 
 function parseCycleDay(iso: string | null | undefined) {
@@ -46,6 +94,12 @@ export function computeCursorCyclePace(
   const dailyUsedPercent = daysElapsed > 0 ? usedPercent / daysElapsed : 0
   const projectedEndPercent = Math.min(999, dailyUsedPercent * daysTotal)
   const onTrack = projectedEndPercent <= 100
+  const daysUntilDepletion =
+    dailyUsedPercent > 0 && usedPercent < 100
+      ? (100 - usedPercent) / dailyUsedPercent
+      : usedPercent >= 100
+        ? 0
+        : null
 
   return {
     daysElapsed,
@@ -58,5 +112,6 @@ export function computeCursorCyclePace(
     dailyUsedPercent,
     projectedEndPercent,
     onTrack,
+    daysUntilDepletion,
   }
 }

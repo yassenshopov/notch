@@ -122,6 +122,11 @@ ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
 
 const spotify = require("./spotify.cjs")
 const cursor = require("./cursor.cjs")
+const {
+  computeCursorCyclePace,
+  cursorUsageNeedsAttention,
+  formatCursorUsageTrayMessage,
+} = require("./cursor-cycle.cjs")
 const systemControls = require("./system-controls.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
@@ -376,17 +381,24 @@ async function syncCursorTray() {
   const snoozedUntil = settingsStore.readSettings()?.liveActivities?.cursor?.snoozedUntilMs ?? 0
   const usageSnoozed = snoozedUntil > Date.now()
 
-  if (pct >= usageWarningPercent) {
+  const pace =
+    status.billing?.isUnlimited ? null : computeCursorCyclePace(status.usage, status.billing)
+  const needsAttention = cursorUsageNeedsAttention(status.usage, pace, usageWarningPercent)
+
+  if (needsAttention) {
     if (!usageSnoozed && !cursorTrayWarned && process.platform === "win32") {
       const icon = nativeImage.createFromPath(APP_ICON)
+      const content =
+        formatCursorUsageTrayMessage(status.usage, pace, usageWarningPercent) ??
+        `${pct}% of your included usage this billing cycle.`
       tray.displayBalloon?.({
         title: "Cursor usage",
-        content: `${pct}% of your included usage this billing cycle.`,
+        content,
         icon: icon.isEmpty() ? undefined : icon,
       })
     }
     cursorTrayWarned = true
-  } else if (pct < usageWarningPercent - 5) {
+  } else if (pct < usageWarningPercent - 5 && (pace == null || pace.onTrack)) {
     cursorTrayWarned = false
   }
 }

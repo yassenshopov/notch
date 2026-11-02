@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { getSettings, updateSettings, useSettings } from "../config/settings-store"
+import { computeCursorCyclePace, cursorUsageNeedsAttention } from "../lib/cursor-cycle"
 import { fetchCursorStatus, type CursorStatus } from "../lib/cursor"
 import {
   collectLiveActivities,
@@ -51,10 +52,12 @@ function useCursorForLiveActivities(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled || !status.connected || !status.usage?.enabled) return
-    const pct = Math.round(status.usage.totalPercentUsed)
     const threshold = settings.cursor.usageWarningPercent
+    const pace = computeCursorCyclePace(status.usage, status.billing)
     const snoozed = settings.liveActivities.cursor.snoozedUntilMs
-    if (snoozed > 0 && pct < threshold - 5) {
+    const pct = Math.round(status.usage.totalPercentUsed)
+    const attention = cursorUsageNeedsAttention(status.usage, pace, threshold)
+    if (snoozed > 0 && !attention && pct < threshold - 5) {
       void updateSettings({
         liveActivities: {
           ...settings.liveActivities,
