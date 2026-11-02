@@ -7,7 +7,7 @@ import {
   type CalendarSnapshot,
 } from "../lib/calendar"
 
-const empty: CalendarSnapshot = { configured: false, connected: false, events: [] }
+const empty: CalendarSnapshot = { configured: false, connected: false, calendars: [], events: [] }
 
 export function useCalendar(active: boolean) {
   const settings = useSettings()

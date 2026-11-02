@@ -2,7 +2,11 @@ import { Video } from "lucide-react"
 import type { ClockFormat } from "../config/settings"
 import type { CalendarEvent } from "../lib/calendar"
 import { openCalendarUrl } from "../lib/calendar"
-import { eventDisplayColor, withAlpha } from "../lib/google-calendar-colors"
+import {
+  eventDisplayColor,
+  textColorOnCalendarFill,
+  withAlpha,
+} from "../lib/google-calendar-colors"
 import { cn, formatClock } from "../lib/utils"
 
 type Props = {
@@ -25,18 +29,20 @@ export function CalendarEventRow({
   const color = eventDisplayColor(event)
 
   if (chip) {
+    const fillAlpha = "55"
+    const textColor = textColorOnCalendarFill(color, fillAlpha)
     return (
       <button
         type="button"
         onClick={onSelect}
         className={cn(
           "mb-0.5 flex w-full min-w-0 gap-1 rounded px-1 py-0.5 text-left text-[10px] font-medium leading-tight",
-          !event.allDay ? "flex-row items-center" : "flex-col items-stretch",
+          !event.allDay ? "flex-row items-start" : "flex-col items-stretch",
           selected && "ring-1 ring-black/25 dark:ring-white/35",
         )}
         style={{
-          backgroundColor: withAlpha(color, "55"),
-          color: "#111",
+          backgroundColor: withAlpha(color, fillAlpha),
+          color: textColor,
         }}
         title={event.summary}
       >

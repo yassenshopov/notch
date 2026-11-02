@@ -10,7 +10,7 @@ const SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
 const CALLBACK_PORT = 43112
 const CACHE_MS = 5 * 60 * 1000
 
-let cache = { at: 0, events: [] }
+let cache = { at: 0, events: [], calendars: [] }
 
 function tokenPath() {
   return path.join(app.getPath("userData"), "google-calendar-tokens.json")
@@ -34,7 +34,7 @@ function clearTokens() {
   } catch {
     // ignore
   }
-  cache = { at: 0, events: [] }
+  cache = { at: 0, events: [], calendars: [] }
 }
 
 function getConfig() {
@@ -202,6 +202,7 @@ function mapGcalEvent(item, calendarId, calendarSummary, calendarColor) {
     end,
     allDay,
     location: item.location || null,
+    calendarId,
     calendarName: calendarSummary || null,
     color,
     joinUrl:
@@ -348,7 +349,10 @@ async function fetchGoogleEvents() {
     ),
   )
 
-  return dedupeEvents(batches.flat())
+  return {
+    calendars,
+    events: dedupeEvents(batches.flat()),
+  }
 }
 
 async function snapshot(options = {}) {
@@ -356,34 +360,41 @@ async function snapshot(options = {}) {
   const connected = isConnected()
 
   if (!configured) {
-    return { configured: false, connected: false, events: [], error: null }
+    return { configured: false, connected: false, calendars: [], events: [], error: null }
   }
   if (!connected) {
-    return { configured: true, connected: false, events: [], error: null }
+    return { configured: true, connected: false, calendars: [], events: [], error: null }
   }
 
   const force = options.force === true
   const now = Date.now()
   if (!force && now - cache.at < CACHE_MS) {
-    return { configured: true, connected: true, events: cache.events, error: null }
+    return {
+      configured: true,
+      connected: true,
+      calendars: cache.calendars,
+      events: cache.events,
+      error: null,
+    }
   }
 
   try {
     const { horizonStart, horizonEnd } = eventTimeRange()
-    const events = await fetchGoogleEvents()
-    const filtered = events
+    const { events: rawEvents, calendars } = await fetchGoogleEvents()
+    const filtered = rawEvents
       .filter((e) => {
         const start = new Date(e.start).getTime()
         const end = new Date(e.end).getTime()
         return end >= horizonStart && start <= horizonEnd
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
-    cache = { at: now, events: filtered }
-    return { configured: true, connected: true, events: filtered, error: null }
+    cache = { at: now, events: filtered, calendars }
+    return { configured: true, connected: true, calendars, events: filtered, error: null }
   } catch (err) {
     return {
       configured: true,
       connected: true,
+      calendars: cache.calendars,
       events: cache.events,
       error: err instanceof Error ? err.message : "calendar_error",
     }
@@ -430,7 +441,7 @@ function startAuth() {
           expires_at: Date.now() + (tokens.expires_in ?? 3600) * 1000,
         })
 
-        cache = { at: 0, events: [] }
+        cache = { at: 0, events: [], calendars: [] }
 
         res.writeHead(200, { "Content-Type": "text/html" })
         res.end(

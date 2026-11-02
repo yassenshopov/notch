@@ -1,3 +1,9 @@
+export type CalendarSource = {
+  id: string
+  summary: string
+  color: string
+}
+
 export type CalendarEvent = {
   id: string
   summary: string
@@ -8,12 +14,14 @@ export type CalendarEvent = {
   joinUrl: string | null
   /** Google Calendar / event color (hex) */
   color?: string | null
+  calendarId?: string | null
   calendarName?: string | null
 }
 
 export type CalendarSnapshot = {
   configured: boolean
   connected: boolean
+  calendars?: CalendarSource[]
   events: CalendarEvent[]
   error?: string | null
 }
@@ -21,7 +29,44 @@ export type CalendarSnapshot = {
 const emptySnapshot: CalendarSnapshot = {
   configured: false,
   connected: false,
+  calendars: [],
   events: [],
+}
+
+const DEFAULT_CALENDAR_COLOR = "#039be5"
+
+export function eventCalendarId(event: CalendarEvent): string {
+  if (event.calendarId) return event.calendarId
+  const i = event.id.indexOf(":")
+  return i >= 0 ? event.id.slice(0, i) : event.id
+}
+
+export function mergeCalendarSources(snapshot: CalendarSnapshot): CalendarSource[] {
+  const byId = new Map<string, CalendarSource>()
+  for (const cal of snapshot.calendars ?? []) {
+    byId.set(cal.id, cal)
+  }
+  for (const event of snapshot.events) {
+    const id = eventCalendarId(event)
+    if (byId.has(id)) continue
+    byId.set(id, {
+      id,
+      summary: event.calendarName?.trim() || id,
+      color: event.color?.trim() || DEFAULT_CALENDAR_COLOR,
+    })
+  }
+  return [...byId.values()].sort((a, b) =>
+    a.summary.localeCompare(b.summary, undefined, { sensitivity: "base" }),
+  )
+}
+
+export function filterEventsByHiddenCalendars(
+  events: CalendarEvent[],
+  hiddenCalendarIds: readonly string[],
+): CalendarEvent[] {
+  if (hiddenCalendarIds.length === 0) return events
+  const hidden = new Set(hiddenCalendarIds)
+  return events.filter((event) => !hidden.has(eventCalendarId(event)))
 }
 
 export async function fetchCalendarSnapshot(options?: {

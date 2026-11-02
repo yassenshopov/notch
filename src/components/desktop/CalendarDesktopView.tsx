@@ -1,7 +1,12 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { updateSettings, useSettings } from "../../config/settings-store"
 import type { ClockFormat } from "../../config/settings"
 import type { CalendarEvent, CalendarSnapshot } from "../../lib/calendar"
+import {
+  filterEventsByHiddenCalendars,
+  mergeCalendarSources,
+} from "../../lib/calendar"
 import {
   buildCalendarMonth,
   defaultSelectedForMonth,
@@ -15,6 +20,7 @@ import {
   eventsForDay,
   gridHours,
   layoutTimedBlocksColumns,
+  nowLineTopPx,
   shiftAnchor,
   startOfWeek,
   weekDays,
@@ -22,7 +28,20 @@ import {
 } from "../../lib/calendar-views"
 import { cn, formatClock } from "../../lib/utils"
 import { CalendarEventRow } from "../CalendarEventRow"
+import { SegmentedControl } from "../SegmentedControl"
+import { CalendarSourceList } from "./CalendarSourceList"
+import { CalendarNowLine } from "./CalendarNowLine"
 import { TimedEventBlock } from "./TimedEventBlock"
+
+function scrollTimeGridToNow(container: HTMLDivElement | null) {
+  if (!container) return
+  const top = nowLineTopPx(new Date())
+  if (top == null) return
+  container.scrollTo({
+    top: Math.max(0, top - container.clientHeight * 0.3),
+    behavior: "smooth",
+  })
+}
 
 const WEEKDAY_HEADERS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -41,14 +60,31 @@ export function CalendarDesktopView({
   onRefresh,
   headerActions,
 }: Props) {
+  const settings = useSettings()
+  const hiddenIds = settings.calendar.hiddenCalendarIds ?? []
   const [mode, setMode] = useState<CalendarViewMode>("month")
   const [anchor, setAnchor] = useState(() => startOfMonth(new Date()))
   const [selected, setSelected] = useState(() => dateKeyFromDate(new Date()))
   const [focusedEventId, setFocusedEventId] = useState<string | null>(null)
 
+  const calendars = useMemo(() => mergeCalendarSources(snapshot), [snapshot])
+  const events = useMemo(
+    () => filterEventsByHiddenCalendars(snapshot.events, hiddenIds),
+    [snapshot.events, hiddenIds],
+  )
+
+  const toggleCalendar = (calendarId: string) => {
+    const hidden = new Set(hiddenIds)
+    if (hidden.has(calendarId)) hidden.delete(calendarId)
+    else hidden.add(calendarId)
+    void updateSettings({
+      calendar: { ...settings.calendar, hiddenCalendarIds: [...hidden] },
+    })
+  }
+
   const month = useMemo(
-    () => (mode === "month" ? buildCalendarMonth(snapshot.events, anchor) : null),
-    [snapshot.events, anchor, mode],
+    () => (mode === "month" ? buildCalendarMonth(events, anchor) : null),
+    [events, anchor, mode],
   )
 
   const week = useMemo(() => (mode === "week" ? weekDays(anchor) : null), [anchor, mode])
@@ -106,28 +142,22 @@ export function CalendarDesktopView({
           <h1 className="text-[20px] font-semibold tracking-tight">{anchorLabel(mode, anchor)}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-full border border-black/10 p-0.5 dark:border-white/15">
-            {(["month", "week", "day"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => {
-                  setMode(v)
-                  if (v === "month") setAnchor(startOfMonth(new Date(selected + "T12:00:00")))
-                  if (v === "week") setAnchor(startOfWeek(new Date(selected + "T12:00:00")))
-                  if (v === "day") setAnchor(new Date(selected + "T12:00:00"))
-                }}
-                className={cn(
-                  "rounded-full px-3 py-1 text-[12px] font-semibold capitalize",
-                  mode === v
-                    ? "bg-black text-white dark:bg-white dark:text-black"
-                    : "text-black/50 dark:text-white/50",
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            variant="bordered"
+            value={mode}
+            capitalize
+            options={[
+              { value: "month", label: "month" },
+              { value: "week", label: "week" },
+              { value: "day", label: "day" },
+            ]}
+            onChange={(v) => {
+              setMode(v)
+              if (v === "month") setAnchor(startOfMonth(new Date(selected + "T12:00:00")))
+              if (v === "week") setAnchor(startOfWeek(new Date(selected + "T12:00:00")))
+              if (v === "day") setAnchor(new Date(selected + "T12:00:00"))
+            }}
+          />
           {onRefresh ? (
             <button
               type="button"
@@ -143,12 +173,24 @@ export function CalendarDesktopView({
 
       {snapshot.error ? <p className="text-[12px] text-red-400">{snapshot.error}</p> : null}
 
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 gap-4">
+        <aside className="notch-scroll w-[220px] shrink-0 overflow-y-auto rounded-2xl border border-black/8 bg-white/40 p-3 dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-black/40 dark:text-white/40">
+            My calendars
+          </p>
+          <CalendarSourceList
+            calendars={calendars}
+            hiddenIds={hiddenIds}
+            onToggle={toggleCalendar}
+          />
+        </aside>
+
+        <div className="min-h-0 min-w-0 flex-1">
         <div className="min-h-[480px] overflow-hidden rounded-2xl border border-black/8 bg-white/50 dark:border-white/10 dark:bg-white/[0.03]">
           {mode === "month" && month ? (
             <MonthGrid
               month={month}
-              events={snapshot.events}
+              events={events}
               selected={selected}
               clockFormat={clockFormat}
               onSelectDay={setSelected}
@@ -160,7 +202,7 @@ export function CalendarDesktopView({
           {mode === "week" && week ? (
             <WeekGrid
               week={week}
-              events={snapshot.events}
+              events={events}
               selected={selected}
               clockFormat={clockFormat}
               hours={hours}
@@ -172,7 +214,7 @@ export function CalendarDesktopView({
           {mode === "day" ? (
             <DayGrid
               dayKey={dateKeyFromDate(anchor)}
-              events={snapshot.events}
+              events={events}
               clockFormat={clockFormat}
               hours={hours}
               gridHeight={gridHeight}
@@ -180,6 +222,7 @@ export function CalendarDesktopView({
               selectedEventId={focusedEventId}
             />
           ) : null}
+        </div>
         </div>
       </div>
     </div>
@@ -284,35 +327,65 @@ function WeekGrid({
   onSelectDay: (key: string) => void
   onSelectEvent: (id: string) => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const weekKey = week.map((d) => d.date).join(",")
+  const showsToday = week.some((d) => d.isToday)
+
+  useEffect(() => {
+    if (!showsToday) return
+    const id = window.requestAnimationFrame(() => scrollTimeGridToNow(scrollRef.current))
+    return () => window.cancelAnimationFrame(id)
+  }, [weekKey, showsToday])
+
   return (
     <div className="flex min-h-0 flex-col">
       <div className="grid grid-cols-[3.5rem_repeat(7,1fr)] border-b border-black/8 dark:border-white/10">
         <div />
-        {week.map((d) => (
-          <button
-            key={d.date}
-            type="button"
-            onClick={() => onSelectDay(d.date)}
-            className={cn(
-              "border-l border-black/8 py-2 text-center dark:border-white/10",
-              d.date === selected && "bg-[#4285f4]/10",
-            )}
-          >
-            <p className="text-[10px] font-medium uppercase text-black/45 dark:text-white/45">
-              {d.label}
-            </p>
-            <p
+        {week.map((d) => {
+          const allDay = allDayEventsForDay(events, d.date)
+          return (
+            <div
+              key={d.date}
               className={cn(
-                "mx-auto mt-0.5 flex size-8 items-center justify-center rounded-full text-[13px] font-semibold",
-                d.isToday && "bg-[#4285f4] text-white",
+                "flex min-w-0 flex-col border-l border-black/8 dark:border-white/10",
+                d.date === selected && "bg-[#4285f4]/10",
               )}
             >
-              {d.dom}
-            </p>
-          </button>
-        ))}
+              <button
+                type="button"
+                onClick={() => onSelectDay(d.date)}
+                className="py-2 text-center"
+              >
+                <p className="text-[10px] font-medium uppercase text-black/45 dark:text-white/45">
+                  {d.label}
+                </p>
+                <p
+                  className={cn(
+                    "mx-auto mt-0.5 flex size-8 items-center justify-center rounded-full text-[13px] font-semibold",
+                    d.isToday && "bg-[#4285f4] text-white",
+                  )}
+                >
+                  {d.dom}
+                </p>
+              </button>
+              {allDay.length > 0 ? (
+                <div className="max-h-28 space-y-0.5 overflow-y-auto px-1 pb-1.5">
+                  {allDay.map((event) => (
+                    <CalendarEventRow
+                      key={event.id}
+                      event={event}
+                      clockFormat={clockFormat}
+                      chip
+                      onSelect={() => onSelectEvent(event.id)}
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
-      <div className="notch-scroll max-h-[70vh] overflow-auto">
+      <div ref={scrollRef} className="notch-scroll max-h-[70vh] overflow-auto scroll-smooth">
         <div className="grid grid-cols-[3.5rem_repeat(7,1fr)]" style={{ minHeight: gridHeight }}>
           <div className="relative border-r border-black/8 dark:border-white/10">
             {hours.map((h) => (
@@ -325,43 +398,28 @@ function WeekGrid({
               </div>
             ))}
           </div>
-          {week.map((d) => {
-            const allDay = allDayEventsForDay(events, d.date)
-            return (
-              <div key={d.date} className="relative min-w-0 border-l border-black/8 dark:border-white/10">
-                {allDay.length > 0 ? (
-                  <div className="max-h-24 space-y-0.5 overflow-y-auto border-b border-black/8 bg-black/[0.02] p-1 dark:border-white/10">
-                    {allDay.map((event) => (
-                      <CalendarEventRow
-                        key={event.id}
-                        event={event}
-                        clockFormat={clockFormat}
-                        chip
-                        onSelect={() => onSelectEvent(event.id)}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-                <div className="relative" style={{ height: gridHeight }}>
-                  {hours.map((h) => (
-                    <div
-                      key={h}
-                      className="border-b border-black/5 dark:border-white/5"
-                      style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
-                    />
-                  ))}
-                  {layoutTimedBlocksColumns(events, d.date).map((layout) => (
-                    <TimedEventBlock
-                      key={layout.event.id}
-                      layout={layout}
-                      clockFormat={clockFormat}
-                      onSelect={() => onSelectEvent(layout.event.id)}
-                    />
-                  ))}
-                </div>
+          {week.map((d) => (
+            <div key={d.date} className="relative min-w-0 border-l border-black/8 dark:border-white/10">
+              <div className="relative" style={{ height: gridHeight }}>
+                {hours.map((h) => (
+                  <div
+                    key={h}
+                    className="border-b border-black/5 dark:border-white/5"
+                    style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
+                  />
+                ))}
+                {layoutTimedBlocksColumns(events, d.date).map((layout) => (
+                  <TimedEventBlock
+                    key={layout.event.id}
+                    layout={layout}
+                    clockFormat={clockFormat}
+                    onSelect={() => onSelectEvent(layout.event.id)}
+                  />
+                ))}
+                {d.isToday ? <CalendarNowLine /> : null}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -385,12 +443,20 @@ function DayGrid({
   onSelectEvent: (id: string) => void
   selectedEventId: string | null
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const allDay = allDayEventsForDay(events, dayKey)
+  const isToday = dateKeyFromDate(new Date()) === dayKey
+
+  useEffect(() => {
+    if (!isToday) return
+    const id = window.requestAnimationFrame(() => scrollTimeGridToNow(scrollRef.current))
+    return () => window.cancelAnimationFrame(id)
+  }, [dayKey, isToday])
+
   return (
-    <div className="notch-scroll max-h-[70vh] overflow-auto">
+    <div className="flex min-h-0 flex-col">
       {allDay.length > 0 ? (
-        <div className="border-b border-black/8 bg-black/[0.02] p-2 dark:border-white/10">
-          <p className="mb-1 text-[10px] font-semibold uppercase text-black/40">All day</p>
+        <div className="border-b border-black/8 px-2 py-2 dark:border-white/10">
           <div className="flex flex-wrap gap-1">
             {allDay.map((event) => (
               <CalendarEventRow
@@ -404,36 +470,41 @@ function DayGrid({
           </div>
         </div>
       ) : null}
-      <div className="grid grid-cols-[3.5rem_1fr]" style={{ minHeight: gridHeight }}>
-        <div>
-          {hours.map((h) => (
-            <div
-              key={h}
-              className="border-b border-black/5 pr-2 text-right text-[10px] tabular-nums text-black/35 dark:border-white/5"
-              style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
-            >
-              {formatClock(`${dayKey}T${String(h).padStart(2, "0")}:00:00`, "24h")}
+      <div ref={scrollRef} className="notch-scroll max-h-[70vh] min-h-0 flex-1 overflow-auto scroll-smooth">
+        <div className="grid grid-cols-[3.5rem_1fr]" style={{ minHeight: gridHeight }}>
+          <div>
+            {hours.map((h) => (
+              <div
+                key={h}
+                className="border-b border-black/5 pr-2 text-right text-[10px] tabular-nums text-black/35 dark:border-white/5"
+                style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
+              >
+                {formatClock(`${dayKey}T${String(h).padStart(2, "0")}:00:00`, "24h")}
+              </div>
+            ))}
+          </div>
+          <div className="relative border-l border-black/8 dark:border-white/10">
+            <div className="relative" style={{ height: gridHeight }}>
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="border-b border-black/5 dark:border-white/5"
+                  style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
+                />
+              ))}
+              {layoutTimedBlocksColumns(events, dayKey).map((layout) => (
+                <TimedEventBlock
+                  key={layout.event.id}
+                  layout={layout}
+                  clockFormat={clockFormat}
+                  showTimeRange
+                  selected={selectedEventId === layout.event.id}
+                  onSelect={() => onSelectEvent(layout.event.id)}
+                />
+              ))}
+              {isToday ? <CalendarNowLine /> : null}
             </div>
-          ))}
-        </div>
-        <div className="relative border-l border-black/8 dark:border-white/10">
-          {hours.map((h) => (
-            <div
-              key={h}
-              className="border-b border-black/5 dark:border-white/5"
-              style={{ height: CALENDAR_HOUR_HEIGHT_PX }}
-            />
-          ))}
-          {layoutTimedBlocksColumns(events, dayKey).map((layout) => (
-            <TimedEventBlock
-              key={layout.event.id}
-              layout={layout}
-              clockFormat={clockFormat}
-              showTimeRange
-              selected={selectedEventId === layout.event.id}
-              onSelect={() => onSelectEvent(layout.event.id)}
-            />
-          ))}
+          </div>
         </div>
       </div>
     </div>

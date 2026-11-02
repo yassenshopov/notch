@@ -65,6 +65,16 @@ export function gridHours() {
   return out
 }
 
+/** Y offset (px) for the current-time indicator in the time grid, or null if outside visible hours. */
+export function nowLineTopPx(now: Date) {
+  const gridStartMin = GRID_START_HOUR * 60
+  const gridEndMin = (GRID_END_HOUR + 1) * 60
+  const min = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60
+  if (min < gridStartMin || min > gridEndMin) return null
+  const pxPerMin = CALENDAR_HOUR_HEIGHT_PX / 60
+  return (min - gridStartMin) * pxPerMin
+}
+
 export function minutesFromMidnight(iso: string) {
   const d = new Date(iso)
   return d.getHours() * 60 + d.getMinutes()

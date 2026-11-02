@@ -8,6 +8,7 @@ import {
 } from "../lib/calendar-month"
 import {
   eventsOnDay,
+  filterEventsByHiddenCalendars,
   upcomingEvents,
   type CalendarSnapshot,
 } from "../lib/calendar"
@@ -39,21 +40,26 @@ export function CalendarPanel({
   const settings = useSettings()
   const desktop = usePanelLayout() === "desktop"
   const clockFormat = settings.clock.format
+  const hiddenIds = settings.calendar.hiddenCalendarIds ?? []
+  const visibleEvents = useMemo(
+    () => filterEventsByHiddenCalendars(snapshot.events, hiddenIds),
+    [snapshot.events, hiddenIds],
+  )
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()))
   const [selected, setSelected] = useState(() => new Date().toISOString().slice(0, 10))
 
   const month = useMemo(
-    () => buildCalendarMonth(snapshot.events, viewMonth),
-    [snapshot.events, viewMonth],
+    () => buildCalendarMonth(visibleEvents, viewMonth),
+    [visibleEvents, viewMonth],
   )
 
-  const next = useMemo(() => upcomingEvents(snapshot.events, 3), [snapshot.events])
+  const next = useMemo(() => upcomingEvents(visibleEvents, 3), [visibleEvents])
   const dayEvents = useMemo(
     () =>
-      eventsOnDay(snapshot.events, selected).sort(
+      eventsOnDay(visibleEvents, selected).sort(
         (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
       ),
-    [snapshot.events, selected],
+    [visibleEvents, selected],
   )
 
   const shiftMonth = (delta: number) => {

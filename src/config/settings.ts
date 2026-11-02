@@ -105,6 +105,8 @@ export type AppSettings = {
   }
   calendar: {
     pollIntervalMs: number
+    /** Google calendar ids hidden on the desktop calendar view */
+    hiddenCalendarIds: string[]
   }
   media: {
     pollIntervalMs: number
@@ -264,6 +266,7 @@ export const defaultSettings: AppSettings = {
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,
+    hiddenCalendarIds: [],
   },
   media: {
     pollIntervalMs: 2_000,

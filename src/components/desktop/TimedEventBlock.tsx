@@ -1,5 +1,9 @@
 import type { ClockFormat } from "../../config/settings"
-import { eventDisplayColor, withAlpha } from "../../lib/google-calendar-colors"
+import {
+  eventDisplayColor,
+  textColorOnCalendarFill,
+  withAlpha,
+} from "../../lib/google-calendar-colors"
 import type { TimedBlockLayout } from "../../lib/calendar-views"
 import { timedBlockStyle } from "../../lib/calendar-views"
 import { cn, formatClock } from "../../lib/utils"
@@ -22,6 +26,8 @@ export function TimedEventBlock({
 }: Props) {
   const { event, heightPx } = layout
   const color = eventDisplayColor(event)
+  const fillAlpha = "cc"
+  const textColor = textColorOnCalendarFill(color, fillAlpha)
   const pos = timedBlockStyle(layout)
   const timeLabel = `${formatClock(event.start, clockFormat)} – ${formatClock(event.end, clockFormat)}`
   const title = `${event.summary}\n${timeLabel}`
@@ -37,13 +43,13 @@ export function TimedEventBlock({
       onClick={onSelect}
       title={title}
       className={cn(
-        "absolute box-border min-w-0 overflow-hidden rounded-sm border border-black/10 px-1 py-0.5 text-left dark:border-white/15",
+        "absolute box-border flex min-w-0 flex-col items-stretch justify-start overflow-hidden rounded-sm border border-black/10 px-1 py-0.5 text-left dark:border-white/15",
         selected && "ring-2 ring-black/25 dark:ring-white/40",
       )}
       style={{
         ...pos,
-        backgroundColor: withAlpha(color, "cc"),
-        color: "#111",
+        backgroundColor: withAlpha(color, fillAlpha),
+        color: textColor,
       }}
     >
       {showTime ? (
@@ -54,7 +60,7 @@ export function TimedEventBlock({
       {showTitle ? (
         <span
           className={cn(
-            "block min-w-0 font-semibold leading-[1.15] text-black/90",
+            "block min-w-0 font-semibold leading-[1.15]",
             titleLines === 1 ? "truncate text-[10px]" : "text-[10px]",
           )}
           style={
