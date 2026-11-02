@@ -162,12 +162,7 @@ function normalizeSnapshot(raw) {
   }
 }
 
-async function readSession() {
-  if (process.platform !== "win32") {
-    return normalizeSnapshot({ supported: false })
-  }
-
-  const script = `
+const SESSION_PS_SCRIPT = `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 function Await($WinRtTask, $ResultType) {
@@ -188,25 +183,48 @@ $info = $session.GetPlaybackInfo()
 @{ supported = $true; appId = $session.SourceAppUserModelId; status = $info.PlaybackStatus.ToString(); title = $props.Title; artist = $props.Artist; album = $props.AlbumTitle } | ConvertTo-Json -Compress
 `
 
+async function readRawSessionSnapshot() {
+  if (process.platform !== "win32") {
+    return normalizeSnapshot({ supported: false })
+  }
+
   try {
-    const out = await runPs(script, { timeout: 10000 })
+    const out = await runPs(SESSION_PS_SCRIPT, { timeout: 10000 })
     if (!out) return normalizeSnapshot({ supported: true, playing: false })
     const raw = JSON.parse(out)
-    const snap = normalizeSnapshot(raw)
-    if (isSpotifyApp(snap.appId)) {
-      return {
-        ...snap,
-        playing: false,
-        paused: false,
-        title: null,
-        artist: null,
-        thumbnailUrl: null,
-      }
-    }
-    return attachThumbnail(snap)
+    return normalizeSnapshot(raw)
   } catch {
     return normalizeSnapshot({ supported: true, playing: false })
   }
+}
+
+/** Windows Spotify desktop app — used when Web API has no active Connect device. */
+async function getSpotifyNativePlayback() {
+  const snap = await readRawSessionSnapshot()
+  if (!snap.supported || !isSpotifyApp(snap.appId)) return null
+  if (!snap.playing && !snap.paused) return null
+  if (!snap.title && !snap.artist) return null
+  return {
+    isPlaying: Boolean(snap.playing),
+    title: snap.title || "",
+    artist: snap.artist || "",
+    album: snap.album || "",
+  }
+}
+
+async function readSession() {
+  const snap = await readRawSessionSnapshot()
+  if (isSpotifyApp(snap.appId)) {
+    return {
+      ...snap,
+      playing: false,
+      paused: false,
+      title: null,
+      artist: null,
+      thumbnailUrl: null,
+    }
+  }
+  return attachThumbnail(snap)
 }
 
 async function runAction(action) {
@@ -247,5 +265,6 @@ $result.ToString().ToLower()
 
 module.exports = {
   getStatus: readSession,
+  getSpotifyNativePlayback,
   action: runAction,
 }

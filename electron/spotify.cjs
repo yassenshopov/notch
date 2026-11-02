@@ -73,30 +73,48 @@ async function exchangeToken(body) {
 
 async function getAccessToken() {
   const tokens = readTokens()
-  if (!tokens?.access_token) return null
+  if (!tokens?.access_token && !tokens?.refresh_token) return null
 
-  if (tokens.expires_at && tokens.expires_at > Date.now() + 30_000) {
+  if (tokens.access_token && tokens.expires_at && tokens.expires_at > Date.now() + 30_000) {
     return tokens.access_token
   }
 
-  if (!tokens.refresh_token) return null
+  if (!tokens.refresh_token) return tokens.access_token || null
 
-  const refreshed = await exchangeToken({
-    grant_type: "refresh_token",
-    refresh_token: tokens.refresh_token,
-  })
-
-  const next = {
-    access_token: refreshed.access_token,
-    refresh_token: refreshed.refresh_token || tokens.refresh_token,
-    expires_in: refreshed.expires_in,
-    expires_at: Date.now() + refreshed.expires_in * 1000,
-  }
-  writeTokens(next)
-  return next.access_token
+  return refreshAccessToken()
 }
 
-async function spotifyFetch(endpoint, options = {}) {
+/** @type {Promise<string | null> | null} */
+let refreshInFlight = null
+
+async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight
+
+  refreshInFlight = (async () => {
+    const tokens = readTokens()
+    if (!tokens?.refresh_token) return tokens?.access_token ?? null
+
+    const refreshed = await exchangeToken({
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+    })
+
+    const next = {
+      access_token: refreshed.access_token,
+      refresh_token: refreshed.refresh_token || tokens.refresh_token,
+      expires_in: refreshed.expires_in,
+      expires_at: Date.now() + refreshed.expires_in * 1000,
+    }
+    writeTokens(next)
+    return next.access_token
+  })().finally(() => {
+    refreshInFlight = null
+  })
+
+  return refreshInFlight
+}
+
+async function spotifyFetch(endpoint, options = {}, allow401Retry = true) {
   const accessToken = await getAccessToken()
   if (!accessToken) {
     const err = new Error("not_connected")
@@ -112,12 +130,25 @@ async function spotifyFetch(endpoint, options = {}) {
       ...(options.headers || {}),
     },
   })
+
+  if (res.status === 401 && allow401Retry) {
+    const tokens = readTokens()
+    if (tokens) {
+      writeTokens({ ...tokens, expires_at: 0 })
+    }
+    await refreshAccessToken()
+    return spotifyFetch(endpoint, options, false)
+  }
+
   return res
 }
 
 function mapTrack(item) {
   if (!item) return null
-  const artists = (item.artists || []).map((a) => a.name).join(", ")
+  const artists =
+    item.type === "episode"
+      ? item.show?.name || "Podcast"
+      : (item.artists || []).map((a) => a.name).join(", ")
   const images = item.album?.images || []
   const art =
     images.find((i) => i.width >= 200 && i.width <= 400)?.url ||
@@ -128,10 +159,114 @@ function mapTrack(item) {
     id: item.id,
     name: item.name,
     artists,
-    album: item.album?.name ?? "",
+    album: item.type === "episode" ? item.show?.name ?? "" : item.album?.name ?? "",
     artUrl: art,
     uri: item.uri,
   }
+}
+
+function mapSmtcTrack(native) {
+  const title = native.title?.trim()
+  if (!title) return null
+  const artists = native.artist?.trim() || "Unknown artist"
+  const slug = `${title}\0${artists}`.toLowerCase()
+  return {
+    id: `smtc:${slug.slice(0, 120)}`,
+    name: title,
+    artists,
+    album: native.album?.trim() || "",
+    artUrl: null,
+    uri: "",
+  }
+}
+
+async function smtcSpotifyFallback() {
+  if (process.platform !== "win32") return null
+  try {
+    const { getSpotifyNativePlayback } = require("./media-session.cjs")
+    const native = await getSpotifyNativePlayback()
+    if (!native) return null
+    const track = mapSmtcTrack(native)
+    if (!track) return null
+    return {
+      connected: true,
+      configured: true,
+      isPlaying: native.isPlaying,
+      progressMs: 0,
+      durationMs: 0,
+      track,
+    }
+  } catch {
+    return null
+  }
+}
+
+async function fetchPlaybackFromApi() {
+  let res = await spotifyFetch("/me/player")
+  if (res.status === 204) {
+    res = await spotifyFetch("/me/player/currently-playing")
+  }
+  if (res.status === 204) {
+    return { connected: true, configured: true, isPlaying: false, track: null }
+  }
+  if (res.status === 401) {
+    clearTokens()
+    return { connected: false, configured: true, isPlaying: false, track: null }
+  }
+  if (!res.ok) {
+    if (res.status === 404) {
+      return { connected: true, configured: true, isPlaying: false, track: null }
+    }
+    const text = await res.text()
+    throw new Error(text || `Spotify ${res.status}`)
+  }
+  const data = await res.json()
+  return { ...mapPlayback(data), configured: true }
+}
+
+/** @type {Promise<unknown> | null} */
+let statusInflight = null
+
+async function getCurrentlyPlayingInner() {
+  if (!isConfigured()) {
+    return { connected: false, configured: false, isPlaying: false, track: null }
+  }
+  if (!isConnected()) {
+    return { connected: false, configured: true, isPlaying: false, track: null }
+  }
+
+  try {
+    const api = await fetchPlaybackFromApi()
+    if (api.track) return api
+    const smtc = await smtcSpotifyFallback()
+    if (smtc) return smtc
+    return api
+  } catch (err) {
+    if (err.code === "not_connected") {
+      return { connected: false, configured: true, isPlaying: false, track: null }
+    }
+    throw err
+  }
+}
+
+async function getCurrentlyPlaying() {
+  if (statusInflight) return statusInflight
+  statusInflight = getCurrentlyPlayingInner().finally(() => {
+    statusInflight = null
+  })
+  return statusInflight
+}
+
+async function waitForPlaybackUpdate() {
+  const attempts = 4
+  for (let i = 0; i < attempts; i++) {
+    const status = await getCurrentlyPlayingInner()
+    if (status.track) return status
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 350))
+    }
+  }
+  return getCurrentlyPlayingInner()
 }
 
 function mapPlayback(data) {
@@ -150,41 +285,6 @@ function mapPlayback(data) {
     progressMs: data.progress_ms ?? 0,
     durationMs: data.item.duration_ms ?? 0,
     track,
-  }
-}
-
-async function getCurrentlyPlaying() {
-  if (!isConfigured()) {
-    return { connected: false, configured: false, isPlaying: false, track: null }
-  }
-  if (!isConnected()) {
-    return { connected: false, configured: true, isPlaying: false, track: null }
-  }
-
-  try {
-    const res = await spotifyFetch("/me/player")
-    if (res.status === 204) {
-      return { connected: true, configured: true, isPlaying: false, track: null }
-    }
-    if (res.status === 401) {
-      clearTokens()
-      return { connected: false, configured: true, isPlaying: false, track: null }
-    }
-    if (!res.ok) {
-      // No active device / premium issues — treat as idle
-      if (res.status === 204 || res.status === 404) {
-        return { connected: true, configured: true, isPlaying: false, track: null }
-      }
-      const text = await res.text()
-      throw new Error(text || `Spotify ${res.status}`)
-    }
-    const data = await res.json()
-    return { ...mapPlayback(data), configured: true }
-  } catch (err) {
-    if (err.code === "not_connected") {
-      return { connected: false, configured: true, isPlaying: false, track: null }
-    }
-    throw err
   }
 }
 
@@ -298,7 +398,7 @@ async function playUri(uri, options = {}) {
     const text = await res.text()
     throw new Error(text || `Spotify ${res.status}`)
   }
-  return getCurrentlyPlaying()
+  return waitForPlaybackUpdate()
 }
 
 async function playbackAction(action, options = {}) {
@@ -319,7 +419,7 @@ async function playbackAction(action, options = {}) {
     const text = await res.text()
     throw new Error(text || `Spotify ${res.status}`)
   }
-  return getCurrentlyPlaying()
+  return waitForPlaybackUpdate()
 }
 
 function startAuth() {
