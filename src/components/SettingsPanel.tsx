@@ -15,6 +15,7 @@ import { usePanelLayout } from "../lib/panel-layout"
 import { cn } from "../lib/utils"
 import { BentoGrid, BentoTile, bentoPad, type BentoCol } from "./desktop/DesktopBento"
 import { PanelPageHeader } from "./desktop/PanelPageHeader"
+import { SegmentedControl } from "./SegmentedControl"
 import { YearWallpaperPreview } from "./YearWallpaperPreview"
 
 type Props = {
@@ -320,7 +321,10 @@ export function SettingsPanel({
                 ]}
                 onChange={(v) =>
                   void updateSettings({
-                    calendar: { pollIntervalMs: Number(v) },
+                    calendar: {
+                      pollIntervalMs: Number(v),
+                      hiddenCalendarIds: s.calendar?.hiddenCalendarIds ?? [],
+                    },
                   })
                 }
               />
@@ -948,6 +952,7 @@ export function SettingsPanel({
               <Segmented
                 value={String(wallpaper.gap)}
                 options={[
+                  { value: "0", label: "0" },
                   { value: "4", label: "4" },
                   { value: "6", label: "6" },
                   { value: "8", label: "8" },
@@ -1247,39 +1252,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
+function Segmented<T extends string>(props: {
   value: T
   options: { value: T; label: string }[]
   onChange: (value: T) => void
 }) {
-  return (
-    <div className="relative flex rounded-full bg-black/5 p-0.5 dark:bg-white/10">
-      {options.map((opt) => {
-        const selected = value === opt.value
-        return (
-          <motion.button
-            key={opt.value}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            whileTap={{ scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 520, damping: 28, mass: 0.55 }}
-            className={cn(
-              "relative rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors duration-200",
-              selected
-                ? "bg-[#111] text-white dark:bg-white dark:text-[#111]"
-                : "text-black/45 dark:text-white/45",
-            )}
-          >
-            {opt.label}
-          </motion.button>
-        )
-      })}
-    </div>
-  )
+  return <SegmentedControl {...props} variant="filled" />
 }
 
 function parseWatchlist(raw: string): MarketWatchItem[] {

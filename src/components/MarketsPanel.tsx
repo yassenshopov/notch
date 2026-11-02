@@ -14,6 +14,7 @@ import { cn, formatHour, formatShortDate } from "../lib/utils"
 import { MarketAssetAvatar } from "./MarketAssetAvatar"
 import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
+import { SegmentedControl } from "./SegmentedControl"
 import { PanelHeaderActions } from "./PanelHeaderActions"
 
 type Props = {
@@ -118,26 +119,15 @@ export function MarketsPanel({ snapshot, loading, refreshing, hasWatchlist, onRe
               </div>
             </div>
 
-            <div className="mb-3 flex gap-1">
-              {RANGES.map((r) => {
-                const active = range === r.id
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setRange(r.id)}
-                    className={cn(
-                      "flex-1 rounded-full px-2 py-1 text-[11px] font-semibold transition-colors",
-                      active
-                        ? "text-white"
-                        : "text-black/45 hover:bg-black/5 dark:text-white/45 dark:hover:bg-white/10",
-                    )}
-                    style={active && accent ? { backgroundColor: accent } : undefined}
-                  >
-                    {r.label}
-                  </button>
-                )
-              })}
+            <div className="mb-3">
+              <SegmentedControl
+                variant="bare"
+                equalWidth
+                value={range}
+                options={RANGES.map((r) => ({ value: r.id, label: r.label }))}
+                indicatorStyle={accent ? { backgroundColor: accent } : undefined}
+                onChange={setRange}
+              />
             </div>
 
             <div className="mb-3 grid grid-cols-2 gap-2">

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react"
 import type { GitHubRepoSeries, GitHubRepoTotal } from "../lib/github"
 import { formatRepoMonthLabel, openGitHubUrl, shortRepoName } from "../lib/github"
-import { cn } from "../lib/utils"
 import { MetricChart } from "./MetricChart"
+import { SegmentedControl } from "./SegmentedControl"
 
 const SERIES_COLORS = [
   "rgba(17,17,17,0.85)",
@@ -220,23 +220,15 @@ export function GitHubRepoActivityCharts({
           ) : (
             <span className="text-[11px] tabular-nums text-black/35 dark:text-white/35">{year}</span>
           )}
-          <div className="flex rounded-lg border border-black/10 p-0.5 dark:border-white/15">
-            {(["bar", "line"] as ChartMode[]).map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                className={cn(
-                  "rounded-md px-2 py-0.5 text-[10px] font-medium capitalize",
-                  mode === id
-                    ? "bg-black/8 text-black/80 dark:bg-white/12 dark:text-white/90"
-                    : "text-black/45 dark:text-white/45",
-                )}
-              >
-                {id}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            variant="chart"
+            value={mode}
+            options={[
+              { value: "bar", label: "bar" },
+              { value: "line", label: "line" },
+            ]}
+            onChange={setMode}
+          />
         </div>
       </div>
 
