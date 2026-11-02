@@ -1,9 +1,10 @@
 import { Pause, Play, RotateCcw, SkipForward, Timer } from "lucide-react"
 import type { ReactNode } from "react"
 import { updateSettings, useSettings } from "../config/settings-store"
+import { useClock } from "../hooks/useClock"
 import { useTimerEngine } from "../hooks/useTimerEngine"
 import { QUICK_TIMER_MS } from "../lib/timers"
-import { cn } from "../lib/utils"
+import { cn, formatClock, formatDateLong } from "../lib/utils"
 import { usePanelLayout } from "../lib/panel-layout"
 import { PanelPageHeader } from "./desktop/PanelPageHeader"
 
@@ -24,6 +25,8 @@ export function ClockPanel() {
   } = useTimerEngine()
 
   const p = settings.timers.pomodoro
+  const now = useClock()
+  const localTime = formatClock(now.toISOString(), settings.clock.format)
 
   const body = (
     <div
@@ -36,6 +39,26 @@ export function ClockPanel() {
           Pomodoro, countdowns, stopwatch & local time.
         </p>
       </PanelPageHeader>
+
+      <div
+        className={cn(
+          "mb-5 rounded-2xl border border-black/[0.07] bg-black/[0.02] dark:border-white/10 dark:bg-white/[0.03]",
+          desktop ? "p-5" : "p-4",
+        )}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
+          Local time
+        </p>
+        <p
+          className={cn(
+            "mt-1 font-semibold tabular-nums leading-none tracking-tight",
+            desktop ? "text-[48px]" : "text-[32px]",
+          )}
+        >
+          {localTime}
+        </p>
+        <p className="mt-2 text-[12px] text-black/45 dark:text-white/45">{formatDateLong(now)}</p>
+      </div>
 
       <div className="mb-5 rounded-2xl border border-black/[0.07] bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex items-start justify-between gap-2">
