@@ -22,7 +22,7 @@ function resolveDrawStyle(partial: YearWallpaperSettings) {
     futureColor: parseHexColor(partial.futureColor, "#d2d2d2"),
     todayColor: parseHexColor(partial.todayColor, "#ff5f00"),
     cellSize: clamp(Number(partial.cellSize) || 13, 6, 28),
-    gap: clamp(Number(partial.gap) || 6, 2, 20),
+    gap: clamp(Number(partial.gap ?? 6), 0, 20),
     cornerRadius: clamp(Number(partial.cornerRadius) ?? 2, 0, 12),
     shape: partial.shape === "circle" ? "circle" : "square",
   }

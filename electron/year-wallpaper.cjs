@@ -47,7 +47,7 @@ function resolveStyle(partial) {
   const future = parseHexColor(base.futureColor ?? DEFAULT_STYLE.futureColor, { r: 210, g: 210, b: 210 })
   const today = parseHexColor(base.todayColor ?? DEFAULT_STYLE.todayColor, { r: 255, g: 95, b: 0 })
   const cellSize = clamp(Number(base.cellSize) || DEFAULT_STYLE.cellSize, 6, 28)
-  const gap = clamp(Number(base.gap) || DEFAULT_STYLE.gap, 2, 20)
+  const gap = clamp(Number(base.gap ?? DEFAULT_STYLE.gap), 0, 20)
   const cornerRadius = clamp(Number(base.cornerRadius) ?? DEFAULT_STYLE.cornerRadius, 0, 12)
   const shape = base.shape === "circle" ? "circle" : "square"
   return { bg, passed, future, today, cellSize, gap, cornerRadius, shape }
