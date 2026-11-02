@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from "react"
 import { useSettings } from "../config/settings-store"
-import { fetchCalendarSnapshot, type CalendarSnapshot } from "../lib/calendar"
+import {
+  connectGoogleCalendar,
+  disconnectGoogleCalendar,
+  fetchCalendarSnapshot,
+  type CalendarSnapshot,
+} from "../lib/calendar"
 
-const empty: CalendarSnapshot = { configured: false, events: [] }
+const empty: CalendarSnapshot = { configured: false, connected: false, events: [] }
 
 export function useCalendar(active: boolean) {
   const settings = useSettings()
@@ -10,7 +15,7 @@ export function useCalendar(active: boolean) {
   const [refreshing, setRefreshing] = useState(false)
 
   const refresh = useCallback(async (force = false) => {
-    if (!active || !settings.calendar.icsUrl.trim()) {
+    if (!active) {
       setSnapshot(empty)
       return
     }
@@ -21,21 +26,35 @@ export function useCalendar(active: boolean) {
     } finally {
       setRefreshing(false)
     }
-  }, [active, settings.calendar.icsUrl])
+  }, [active])
 
   useEffect(() => {
     void refresh()
-    if (!active || !settings.calendar.icsUrl.trim()) return
+    if (!active) return
     const id = window.setInterval(() => void refresh(), settings.calendar.pollIntervalMs)
     return () => window.clearInterval(id)
-  }, [refresh, active, settings.calendar.icsUrl, settings.calendar.pollIntervalMs])
+  }, [refresh, active, settings.calendar.pollIntervalMs])
 
-  const ready = snapshot.configured && snapshot.events.length > 0
+  const connect = useCallback(async () => {
+    const next = await connectGoogleCalendar()
+    setSnapshot(next)
+    return next
+  }, [])
+
+  const disconnect = useCallback(async () => {
+    const next = await disconnectGoogleCalendar()
+    setSnapshot(next)
+    return next
+  }, [])
+
+  const ready = snapshot.connected && snapshot.events.length > 0
 
   return {
     snapshot,
     ready,
     refreshing,
     refresh,
+    connect,
+    disconnect,
   }
 }

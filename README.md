@@ -41,6 +41,7 @@ Settings, weather detail, Spotify, GitHub, Strava, calendar, air quality, market
 - Spotify Web API (OAuth loopback `127.0.0.1:43110`)
 - GitHub REST (classic PAT)
 - Strava API (OAuth loopback `127.0.0.1:43111`)
+- Google Calendar API (OAuth loopback `127.0.0.1:43112`)
 - Year wallpaper PNG generation (`pngjs` in the main process)
 
 ## Prerequisites
@@ -87,7 +88,11 @@ Connect from **Settings → Strava**. Optional token overrides are documented in
 
 ### Calendar (optional)
 
-In **Settings → Calendar**, paste a secret ICS URL (e.g. Google Calendar → Integrate calendar).
+1. [Google Cloud Console](https://console.cloud.google.com/) — create OAuth client (Desktop or Web) and enable **Google Calendar API**
+2. Authorized redirect URI: `http://127.0.0.1:43112/callback`
+3. In `.env`: `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET`, `GOOGLE_CALENDAR_REDIRECT_URI`
+
+Connect from **Settings → Google Calendar**. Optional token overrides are in `.env.example`.
 
 ### Cursor usage
 

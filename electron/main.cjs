@@ -900,9 +900,23 @@ ipcMain.handle("calendar:snapshot", async (_event, options) => {
   try {
     return await calendar.snapshot(options)
   } catch (err) {
-    return { configured: false, events: [], error: "calendar_error" }
+    return {
+      configured: calendar.isConfigured(),
+      connected: calendar.isConnected(),
+      events: [],
+      error: "calendar_error",
+    }
   }
 })
+
+ipcMain.handle("calendar:connect", async () => {
+  await calendar.startAuth()
+  return calendar.snapshot({ force: true })
+})
+
+ipcMain.handle("calendar:disconnect", async () => calendar.disconnect())
+
+ipcMain.handle("calendar:redirect-uri", () => calendar.getRedirectUri())
 
 ipcMain.handle("calendar:open-url", async (_event, url) => {
   if (typeof url === "string" && /^https?:\/\//i.test(url)) {

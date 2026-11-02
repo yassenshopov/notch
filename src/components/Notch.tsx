@@ -109,6 +109,7 @@ export function Notch() {
   const [panelOverride, setPanelOverride] = useState<Panel | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [stravaConnecting, setStravaConnecting] = useState(false)
+  const [calendarConnecting, setCalendarConnecting] = useState(false)
   const settings = useSettings()
   const placementRaw = useNotchPlacement()
   const placement = useMemo(() => withPlacementForm(placementRaw), [placementRaw])
@@ -126,14 +127,15 @@ export function Notch() {
   const timer = useTimerEngine()
 
   const calendarPoll =
-    Boolean(settings.calendar.icsUrl.trim()) &&
-    ((!expanded && (settings.island.faces.calendar ?? true)) ||
-      (expanded && panelOverride === "calendar"))
+    (!expanded && (settings.island.faces.calendar ?? true)) ||
+    (expanded && panelOverride === "calendar")
   const {
     snapshot: calendarSnapshot,
     ready: calendarReady,
     refreshing: calendarRefreshing,
     refresh: refreshCalendar,
+    connect: connectCalendar,
+    disconnect: disconnectCalendar,
   } = useCalendar(calendarPoll)
 
   const liveActivitiesEnabled =
@@ -540,6 +542,16 @@ export function Notch() {
       calendarSnapshot={calendarSnapshot}
       calendarRefreshing={calendarRefreshing}
       refreshCalendar={refreshCalendar}
+      calendarConnecting={calendarConnecting}
+      connectCalendar={async () => {
+        setCalendarConnecting(true)
+        try {
+          return await connectCalendar()
+        } finally {
+          setCalendarConnecting(false)
+        }
+      }}
+      disconnectCalendar={disconnectCalendar}
       mediaStatus={mediaStatus}
       mediaAction={mediaAction}
       albumPalette={albumPalette}

@@ -102,6 +102,9 @@ contextBridge.exposeInMainWorld("notch", {
   },
   calendar: {
     snapshot: (options) => ipcRenderer.invoke("calendar:snapshot", options),
+    connect: () => ipcRenderer.invoke("calendar:connect"),
+    disconnect: () => ipcRenderer.invoke("calendar:disconnect"),
+    redirectUri: () => ipcRenderer.invoke("calendar:redirect-uri"),
     openUrl: (url) => ipcRenderer.invoke("calendar:open-url", url),
   },
   wallpaper: {

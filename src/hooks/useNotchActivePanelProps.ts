@@ -36,6 +36,7 @@ export function useNotchActivePanelProps(
   const settings = useSettings()
   const [connecting, setConnecting] = useState(false)
   const [stravaConnecting, setStravaConnecting] = useState(false)
+  const [calendarConnecting, setCalendarConnecting] = useState(false)
   const { data, error } = useWeather()
   const { status, playing, connect, action, playUri, disconnect } = useSpotify()
   const mediaPoll = settings.media.enabled && !playing
@@ -46,15 +47,16 @@ export function useNotchActivePanelProps(
   const calendarPoll =
     mode === "desktop"
       ? activePanel === "calendar" || overviewPoll
-      : Boolean(settings.calendar.icsUrl.trim()) &&
-        (mode === "expanded"
-          ? activePanel === "calendar"
-          : (settings.island.faces.calendar ?? true))
+      : mode === "expanded"
+        ? activePanel === "calendar"
+        : (settings.island.faces.calendar ?? true)
 
   const {
     snapshot: calendarSnapshot,
     refreshing: calendarRefreshing,
     refresh: refreshCalendar,
+    connect: connectCalendar,
+    disconnect: disconnectCalendar,
   } = useCalendar(calendarPoll)
 
   const faces = settings.island.faces
@@ -188,6 +190,16 @@ export function useNotchActivePanelProps(
       calendarSnapshot,
       calendarRefreshing,
       refreshCalendar,
+      calendarConnecting,
+      connectCalendar: async () => {
+        setCalendarConnecting(true)
+        try {
+          return await connectCalendar()
+        } finally {
+          setCalendarConnecting(false)
+        }
+      },
+      disconnectCalendar,
       mediaStatus,
       mediaAction,
       albumPalette,
@@ -209,6 +221,9 @@ export function useNotchActivePanelProps(
       stravaConnecting,
       connectStrava,
       disconnectStrava,
+      calendarConnecting,
+      connectCalendar,
+      disconnectCalendar,
       cursorStatus,
       cursorAnalyticsLoading,
       cursorRefreshing,

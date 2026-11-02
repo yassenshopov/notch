@@ -225,6 +225,9 @@ interface NotchBridge {
   }
   calendar: {
     snapshot: (options?: { force?: boolean }) => Promise<CalendarSnapshot>
+    connect: () => Promise<CalendarSnapshot>
+    disconnect: () => Promise<CalendarSnapshot>
+    redirectUri: () => Promise<string>
     openUrl: (url: string) => Promise<void>
   }
   controls: {

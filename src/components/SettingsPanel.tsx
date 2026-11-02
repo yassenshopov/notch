@@ -28,6 +28,11 @@ type Props = {
   onConnectStrava: () => void
   onDisconnectStrava: () => void
   stravaConnecting?: boolean
+  calendarConnected: boolean
+  calendarConfigured: boolean
+  onConnectCalendar: () => void
+  onDisconnectCalendar: () => void
+  calendarConnecting?: boolean
 }
 
 export function SettingsPanel({
@@ -41,6 +46,11 @@ export function SettingsPanel({
   onConnectStrava,
   onDisconnectStrava,
   stravaConnecting,
+  calendarConnected,
+  calendarConfigured,
+  onConnectCalendar,
+  onDisconnectCalendar,
+  calendarConnecting,
 }: Props) {
   const s = useSettings()
   const desktop = usePanelLayout() === "desktop"
@@ -287,20 +297,78 @@ export function SettingsPanel({
         </SettingsTile>
 
         <SettingsTile col={6}>
-          <Section title="Calendar" description="Public ICS feed for upcoming events.">
-            <Row label="ICS URL">
-              <input
-                type="url"
-                value={s.calendar?.icsUrl ?? ""}
-                placeholder="https://calendar.google.com/…/basic.ics"
-                onChange={(e) =>
+          <Section title="Google Calendar" description="Primary calendar via Google OAuth.">
+            <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
+              Uses the same OAuth client as life-app (<span className="font-medium">GOOGLE_CLIENT_ID</span>{" "}
+              / <span className="font-medium">GOOGLE_CLIENT_SECRET</span> from{" "}
+              <span className="font-medium">life-app/.env</span> when loaded). In Google Cloud →
+              your OAuth client → <span className="font-medium">Authorized redirect URIs</span>, add{" "}
+              <span className="font-medium text-black/70 dark:text-white/80">
+                http://127.0.0.1:43112/callback
+              </span>{" "}
+              (keep life-app&apos;s <span className="font-medium">/api/google-calendar/callback</span>{" "}
+              too). <span className="font-medium">127.0.0.1</span> and{" "}
+              <span className="font-medium">localhost</span> are different to Google.
+            </p>
+            <Row label="Refresh">
+              <Segmented
+                value={String(s.calendar?.pollIntervalMs ?? 300_000)}
+                options={[
+                  { value: "120000", label: "2m" },
+                  { value: "300000", label: "5m" },
+                  { value: "600000", label: "10m" },
+                ]}
+                onChange={(v) =>
                   void updateSettings({
-                    calendar: { ...(s.calendar ?? { pollIntervalMs: 300_000 }), icsUrl: e.target.value },
+                    calendar: { pollIntervalMs: Number(v) },
                   })
                 }
-                className="w-full max-w-[200px] rounded-lg border border-black/10 bg-white/80 px-2 py-1 text-[11px] outline-none focus:border-black/25 dark:border-white/15 dark:bg-black/30"
               />
             </Row>
+            <div className="mt-1">
+              <AnimatePresence mode="wait" initial={false}>
+                {!calendarConfigured ? (
+                  <motion.p
+                    key="calendar-unconfigured"
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={notchUiFast}
+                    className="text-[12px] text-black/45 dark:text-white/45"
+                  >
+                    Add Google Calendar keys to <span className="font-medium">.env</span> and
+                    restart.
+                  </motion.p>
+                ) : calendarConnected ? (
+                  <motion.button
+                    key="calendar-disconnect"
+                    type="button"
+                    onClick={onDisconnectCalendar}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={notchUiFast}
+                    className="rounded-full border border-black/10 px-3 py-1.5 text-[12px] font-medium hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                  >
+                    Disconnect Google Calendar
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    key="calendar-connect"
+                    type="button"
+                    onClick={onConnectCalendar}
+                    disabled={calendarConnecting}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={notchUiFast}
+                    className="rounded-full bg-[#4285f4] px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  >
+                    {calendarConnecting ? "Waiting…" : "Connect Google Calendar"}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
           </Section>
           <Section title="Browser media" nested>
             <Row label="YouTube / web">

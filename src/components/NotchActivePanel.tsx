@@ -86,6 +86,9 @@ type Props = {
   calendarSnapshot: CalendarSnapshot
   calendarRefreshing: boolean
   refreshCalendar: (force?: boolean) => void
+  calendarConnecting: boolean
+  connectCalendar: () => Promise<unknown>
+  disconnectCalendar: () => Promise<unknown>
   mediaStatus: MediaSessionStatus
   mediaAction: (action: MediaSessionAction) => void
   albumPalette: AlbumPalette | null
@@ -142,6 +145,9 @@ export function NotchActivePanel(props: Props) {
     calendarSnapshot,
     calendarRefreshing,
     refreshCalendar,
+    calendarConnecting,
+    connectCalendar,
+    disconnectCalendar,
     mediaStatus,
     mediaAction,
     albumPalette,
@@ -204,6 +210,13 @@ export function NotchActivePanel(props: Props) {
           void connectStrava().catch(() => undefined)
         }}
         onDisconnectStrava={() => void disconnectStrava()}
+        calendarConnected={calendarSnapshot.connected}
+        calendarConfigured={calendarSnapshot.configured}
+        calendarConnecting={calendarConnecting}
+        onConnectCalendar={() => {
+          void connectCalendar().catch(() => undefined)
+        }}
+        onDisconnectCalendar={() => void disconnectCalendar()}
       />
     )
   } else if (activePanel === "cursor") {
@@ -291,6 +304,11 @@ export function NotchActivePanel(props: Props) {
         snapshot={calendarSnapshot}
         refreshing={calendarRefreshing}
         onRefresh={() => void refreshCalendar(true)}
+        connecting={calendarConnecting}
+        onConnect={() => {
+          void connectCalendar().catch(() => undefined)
+        }}
+        onDisconnect={() => void disconnectCalendar()}
       />
     )
   } else if (activePanel === "media") {

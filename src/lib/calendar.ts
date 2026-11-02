@@ -6,12 +6,22 @@ export type CalendarEvent = {
   allDay: boolean
   location: string | null
   joinUrl: string | null
+  /** Google Calendar / event color (hex) */
+  color?: string | null
+  calendarName?: string | null
 }
 
 export type CalendarSnapshot = {
   configured: boolean
+  connected: boolean
   events: CalendarEvent[]
   error?: string | null
+}
+
+const emptySnapshot: CalendarSnapshot = {
+  configured: false,
+  connected: false,
+  events: [],
 }
 
 export async function fetchCalendarSnapshot(options?: {
@@ -19,14 +29,27 @@ export async function fetchCalendarSnapshot(options?: {
 }): Promise<CalendarSnapshot> {
   try {
     const snap = await window.notch?.calendar?.snapshot(options)
-    return (
-      snap ?? {
-        configured: false,
-        events: [],
-      }
-    )
+    return snap ?? emptySnapshot
   } catch {
-    return { configured: false, events: [], error: "calendar_error" }
+    return { ...emptySnapshot, error: "calendar_error" }
+  }
+}
+
+export async function connectGoogleCalendar(): Promise<CalendarSnapshot> {
+  try {
+    const snap = await window.notch?.calendar?.connect()
+    return snap ?? emptySnapshot
+  } catch {
+    return { configured: true, connected: false, events: [], error: "calendar_connect_failed" }
+  }
+}
+
+export async function disconnectGoogleCalendar(): Promise<CalendarSnapshot> {
+  try {
+    const snap = await window.notch?.calendar?.disconnect()
+    return snap ?? emptySnapshot
+  } catch {
+    return { ...emptySnapshot, error: "calendar_error" }
   }
 }
 

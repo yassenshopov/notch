@@ -105,8 +105,6 @@ export type AppSettings = {
   }
   calendar: {
     pollIntervalMs: number
-    /** Secret ICS URL (e.g. Google Calendar → Integrate calendar) */
-    icsUrl: string
   }
   media: {
     pollIntervalMs: number
@@ -266,7 +264,6 @@ export const defaultSettings: AppSettings = {
   },
   calendar: {
     pollIntervalMs: 5 * 60 * 1000,
-    icsUrl: "",
   },
   media: {
     pollIntervalMs: 2_000,
