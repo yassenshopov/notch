@@ -187,7 +187,19 @@ export function ServerStatsPanel({
           .
         </p>
         {status.error ? (
-          <p className="mt-1 max-w-[280px] break-all text-[11px] text-red-400/90">{status.error}</p>
+          <p className="mt-1 max-w-[320px] break-words text-[11px] text-red-400/90">{status.error}</p>
+        ) : null}
+        {status.sshHelpUrl ? (
+          <button
+            type="button"
+            onClick={() => {
+              const open = window.notch?.cursor?.openUrl ?? window.notch?.github?.openUrl
+              void open?.(status.sshHelpUrl!)
+            }}
+            className="mt-2 rounded-full px-4 py-2 text-[12px] font-medium bg-sky-500/15 text-sky-700 hover:bg-sky-500/25 dark:text-sky-300"
+          >
+            Open Tailscale check-in
+          </button>
         ) : null}
         <p className="mt-3 text-[11px] text-black/35 dark:text-white/35">{sshHint}</p>
         <button

@@ -2,7 +2,7 @@ const { execSshRemote } = require("./ssh-server-stats.cjs")
 
 const DISPLAY_PORT = 8
 const DEFAULT_HOST = "pi"
-const FALLBACK_HOSTS = ["pi-ts", "pi-home"]
+const FALLBACK_HOSTS = ["pi-home", "pi-ts"]
 const ENV_HOST_KEY = "NOTCH_PI_SSH_HOST"
 
 function sshHost() {
