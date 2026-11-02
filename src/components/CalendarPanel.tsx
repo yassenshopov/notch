@@ -16,6 +16,7 @@ import { usePanelLayout } from "../lib/panel-layout"
 import { cn, formatShortDate } from "../lib/utils"
 import { PanelPageHeader } from "./desktop/PanelPageHeader"
 import { CalendarDesktopView } from "./desktop/CalendarDesktopView"
+import { CalendarEventDetailModal } from "./desktop/CalendarEventDetailModal"
 import { CalendarEventRow } from "./CalendarEventRow"
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]
@@ -47,6 +48,12 @@ export function CalendarPanel({
   )
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()))
   const [selected, setSelected] = useState(() => new Date().toISOString().slice(0, 10))
+  const [detailEventId, setDetailEventId] = useState<string | null>(null)
+
+  const detailEvent = useMemo(
+    () => visibleEvents.find((e) => e.id === detailEventId) ?? null,
+    [visibleEvents, detailEventId],
+  )
 
   const month = useMemo(
     () => buildCalendarMonth(visibleEvents, viewMonth),
@@ -254,7 +261,12 @@ export function CalendarPanel({
             </li>
           ) : (
             dayEvents.map((event) => (
-              <CalendarEventRow key={event.id} event={event} clockFormat={clockFormat} />
+              <CalendarEventRow
+                key={event.id}
+                event={event}
+                clockFormat={clockFormat}
+                onSelect={() => setDetailEventId(event.id)}
+              />
             ))
           )}
         </ul>
@@ -270,11 +282,23 @@ export function CalendarPanel({
             </li>
           ) : (
             next.map((event) => (
-              <CalendarEventRow key={event.id} event={event} clockFormat={clockFormat} compact />
+              <CalendarEventRow
+                key={event.id}
+                event={event}
+                clockFormat={clockFormat}
+                compact
+                onSelect={() => setDetailEventId(event.id)}
+              />
             ))
           )}
         </ul>
       </section>
+      <CalendarEventDetailModal
+        event={detailEvent}
+        open={detailEventId != null}
+        onClose={() => setDetailEventId(null)}
+        clockFormat={clockFormat}
+      />
     </div>
   )
 }

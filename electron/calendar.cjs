@@ -138,6 +138,24 @@ function extractUrl(text) {
   return match ? match[0].replace(/[.,;]+$/, "") : null
 }
 
+function stripHtmlDescription(html) {
+  if (!html) return null
+  const text = String(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+  return text || null
+}
+
 // Google Calendar colorId → hex (keep in sync with src/lib/google-calendar-colors.ts)
 const GOOGLE_CALENDAR_COLOR_BY_ID = {
   "1": "#7986cb",
@@ -205,6 +223,18 @@ function mapGcalEvent(item, calendarId, calendarSummary, calendarColor) {
     calendarId,
     calendarName: calendarSummary || null,
     color,
+    description: stripHtmlDescription(item.description),
+    htmlLink: item.htmlLink || null,
+    organizerName: item.organizer?.displayName || null,
+    organizerEmail: item.organizer?.email || null,
+    attendees: (item.attendees ?? []).map((a) => ({
+      email: a.email || "",
+      name: a.displayName || null,
+      optional: Boolean(a.optional),
+      responseStatus: a.responseStatus || null,
+    })),
+    status: item.status || null,
+    visibility: item.visibility || null,
     joinUrl:
       item.hangoutLink ||
       videoEntry?.uri ||

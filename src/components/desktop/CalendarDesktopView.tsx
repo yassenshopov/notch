@@ -31,6 +31,7 @@ import { CalendarEventRow } from "../CalendarEventRow"
 import { SegmentedControl } from "../SegmentedControl"
 import { CalendarSourceList } from "./CalendarSourceList"
 import { CalendarNowLine } from "./CalendarNowLine"
+import { CalendarEventDetailModal } from "./CalendarEventDetailModal"
 import { TimedEventBlock } from "./TimedEventBlock"
 
 function scrollTimeGridToNow(container: HTMLDivElement | null) {
@@ -65,12 +66,17 @@ export function CalendarDesktopView({
   const [mode, setMode] = useState<CalendarViewMode>("month")
   const [anchor, setAnchor] = useState(() => startOfMonth(new Date()))
   const [selected, setSelected] = useState(() => dateKeyFromDate(new Date()))
-  const [focusedEventId, setFocusedEventId] = useState<string | null>(null)
+  const [detailEventId, setDetailEventId] = useState<string | null>(null)
 
   const calendars = useMemo(() => mergeCalendarSources(snapshot), [snapshot])
   const events = useMemo(
     () => filterEventsByHiddenCalendars(snapshot.events, hiddenIds),
     [snapshot.events, hiddenIds],
+  )
+
+  const detailEvent = useMemo(
+    () => events.find((e) => e.id === detailEventId) ?? null,
+    [events, detailEventId],
   )
 
   const toggleCalendar = (calendarId: string) => {
@@ -194,8 +200,9 @@ export function CalendarDesktopView({
               selected={selected}
               clockFormat={clockFormat}
               onSelectDay={setSelected}
-              onSelectEvent={(_id, day) => {
+              onSelectEvent={(id, day) => {
                 setSelected(day)
+                setDetailEventId(id)
               }}
             />
           ) : null}
@@ -208,7 +215,7 @@ export function CalendarDesktopView({
               hours={hours}
               gridHeight={gridHeight}
               onSelectDay={setSelected}
-              onSelectEvent={setFocusedEventId}
+              onSelectEvent={setDetailEventId}
             />
           ) : null}
           {mode === "day" ? (
@@ -218,13 +225,20 @@ export function CalendarDesktopView({
               clockFormat={clockFormat}
               hours={hours}
               gridHeight={gridHeight}
-              onSelectEvent={setFocusedEventId}
-              selectedEventId={focusedEventId}
+              onSelectEvent={setDetailEventId}
+              selectedEventId={detailEventId}
             />
           ) : null}
         </div>
         </div>
       </div>
+
+      <CalendarEventDetailModal
+        event={detailEvent}
+        open={detailEventId != null}
+        onClose={() => setDetailEventId(null)}
+        clockFormat={clockFormat}
+      />
     </div>
   )
 }

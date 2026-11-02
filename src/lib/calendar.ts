@@ -1,7 +1,17 @@
+import type { ClockFormat } from "../config/settings"
+import { formatClock } from "./utils"
+
 export type CalendarSource = {
   id: string
   summary: string
   color: string
+}
+
+export type CalendarEventAttendee = {
+  email: string
+  name: string | null
+  optional: boolean
+  responseStatus: string | null
 }
 
 export type CalendarEvent = {
@@ -16,6 +26,13 @@ export type CalendarEvent = {
   color?: string | null
   calendarId?: string | null
   calendarName?: string | null
+  description?: string | null
+  htmlLink?: string | null
+  organizerName?: string | null
+  organizerEmail?: string | null
+  attendees?: CalendarEventAttendee[]
+  status?: string | null
+  visibility?: string | null
 }
 
 export type CalendarSnapshot = {
@@ -116,4 +133,71 @@ export function eventsOnDay(events: CalendarEvent[], dayKey: string) {
 export async function openCalendarUrl(url: string) {
   if (!/^https?:\/\//i.test(url)) return
   await window.notch?.calendar?.openUrl(url)
+}
+
+const ATTENDEE_STATUS_LABEL: Record<string, string> = {
+  accepted: "Yes",
+  declined: "No",
+  tentative: "Maybe",
+  needsAction: "Awaiting",
+}
+
+export function attendeeStatusLabel(status: string | null | undefined) {
+  if (!status) return "Invited"
+  return ATTENDEE_STATUS_LABEL[status] ?? status
+}
+
+export function formatEventSchedule(event: CalendarEvent, clockFormat: ClockFormat): string {
+  if (event.allDay) {
+    const startKey = event.start.slice(0, 10)
+    const endKey = event.end.slice(0, 10)
+    const start = new Date(`${startKey}T12:00:00`)
+    const endExclusive = new Date(`${endKey}T12:00:00`)
+    const endInclusive = new Date(endExclusive)
+    endInclusive.setDate(endInclusive.getDate() - 1)
+    const fmt: Intl.DateTimeFormatOptions = {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }
+    if (endExclusive.getTime() <= start.getTime() + 86400000) {
+      return start.toLocaleDateString(undefined, fmt)
+    }
+    const left = start.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+    const right = endInclusive.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+    return `${left} – ${right}`
+  }
+
+  const start = new Date(event.start)
+  const end = new Date(event.end)
+  const sameDay = event.start.slice(0, 10) === event.end.slice(0, 10)
+  const dateFmt: Intl.DateTimeFormatOptions = {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }
+  const timeRange = `${formatClock(event.start, clockFormat)} – ${formatClock(event.end, clockFormat)}`
+  if (sameDay) {
+    return `${start.toLocaleDateString(undefined, dateFmt)} · ${timeRange}`
+  }
+  const left = `${start.toLocaleDateString(undefined, dateFmt)} · ${formatClock(event.start, clockFormat)}`
+  const right = `${end.toLocaleDateString(undefined, dateFmt)} · ${formatClock(event.end, clockFormat)}`
+  return `${left} – ${right}`
+}
+
+export function mapsUrlForLocation(location: string) {
+  const q = location.trim()
+  if (!q) return null
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
 }
