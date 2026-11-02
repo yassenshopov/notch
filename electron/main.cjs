@@ -498,14 +498,33 @@ ipcMain.handle("notch:drag-cancel", () => {
 
 ipcMain.handle("desktop:open", (_event, panel) => desktopWindows.openDesktopPanel(panel))
 
+const ISLAND_MORPH_MS = 600
+
+function applyExpandedShell(target) {
+  mainWindow.setResizable(true)
+  mainWindow.setMinimumSize(40, 24)
+  mainWindow.setMaximumSize(0, 0)
+  mainWindow.setIgnoreMouseEvents(false)
+  mainWindow.setAlwaysOnTop(true, "screen-saver")
+  mainWindow.focus()
+}
+
+function applyCollapsedShell(collapsed) {
+  mainWindow.setMinimumSize(collapsed.width, collapsed.height)
+  mainWindow.setMaximumSize(collapsed.width, collapsed.height)
+  mainWindow.setResizable(false)
+  mainWindow.setIgnoreMouseEvents(false)
+}
+
 ipcMain.handle("notch:set-expanded", (_event, payload) => {
-  if (!mainWindow) return { anchorLeft: 0, anchorTop: 0 }
+  if (!mainWindow) return Promise.resolve({ anchorLeft: 0, anchorTop: 0 })
   const expanded = typeof payload === "object" ? payload.expanded : payload
   const contentW = typeof payload === "object" ? payload.width : undefined
   const contentH = typeof payload === "object" ? payload.height : undefined
+  const animate = typeof payload === "object" ? payload.animate !== false : true
 
   if (expanded) {
-    ignoreBlurUntil = Date.now() + 600
+    ignoreBlurUntil = Date.now() + ISLAND_MORPH_MS + 80
     shellExpanded = true
     const placement = notchPlacement.readPlacement()
     const cw = Math.max(40, Number(contentW) || lastContentSize.width)
@@ -519,26 +538,47 @@ ipcMain.handle("notch:set-expanded", (_event, payload) => {
       expandedW,
       expandedH,
     )
-    // Windows ignores setBounds size changes while resizable is false
-    mainWindow.setResizable(true)
-    mainWindow.setMinimumSize(40, 24)
-    mainWindow.setMaximumSize(0, 0)
-    mainWindow.setBounds(target, false)
-    mainWindow.setIgnoreMouseEvents(false)
-    mainWindow.setAlwaysOnTop(true, "screen-saver")
-    mainWindow.focus()
-    return { anchorLeft: 0, anchorTop: 0, ...target }
+    applyExpandedShell(target)
+    const from = mainWindow.getBounds()
+    const result = { anchorLeft: 0, anchorTop: 0, ...target }
+    const anchorTop = placement.edge === "top"
+    if (!animate) {
+      mainWindow.setBounds(target, false)
+      return Promise.resolve(result)
+    }
+    return new Promise((resolve) => {
+      windowMotion.animateBounds(from, target, setWindowBounds, {
+        durationMs: ISLAND_MORPH_MS,
+        anchorTop,
+        onComplete: () => resolve(result),
+      })
+    })
   }
 
   shellExpanded = false
-  // Collapsed shell — renderer only calls this AFTER the morph finishes
   const collapsed = collapsedShellBounds(contentW, contentH)
-  mainWindow.setBounds(collapsed, false)
-  mainWindow.setMinimumSize(collapsed.width, collapsed.height)
-  mainWindow.setMaximumSize(collapsed.width, collapsed.height)
-  mainWindow.setResizable(false)
-  mainWindow.setIgnoreMouseEvents(false)
-  return { anchorLeft: 0, anchorTop: 0 }
+  const placement = notchPlacement.readPlacement()
+  const from = mainWindow.getBounds()
+  const result = { anchorLeft: 0, anchorTop: 0, ...collapsed }
+  const anchorTop = placement.edge === "top"
+  const settle = () => {
+    applyCollapsedShell(collapsed)
+    return result
+  }
+  if (!animate) {
+    mainWindow.setBounds(collapsed, false)
+    return Promise.resolve(settle())
+  }
+  return new Promise((resolve) => {
+    windowMotion.animateBounds(from, collapsed, setWindowBounds, {
+      durationMs: ISLAND_MORPH_MS,
+      anchorTop,
+      onComplete: () => {
+        mainWindow.setBounds(collapsed, false)
+        resolve(settle())
+      },
+    })
+  })
 })
 
 ipcMain.handle("spotify:status", async () => {

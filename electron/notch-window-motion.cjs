@@ -19,9 +19,9 @@ function animateBounds(from, to, setBounds, opts = {}) {
     const e = easeOutQuint(p)
     setBounds({
       x: Math.round(from.x + (to.x - from.x) * e),
-      y: Math.round(from.y + (to.y - from.y) * e),
-      width: to.width,
-      height: to.height,
+      y: opts.anchorTop ? to.y : Math.round(from.y + (to.y - from.y) * e),
+      width: Math.round(from.width + (to.width - from.width) * e),
+      height: Math.round(from.height + (to.height - from.height) * e),
     })
     if (p < 1) {
       anim = { timer: setTimeout(tick, 1000 / 120) }

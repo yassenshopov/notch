@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from "motion/react"
 import type { ReactNode } from "react"
-import { panelPageEnter, panelPageExit } from "../lib/island-motion"
+import { useIslandMotion } from "../hooks/useIslandMotion"
 import { cn } from "../lib/utils"
 
 type Props = {
@@ -9,21 +9,22 @@ type Props = {
   className?: string
 }
 
-const panelVariants = {
-  initial: { opacity: 0, y: 10 },
-  animate: {
-    opacity: 1,
-    y: 0,
-    transition: panelPageEnter,
-  },
-  exit: {
-    opacity: 0,
-    y: -6,
-    transition: panelPageExit,
-  },
-}
-
 export function PanelPageTransition({ panelKey, children, className }: Props) {
+  const { panelEnter, panelExit } = useIslandMotion()
+  const panelVariants = {
+    initial: { opacity: 0, y: 10 },
+    animate: {
+      opacity: 1,
+      y: 0,
+      transition: panelEnter,
+    },
+    exit: {
+      opacity: 0,
+      y: -6,
+      transition: panelExit,
+    },
+  }
+
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div

@@ -44,3 +44,15 @@ export function collapsedShellSize(
     shellH: h + 16,
   }
 }
+
+/** Content box inset inside the collapsed OS window — keep in sync with shellSize(). */
+export function collapsedShellPadding(
+  edge: NotchPlacement["edge"],
+  form: NotchForm,
+) {
+  const pads = earPadsForPlacement(edge, form)
+  if (edge === "left" || edge === "right") {
+    return { top: pads.start, right: 16, bottom: pads.end, left: 0 }
+  }
+  return { top: 0, right: pads.end, bottom: 16, left: pads.start }
+}

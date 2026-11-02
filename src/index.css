@@ -9,7 +9,7 @@
     "Outfit Variable", "Outfit", "Segoe UI Variable", "Segoe UI", system-ui,
     -apple-system, sans-serif;
   --notch-ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --notch-duration: 0.62s;
+  --notch-duration: 0.6s;
   --notch-duration-fast: 0.26s;
 }
 
@@ -50,6 +50,12 @@ html.notch-desktop body,
 html.notch-desktop #root {
   transition: background-color 0.48s var(--notch-ease);
 }
+
+html:not(.notch-desktop).notch-reduced-motion .notch-fold,
+html:not(.notch-desktop).notch-reduced-motion [data-notch-island] {
+  transition-duration: 0.01ms !important;
+}
+
 
 html.notch-desktop::view-transition-old(root),
 html.notch-desktop::view-transition-new(root) {

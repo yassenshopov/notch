@@ -31,7 +31,7 @@ type Props<T extends string> = {
   "aria-label"?: string
 }
 
-const tapSpring = { type: "spring" as const, stiffness: 520, damping: 28, mass: 0.55 }
+import { uiSpringFromFeel, tapSpring } from "../lib/island-motion"
 
 const variantStyles: Record<
   Variant,
@@ -99,11 +99,7 @@ export function SegmentedControl<T extends string>({
   const itemRefs = useRef(new Map<T, HTMLButtonElement>())
   const [pill, setPill] = useState<PillRect | null>(null)
   const { motion: feel } = useSettings()
-  const spring = {
-    stiffness: Math.round(feel.stiffness * 0.92),
-    damping: Math.round(feel.damping * 0.88),
-    mass: feel.mass * 0.9,
-  }
+  const spring = uiSpringFromFeel(feel)
 
   const x = useSpring(0, spring)
   const width = useSpring(0, spring)

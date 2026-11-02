@@ -25,12 +25,9 @@ import { getSettings, updateSettings, useSettings } from "../config/settings-sto
 import { useSpotify } from "../hooks/useSpotify"
 import { useTheme } from "../hooks/useTheme"
 import { useWeather } from "../hooks/useWeather"
-import {
-  ISLAND_MORPH_MS,
-  islandContentOut,
-  islandMorph,
-  notchUi,
-} from "../lib/island-motion"
+import { ISLAND_MORPH_MS, railSpringFromFeel, tapSpring } from "../lib/island-motion"
+import { useIslandMotion } from "../hooks/useIslandMotion"
+import { collapsedShellPadding } from "../lib/notch-shell-metrics"
 import { notchShellRadii } from "../lib/notch-shell-radii"
 import {
   islandLayoutSize,
@@ -106,11 +103,14 @@ const DRAG_THRESHOLD_PX = 8
 
 export function Notch() {
   const [expanded, setExpanded] = useState(false)
+  const [collapseAnimating, setCollapseAnimating] = useState(false)
+  const [morphing, setMorphing] = useState<null | "expand" | "collapse">(null)
   const [panelOverride, setPanelOverride] = useState<Panel | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [stravaConnecting, setStravaConnecting] = useState(false)
   const [calendarConnecting, setCalendarConnecting] = useState(false)
   const settings = useSettings()
+  const motionFeel = useIslandMotion()
   const placementRaw = useNotchPlacement()
   const placement = useMemo(() => withPlacementForm(placementRaw), [placementRaw])
   const { data, loading, error, refresh } = useWeather()
@@ -356,24 +356,65 @@ export function Notch() {
     dragging: boolean
   } | null>(null)
 
-  const collapse = useCallback(() => {
-    morphGen.current += 1
-    ignoreDismissUntil.current = Date.now() + ISLAND_MORPH_MS + 120
-    setPanelOverride(null)
-    setExpanded(false)
-    void window.notch?.setExpanded({
+  const finishCollapse = useCallback(async () => {
+    if (!expandedRef.current) return
+    await window.notch?.setExpanded({
       expanded: false,
       width: collapsedBody.width,
       height: collapsedBody.height,
+      animate: !motionFeel.reducedMotion,
     })
-  }, [collapsedBody.width, collapsedBody.height])
+    setExpanded(false)
+    setCollapseAnimating(false)
+    setMorphing(null)
+  }, [collapsedBody.width, collapsedBody.height, motionFeel.reducedMotion])
+
+  const collapse = useCallback(() => {
+    if (!expandedRef.current || collapseAnimating) return
+    morphGen.current += 1
+    ignoreDismissUntil.current = Date.now() + ISLAND_MORPH_MS + 120
+    setPanelOverride(null)
+    if (motionFeel.reducedMotion) {
+      void finishCollapse()
+      return
+    }
+    setMorphing("collapse")
+    setCollapseAnimating(true)
+  }, [collapseAnimating, finishCollapse, motionFeel.reducedMotion])
+
+  useEffect(() => {
+    if (!collapseAnimating) return
+    const t = window.setTimeout(() => {
+      void finishCollapse()
+    }, ISLAND_MORPH_MS + 80)
+    return () => window.clearTimeout(t)
+  }, [collapseAnimating, finishCollapse])
 
   const expand = async () => {
     const gen = ++morphGen.current
     const ew = Math.max(380, settings.expanded.width)
     const eh = Math.max(580, settings.expanded.height)
-    ignoreDismissUntil.current = Date.now() + 600
+    ignoreDismissUntil.current = Date.now() + ISLAND_MORPH_MS + 120
     expandInFlightRef.current = true
+    if (motionFeel.reducedMotion) {
+      try {
+        await window.notch?.setExpanded({
+          expanded: true,
+          width: collapsedBody.width,
+          height: collapsedBody.height,
+          expandedWidth: ew,
+          expandedHeight: eh,
+          animate: false,
+        })
+        if (morphGen.current !== gen) return
+        setExpanded(true)
+      } finally {
+        expandInFlightRef.current = false
+      }
+      return
+    }
+    setMorphing("expand")
+    setExpanded(true)
     try {
       await window.notch?.setExpanded({
         expanded: true,
@@ -381,22 +422,22 @@ export function Notch() {
         height: collapsedBody.height,
         expandedWidth: ew,
         expandedHeight: eh,
+        animate: true,
       })
       if (morphGen.current !== gen) {
+        setExpanded(false)
+        setMorphing(null)
         void window.notch?.setExpanded({
           expanded: false,
           width: collapsedBody.width,
           height: collapsedBody.height,
+          animate: false,
         })
         return
       }
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      })
-      if (morphGen.current !== gen) return
-      setExpanded(true)
     } finally {
       expandInFlightRef.current = false
+      if (morphGen.current === gen) setMorphing(null)
     }
   }
 
@@ -418,6 +459,7 @@ export function Notch() {
       expanded: false,
       width: collapsedBody.width,
       height: collapsedBody.height,
+      animate: false,
     })
   }, [expanded, collapsedBody.width, collapsedBody.height])
 
@@ -448,6 +490,21 @@ export function Notch() {
   const unit = settings.temperatureUnit
   const fill = albumThemed && albumPalette ? albumPalette.bg : dark ? "#111111" : "#f7f7f5"
   const themedFg = albumThemed && albumPalette ? albumPalette.fg : null
+  const collapsedPad = useMemo(
+    () => collapsedShellPadding(placement.edge, placement.form),
+    [placement.edge, placement.form],
+  )
+  const collapsedRadii = useMemo(
+    () =>
+      notchShellRadii(
+        placement.form,
+        false,
+        collapsedBody.height,
+        collapsedBody.width,
+        placement.edge,
+      ),
+    [placement.form, placement.edge, collapsedBody.height, collapsedBody.width],
+  )
   const shellRadii = useMemo(
     () =>
       notchShellRadii(
@@ -460,10 +517,7 @@ export function Notch() {
     [placement.form, placement.edge, expanded, collapsedBody.height, collapsedBody.width],
   )
   const earSize = expanded ? 12 : placement.form === "pill" ? 10 : 14
-  const fillTransition = {
-    ...islandMorph,
-    duration: 0.45,
-  }
+  const fillTransition = motionFeel.spring()
 
   const railThemed = Boolean(albumPalette && spotifyPanelThemed)
 
@@ -561,11 +615,23 @@ export function Notch() {
     />
   )
 
-  const shell = useShellSize(expanded)
-  const islandH = Math.max(
-    expandedH,
-    shell.h - EXPANDED_BOTTOM_BLEED,
-  )
+  useShellSize(expanded || morphing === "expand")
+  /** Fixed targets — do not tie to live innerWidth/innerHeight (resizes every morph frame). */
+  const islandTargetW = expandedW
+  const islandH = expandedH
+  const islandMorphing = morphing === "expand" || collapseAnimating
+  const islandDimTransition = islandMorphing ? motionFeel.pill : { duration: 0 }
+  const islandMorphTarget = collapseAnimating
+    ? {
+        width: collapsedBody.width,
+        height: collapsedBody.height,
+        ...collapsedRadii,
+      }
+    : {
+        width: islandTargetW,
+        height: islandH,
+        ...shellRadii,
+      }
 
   useEffect(() => {
     const w = window as Window & { __NOTCH_EXPAND__?: () => Promise<void> }
@@ -581,22 +647,27 @@ export function Notch() {
       data-notch-layout={expanded ? "expanded-tight" : "collapsed"}
     >
       {expanded ? (
-        <div
-          className="box-border flex items-center overflow-hidden"
+        <motion.div
+          key="expanded-shell"
+          className="box-border flex h-full w-full min-h-0 items-start overflow-hidden"
+          initial={morphing === "expand" ? false : { opacity: 0 }}
+          animate={{ opacity: collapseAnimating ? 0.88 : 1 }}
+          transition={
+            collapseAnimating ? motionFeel.collapseShell : motionFeel.expandShell
+          }
           style={{
-            width: shell.w,
-            height: shell.h,
-            minWidth: shell.w,
-            minHeight: shell.h,
             paddingLeft: EXPANDED_SIDE_INSET,
             paddingRight: EXPANDED_SIDE_INSET,
             paddingBottom: EXPANDED_BOTTOM_BLEED,
             gap: 0,
           }}
         >
-          <div
-            className="relative z-20 flex shrink-0 items-center justify-center"
-            style={{ width: EXPANDED_RAIL_GUTTER }}
+          <motion.div
+            className="relative z-20 flex shrink-0 items-center justify-center self-start"
+            style={{ width: EXPANDED_RAIL_GUTTER, height: islandH }}
+            initial={false}
+            animate={{ opacity: collapseAnimating || morphing === "expand" ? 0 : 1 }}
+            transition={morphing === "expand" ? motionFeel.contentIn : motionFeel.ui}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -606,11 +677,12 @@ export function Notch() {
               themed={railThemed}
               onSelect={setPanelOverride}
             />
-          </div>
-          <div
+          </motion.div>
+          <motion.div
             data-notch-island
+            layout={false}
             className={cn(
-              "notch-fold relative z-10 mx-auto flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden",
+              "notch-fold relative z-10 mx-auto flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden",
               `notch-edge-${placement.edge}`,
               `notch-form-${placement.form}`,
               !themedFg && (dark ? "text-white" : "text-[#111111]"),
@@ -618,12 +690,31 @@ export function Notch() {
               isSide && placement.edge === "left" && "notch-side-upright--left",
               isSide && placement.edge === "right" && "notch-side-upright--right",
             )}
+            initial={
+              morphing === "expand"
+                ? {
+                    width: collapsedBody.width,
+                    height: collapsedBody.height,
+                    backgroundColor: fill,
+                    ...collapsedRadii,
+                  }
+                : false
+            }
+            animate={{
+              ...islandMorphTarget,
+              backgroundColor: fill,
+            }}
+            transition={{
+              width: islandDimTransition,
+              height: islandDimTransition,
+              borderTopLeftRadius: islandDimTransition,
+              borderTopRightRadius: islandDimTransition,
+              borderBottomLeftRadius: islandDimTransition,
+              borderBottomRightRadius: islandDimTransition,
+              backgroundColor: albumThemed ? fillTransition : { duration: 0.2 },
+            }}
             style={
               {
-                height: islandH,
-                maxWidth: Math.min(expandedW, shell.w - EXPANDED_SIDE_INSET * 2 - EXPANDED_RAIL_GUTTER * 2),
-                backgroundColor: fill,
-                ...shellRadii,
                 "--notch-fill": fill,
                 "--ear": `${earSize}px`,
                 color: themedFg ?? undefined,
@@ -635,15 +726,45 @@ export function Notch() {
             ) : null}
             <span className="notch-ear notch-ear--left" aria-hidden />
             <span className="notch-ear notch-ear--right" aria-hidden />
-            <div className="relative z-10 flex min-h-0 flex-1 flex-col px-8 pb-6 pt-8">
-              <div className="min-h-0 flex-1 overflow-y-auto notch-scroll">
+            {morphing === "expand" ? (
+              <div
+                className="pointer-events-none absolute inset-x-6 top-8 bottom-6 z-[1] flex flex-col gap-3"
+                aria-hidden
+              >
+                <div
+                  className={cn(
+                    "h-3 w-2/5 max-w-[9rem] rounded-full",
+                    dark ? "bg-white/10" : "bg-black/6",
+                  )}
+                />
+                <div
+                  className={cn(
+                    "min-h-0 flex-1 rounded-2xl",
+                    dark ? "bg-white/[0.06]" : "bg-black/[0.04]",
+                  )}
+                />
+              </div>
+            ) : null}
+            <motion.div
+              className="relative z-10 flex min-h-0 flex-1 flex-col px-8 pb-6 pt-8"
+              layout={false}
+              initial={false}
+              animate={{ opacity: collapseAnimating ? 0 : 1 }}
+              transition={
+                morphing === "expand" ? motionFeel.contentIn : { duration: 0.22, bounce: 0 }
+              }
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain notch-scroll">
                 {activePanelEl}
               </div>
-            </div>
-          </div>
-          <div
-            className="relative z-20 flex shrink-0 items-center justify-center"
-            style={{ width: EXPANDED_RAIL_GUTTER }}
+            </motion.div>
+          </motion.div>
+          <motion.div
+            className="relative z-20 flex shrink-0 items-center justify-center self-start"
+            style={{ width: EXPANDED_RAIL_GUTTER, height: islandH }}
+            initial={false}
+            animate={{ opacity: collapseAnimating || morphing === "expand" ? 0 : 1 }}
+            transition={morphing === "expand" ? motionFeel.contentIn : motionFeel.ui}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -653,8 +774,8 @@ export function Notch() {
               themed={railThemed}
               onSelect={setPanelOverride}
             />
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       ) : (
       <div
         className={cn(
@@ -663,6 +784,12 @@ export function Notch() {
           placement.edge === "left" && "notch-side-mount--left",
           placement.edge === "right" && "notch-side-mount--right",
         )}
+        style={{
+          paddingTop: collapsedPad.top,
+          paddingRight: collapsedPad.right,
+          paddingBottom: collapsedPad.bottom,
+          paddingLeft: collapsedPad.left,
+        }}
       >
         <div className={cn(isSide && "notch-side-rotate")}>
       <motion.div
@@ -673,7 +800,7 @@ export function Notch() {
           backgroundColor: fill,
           ...shellRadii,
         }}
-        transition={islandMorph}
+        transition={motionFeel.pill}
         onPointerDown={(e) => {
           e.stopPropagation()
           if (
@@ -783,7 +910,7 @@ export function Notch() {
             backgroundColor: fill,
             ...shellRadii,
           }}
-          transition={albumThemed ? fillTransition : islandMorph}
+          transition={albumThemed ? fillTransition : motionFeel.pill}
           style={
             !dark && !albumThemed
               ? {
@@ -802,7 +929,7 @@ export function Notch() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={notchUi}
+              transition={motionFeel.ui}
               className="pointer-events-none absolute inset-0 z-[4]"
               aria-hidden
             >
@@ -858,7 +985,7 @@ export function Notch() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={islandContentOut}
+              transition={motionFeel.contentOut}
               className={cn(
                 "relative z-10 flex h-full items-center justify-center",
                 liveActivity ? "px-3" : "px-4",
@@ -887,7 +1014,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center"
                       >
                         <EqualizerBars active />
@@ -898,7 +1025,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-2"
                       >
                         {mediaStatus.isYoutube ? (
@@ -928,7 +1055,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-1.5"
                       >
                         <Timer className="size-3.5 opacity-70" strokeWidth={2} />
@@ -942,7 +1069,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.5, rotate: -12 }}
                         animate={{ opacity: 1, scale: 1, rotate: 0 }}
                         exit={{ opacity: 0, scale: 0.6, rotate: 8 }}
-                        transition={{ type: "spring", stiffness: 460, damping: 22, mass: 0.6 }}
+                        transition={motionFeel.spring()}
                         className="flex items-center justify-center"
                       >
                         <BotSmile className="size-4" />
@@ -953,7 +1080,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center"
                       >
                         <BatteryIndicator
@@ -967,7 +1094,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center"
                       >
                         <span className="text-[13px] font-semibold tracking-tight tabular-nums">
@@ -980,7 +1107,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-2.5"
                       >
                         <WeatherIcon
@@ -998,7 +1125,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-2"
                       >
                         <span className="text-[12px] font-bold tracking-tight">
@@ -1014,7 +1141,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-1.5 leading-none"
                       >
                         {stravaStatus.calendarActivities.length > 0 || stravaStatus.calendar ? (
@@ -1036,7 +1163,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-2 leading-none"
                       >
                         {githubStatus.contributions?.weeks?.length ? (
@@ -1057,7 +1184,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-1.5 leading-none"
                       >
                         <Icon icon="simple-icons:linuxmint" className="size-3.5 opacity-75" aria-hidden />
@@ -1075,7 +1202,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-1.5 leading-none"
                       >
                         <Icon icon="simple-icons:raspberrypi" className="size-3.5 opacity-75" aria-hidden />
@@ -1095,7 +1222,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex items-center justify-center gap-2"
                       >
                         <Leaf className="size-3.5 opacity-70" strokeWidth={2} />
@@ -1109,7 +1236,7 @@ export function Notch() {
                         initial={{ opacity: 0, scale: 0.7, y: 3 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.7, y: -3 }}
-                        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={motionFeel.faceSwap}
                         className="flex max-w-[9rem] items-center justify-center gap-1.5"
                       >
                         <CalendarDays className="size-3.5 shrink-0 opacity-70" strokeWidth={2} />
@@ -1228,11 +1355,7 @@ function PanelRail({
     return () => ro.disconnect()
   }, [measureIndicator])
 
-  const y = useSpring(indicatorY, {
-    stiffness: Math.round(feel.stiffness * 0.75),
-    damping: Math.round(feel.damping * 0.85),
-    mass: feel.mass * 1.05,
-  })
+  const y = useSpring(indicatorY, railSpringFromFeel(feel))
 
   useEffect(() => {
     y.set(indicatorY)
@@ -1297,7 +1420,7 @@ function IconTab({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       whileTap={{ scale: 0.92 }}
-      transition={{ type: "spring", stiffness: 520, damping: 28, mass: 0.55 }}
+      transition={tapSpring}
       className={cn(
         "relative z-10 flex size-9 items-center justify-center rounded-full transition-colors duration-200",
         active

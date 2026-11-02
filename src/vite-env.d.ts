@@ -97,6 +97,7 @@ interface NotchBridge {
           height?: number
           expandedWidth?: number
           expandedHeight?: number
+          animate?: boolean
         },
   ) => Promise<{ anchorLeft: number; anchorTop: number }>
   setPassthrough: (pass: boolean) => Promise<void>

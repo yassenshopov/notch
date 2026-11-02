@@ -1,15 +1,12 @@
-import { useLayoutEffect, useState } from "react"
+import { useLayoutEffect } from "react"
 
-/** Live Electron window content size — never cache while expanded (avoids pill-sized shell). */
+/** Pin document to the Electron content box without re-rendering on every resize tick. */
 export function useShellSize(active: boolean) {
-  const [, setRevision] = useState(0)
-
   useLayoutEffect(() => {
     if (!active) return
     const sync = () => {
       document.documentElement.style.width = `${window.innerWidth}px`
       document.documentElement.style.height = `${window.innerHeight}px`
-      setRevision((n) => n + 1)
     }
     sync()
     window.addEventListener("resize", sync)
@@ -19,9 +16,4 @@ export function useShellSize(active: boolean) {
       document.documentElement.style.height = ""
     }
   }, [active])
-
-  return {
-    w: window.innerWidth,
-    h: window.innerHeight,
-  }
 }

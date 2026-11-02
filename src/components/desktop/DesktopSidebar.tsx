@@ -8,6 +8,7 @@ import {
   writeSidebarCollapsed,
 } from "../../lib/desktop-nav"
 import { panelLabel, type NotchPanel } from "../../lib/panel-routing"
+import { railSpringFromFeel, tapSpring } from "../../lib/island-motion"
 import { cn } from "../../lib/utils"
 import { PanelNavIcon } from "../PanelNavIcon"
 
@@ -27,13 +28,7 @@ export function DesktopSidebar({
   onSelect,
 }: Props) {
   const { motion: feel } = useSettings()
-  const navSpring = {
-    type: "spring" as const,
-    stiffness: Math.round(feel.stiffness * 0.75),
-    damping: Math.round(feel.damping * 0.85),
-    mass: feel.mass * 1.05,
-  }
-  const tapSpring = { type: "spring" as const, stiffness: 520, damping: 28, mass: 0.55 }
+  const navSpring = railSpringFromFeel(feel)
 
   const sidebar = dark ? "border-white/10 bg-[#0d0d0d]" : "border-black/8 bg-[#efefec]"
   const navIdle = dark ? "text-white/55 hover:text-white/75" : "text-black/55 hover:text-black/80"
