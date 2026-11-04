@@ -4,6 +4,7 @@ import {
   CloudSun,
   Gamepad2,
   Leaf,
+  Languages,
   LineChart,
   Settings,
   Timer,
@@ -50,6 +51,7 @@ import { useCursor } from "../hooks/useCursor"
 import { useIslandRotation } from "../hooks/useIslandRotation"
 import { useLiveActivities } from "../hooks/useLiveActivities"
 import { useOccasionalSmile } from "../hooks/useOccasionalSmile"
+import { useKeyboardLayoutHint } from "../hooks/useKeyboardLayoutHint"
 import { BatteryIndicator } from "./BatteryIndicator"
 import { BotSmile } from "./BotSmile"
 import { EqualizerBars } from "./EqualizerBars"
@@ -173,6 +175,8 @@ export function Notch() {
   const smiling = useOccasionalSmile(
     !expanded && !playing && !browserMediaShowing && !liveActivity && !timer.active,
   )
+  const keyboardLayoutFlash = useKeyboardLayoutHint(!expanded)
+  const keyboardLayoutShowing = Boolean(keyboardLayoutFlash)
 
   const batteryAvailable = battery.supported && battery.ready
 
@@ -282,7 +286,8 @@ export function Notch() {
     !browserMediaShowing &&
     !smiling &&
     !liveActivity &&
-    !timerShowing
+    !timerShowing &&
+    !keyboardLayoutShowing
   const islandFace = useIslandRotation({
     enabled: rotateEnabled,
     intervalMs: settings.island.rotateIntervalMs,
@@ -313,6 +318,7 @@ export function Notch() {
     (browserMediaShowing && !browserMediaPlaying ? 36 : 0) +
     (liveActivity ? settings.collapsed.activityExtraWidth : 0) +
     (timerShowing ? settings.collapsed.timerExtraWidth : 0) +
+    (keyboardLayoutShowing ? settings.collapsed.keyboardExtraWidth : 0) +
     (githubHeatmapShowing ? settings.collapsed.githubExtraWidth : 0) +
     (stravaCalendarShowing ? settings.collapsed.stravaExtraWidth : 0)
 
@@ -1042,6 +1048,21 @@ export function Notch() {
                             {mediaStatus.title || "Paused"}
                           </span>
                         )}
+                      </motion.span>
+                    ) : keyboardLayoutFlash ? (
+                      <motion.span
+                        key={`keyboard-${keyboardLayoutFlash.layoutId}`}
+                        initial={{ opacity: 0, scale: 0.7, y: 3 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.7, y: -3 }}
+                        transition={motionFeel.faceSwap}
+                        className="flex items-center justify-center gap-1.5"
+                      >
+                        <Languages className="size-3.5 opacity-70" strokeWidth={2} aria-hidden />
+                        <span className="text-[13px] font-semibold tracking-wide tabular-nums">
+                          {keyboardLayoutFlash.label}
+                        </span>
+                        <span className="sr-only">Keyboard layout</span>
                       </motion.span>
                     ) : liveActivity ? (
                       <LiveActivityContent

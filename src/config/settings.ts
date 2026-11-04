@@ -148,6 +148,8 @@ export type AppSettings = {
     githubExtraWidth: number
     /** Extra width when the Strava activity mini-calendar is showing */
     stravaExtraWidth: number
+    /** Extra width when the keyboard layout hint is showing */
+    keyboardExtraWidth: number
   }
   /** Transient collapsed-pill alerts (rain soon, Cursor usage, …) */
   liveActivities: {
@@ -318,6 +320,7 @@ export const defaultSettings: AppSettings = {
     timerExtraWidth: 40,
     githubExtraWidth: 52,
     stravaExtraWidth: 56,
+    keyboardExtraWidth: 36,
   },
   liveActivities: {
     enabled: true,

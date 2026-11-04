@@ -243,6 +243,13 @@ interface NotchBridge {
       connected: boolean,
     ) => Promise<{ id: string; connected: boolean }>
   }
+  keyboardLayout?: {
+    getCurrent: () => Promise<{
+      supported: boolean
+      layout: import("./lib/keyboard-layout").KeyboardLayoutSnapshot | null
+    }>
+    onChange: (cb: (layout: import("./lib/keyboard-layout").KeyboardLayoutSnapshot) => void) => () => void
+  }
   wallpaper: {
     pickOutputFolder: () => Promise<
       { ok: true; path: string } | { ok: false; canceled?: boolean }

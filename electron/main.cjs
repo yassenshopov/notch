@@ -128,6 +128,7 @@ const {
   formatCursorUsageTrayMessage,
 } = require("./cursor-cycle.cjs")
 const systemControls = require("./system-controls.cjs")
+const keyboardLayout = require("./keyboard-layout.cjs")
 const markets = require("./markets.cjs")
 const github = require("./github.cjs")
 const mint = require("./mint.cjs")
@@ -165,6 +166,8 @@ let lastContentSize = { ...COLLAPSED }
 /** Main-process expanded shell — display-metrics must not snap back to pill size */
 let shellExpanded = false
 let wallpaperDailyScheduler = null
+/** @type {(() => void) | null} */
+let stopKeyboardLayoutWatch = null
 const desktopWindows = createDesktopWindowManager({
   isDev: () => isDev,
   preloadPath: PRELOAD_PATH,
@@ -180,6 +183,14 @@ function showNotch() {
   mainWindow.show()
   mainWindow.setAlwaysOnTop(true, "screen-saver")
   mainWindow.focus()
+}
+
+function attachKeyboardLayoutWatcher() {
+  stopKeyboardLayoutWatch?.()
+  stopKeyboardLayoutWatch = keyboardLayout.startWatcher((layout) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send("keyboard-layout:changed", layout)
+  })
 }
 
 function restartApp() {
@@ -313,8 +324,12 @@ function createWindow() {
   })
 
   mainWindow.on("closed", () => {
+    stopKeyboardLayoutWatch?.()
+    stopKeyboardLayoutWatch = null
     mainWindow = null
   })
+
+  attachKeyboardLayoutWatcher()
 }
 
 function createTray() {
@@ -1054,6 +1069,8 @@ ipcMain.handle("controls:set-bluetooth", async (_event, payload) =>
 ipcMain.handle("notch:carto-api-key", () =>
   String(process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || "").trim(),
 )
+
+ipcMain.handle("keyboard-layout:current", () => keyboardLayout.getCurrent())
 
 if (gotLock) {
   app.whenReady().then(() => {

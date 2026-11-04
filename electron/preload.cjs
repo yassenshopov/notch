@@ -125,4 +125,12 @@ contextBridge.exposeInMainWorld("notch", {
     cartoApiKey,
     fetchCartoApiKey: () => ipcRenderer.invoke("notch:carto-api-key"),
   },
+  keyboardLayout: {
+    getCurrent: () => ipcRenderer.invoke("keyboard-layout:current"),
+    onChange: (cb) => {
+      const handler = (_event, layout) => cb(layout)
+      ipcRenderer.on("keyboard-layout:changed", handler)
+      return () => ipcRenderer.removeListener("keyboard-layout:changed", handler)
+    },
+  },
 })
