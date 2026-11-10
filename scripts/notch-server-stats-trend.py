@@ -84,6 +84,8 @@ def append_sample(metrics: dict, path: Path) -> list[dict]:
         "load1": metrics.get("load1"),
         "cpuTempC": metrics.get("cpuTempC"),
         "swapUsedPct": metrics.get("swapUsedPct"),
+        "pingGwMs": metrics.get("pingGwMs"),
+        "wifiRssiDbm": metrics.get("wifiRssiDbm"),
     }
     samples.append(row)
     samples = prune_samples(samples)
@@ -116,6 +118,8 @@ def samples_to_trend(samples: list[dict]) -> dict:
         "load1": series("load1"),
         "cpuTempC": series("cpuTempC"),
         "swapPct": series("swapUsedPct"),
+        "pingGwMs": series("pingGwMs"),
+        "wifiRssiDbm": series("wifiRssiDbm"),
     }
 
 
@@ -165,6 +169,25 @@ def read_cpu_temp_pi() -> float | None:
     return None
 
 
+def ping_gateway_ms() -> float | None:
+    line = run("ping -c 5 -W 1 192.168.1.1 2>/dev/null | tail -1")
+    if "avg" not in line:
+        return None
+    try:
+        avg = line.split("=")[1].split("/")[1]
+        return round(float(avg), 2)
+    except (IndexError, ValueError):
+        return None
+
+
+def wifi_rssi_dbm(flavor: str) -> float | None:
+    iface = "wlp1s0" if flavor == "mint" else "wlan0"
+    raw = run(f"iw dev {iface} link 2>/dev/null | awk '/signal:/ {{print $2}}'")
+    if raw.lstrip("-").isdigit() or (raw.startswith("-") and raw[1:].isdigit()):
+        return float(raw)
+    return None
+
+
 def mirror_meta() -> tuple[int, str | None]:
     root = Path.home() / "github-mirror"
     repos = len(list(root.glob("*/*.git"))) if root.is_dir() else 0
@@ -205,6 +228,8 @@ def collect(flavor: str) -> dict:
     cpu_count = int(run("nproc") or "1")
     process_count = int(run("ps -e --no-headers 2>/dev/null | wc -l") or "0")
     repos, mirror_last = mirror_meta()
+    ping_gw = ping_gateway_ms()
+    wifi_rssi = wifi_rssi_dbm(flavor)
 
     return {
         "hostname": hostname,
@@ -228,6 +253,8 @@ def collect(flavor: str) -> dict:
         "mirrorRepoCount": repos,
         "mirrorLastLog": mirror_last,
         "cpuTempC": cpu_temp,
+        "pingGwMs": ping_gw,
+        "wifiRssiDbm": wifi_rssi,
     }
 
 

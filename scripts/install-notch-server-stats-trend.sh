@@ -26,7 +26,7 @@ Description=Notch server stats trend sample
 
 [Service]
 Type=oneshot
-ExecStart=$BIN/notch-server-stats-trend.py --sample-only $FLAVOR
+ExecStart=$BIN/notch-server-stats-trend.py $FLAVOR --sample-only
 EOF
 
 cat >"$UNIT_DIR/notch-server-stats-sample.timer" <<EOF

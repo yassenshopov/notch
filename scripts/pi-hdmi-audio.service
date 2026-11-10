@@ -1,0 +1,15 @@
+[Unit]
+Description=Enable HDMI audio for TV playback
+Before=raspotify.service
+Wants=raspotify.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PULSE_SERVER=unix:/run/user/1000/pulse/native
+ExecStart=/home/pi/spotify-display/pi-fix-tv-audio.sh
+
+[Install]
+WantedBy=multi-user.target

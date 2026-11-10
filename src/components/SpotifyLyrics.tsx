@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react"
 import { activeLyricIndex, type LyricsResult } from "../lib/lyrics"
 import { cn } from "../lib/utils"
 
@@ -10,15 +9,8 @@ type Props = {
 }
 
 export function SpotifyLyrics({ lyrics, loading, progressMs, themed }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null)
   const active = activeLyricIndex(lyrics.lines, progressMs)
-
-  useEffect(() => {
-    if (active < 0) return
-    const root = scrollRef.current
-    const line = root?.querySelector(`[data-line="${active}"]`)
-    line?.scrollIntoView({ block: "center", behavior: "smooth" })
-  }, [active])
+  const activeLine = active >= 0 ? lyrics.lines[active] : null
 
   if (loading) {
     return (
@@ -62,50 +54,44 @@ export function SpotifyLyrics({ lyrics, loading, progressMs, themed }: Props) {
   if (lyrics.lines.length > 0) {
     return (
       <div
-        ref={scrollRef}
-        className="notch-scroll min-h-0 flex-1 overflow-y-auto px-1 py-1 text-center"
+        className="flex min-h-[3.25rem] flex-1 items-center justify-center px-2 py-2 text-center"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-col gap-2.5 pb-4 pt-1">
-          {lyrics.lines.map((line, i) => {
-            const isActive = i === active
-            return (
-              <p
-                key={`${line.timeMs}-${i}`}
-                data-line={i}
-                className={cn(
-                  "text-[13px] leading-snug transition-[opacity,transform] duration-200",
-                  isActive
-                    ? "scale-[1.02] font-semibold opacity-100"
-                    : themed
-                      ? "font-medium text-[color:var(--sp-subtle)] opacity-55"
-                      : "font-medium text-black/35 opacity-60 dark:text-white/35",
-                )}
-              >
-                {line.text}
-              </p>
-            )
-          })}
-        </div>
+        {activeLine ? (
+          <p
+            key={`${activeLine.timeMs}-${active}`}
+            className={cn(
+              "text-[13px] font-semibold leading-snug transition-opacity duration-200",
+              !themed && "text-black/90 dark:text-white/90",
+            )}
+          >
+            {activeLine.text}
+          </p>
+        ) : (
+          <p
+            className={cn(
+              "text-[12px] font-medium",
+              themed ? "text-[color:var(--sp-subtle)]" : "text-black/35 dark:text-white/35",
+            )}
+            aria-hidden
+          >
+            &nbsp;
+          </p>
+        )}
       </div>
     )
   }
 
   if (lyrics.plainLyrics) {
     return (
-      <div
-        className="notch-scroll min-h-0 flex-1 overflow-y-auto px-1 py-1"
-        onClick={(e) => e.stopPropagation()}
+      <p
+        className={cn(
+          "py-2 text-center text-[12px] font-medium",
+          themed ? "text-[color:var(--sp-subtle)]" : "text-black/35 dark:text-white/35",
+        )}
       >
-        <p
-          className={cn(
-            "whitespace-pre-wrap text-center text-[12px] leading-relaxed",
-            themed ? "text-[color:var(--sp-muted)]" : "text-black/50 dark:text-white/50",
-          )}
-        >
-          {lyrics.plainLyrics}
-        </p>
-      </div>
+        No synced lyrics for this track
+      </p>
     )
   }
 
