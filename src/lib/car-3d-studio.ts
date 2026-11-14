@@ -129,3 +129,45 @@ export function applyCarStudioEnvironment(renderer: THREE.WebGLRenderer, scene: 
   scene.environment = pmrem.fromScene(env, theme === "light" ? 0.025 : 0.018).texture
   pmrem.dispose()
 }
+
+/** Garage bay: darker shell with bright ceiling panels for PBR highlights. */
+export function applyCarGarageEnvironment(renderer: THREE.WebGLRenderer, scene: THREE.Scene, theme: CarViewerTheme) {
+  const env = new THREE.Scene()
+  const shell = new THREE.Mesh(
+    new THREE.SphereGeometry(48, 28, 14),
+    new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true }),
+  )
+  const cols: number[] = []
+  const pos = shell.geometry.attributes.position
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) / 48
+    const top = y > 0.55
+    const k = top
+      ? (theme === "light" ? 0.78 : 0.22) + y * 0.08
+      : (theme === "light" ? 0.42 : 0.1) + Math.max(0, y + 0.35) * 0.18
+    cols.push(k * 0.94, k * 0.96, k)
+  }
+  shell.geometry.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3))
+  env.add(shell)
+
+  const strip = (x: number, z: number, w: number, h: number, k: number) => {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(w, h),
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(k, k, k * 1.02),
+        side: THREE.DoubleSide,
+      }),
+    )
+    m.position.set(x, 42, z)
+    m.rotation.x = -Math.PI / 2.15
+    env.add(m)
+  }
+  const stripBoost = theme === "light" ? 2.8 : 3.4
+  strip(0, 0, 28, 6, stripBoost)
+  strip(-18, -8, 12, 4, stripBoost * 0.55)
+  strip(18, -8, 12, 4, stripBoost * 0.55)
+
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  scene.environment = pmrem.fromScene(env, theme === "light" ? 0.022 : 0.02).texture
+  pmrem.dispose()
+}

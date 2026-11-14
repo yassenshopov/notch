@@ -1,7 +1,8 @@
-import { Hand, Moon, Sun } from "lucide-react"
+import { Grid3x3, Hand, Moon, Sun, Warehouse } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { CarStatus } from "../lib/car-mock"
 import { createCarScene, type CarSceneHandle } from "../lib/car-scene"
+import type { CarViewerBackdrop } from "../lib/car-viewer-backdrop"
 import { cn } from "../lib/utils"
 import { useTheme } from "../hooks/useTheme"
 
@@ -20,6 +21,7 @@ export function CarModelViewer({ bodyColor, status, plate = "", className, label
   const appDark = useTheme()
   const [viewerDark, setViewerDark] = useState(appDark)
   const [panEnabled, setPanEnabled] = useState(false)
+  const [backdrop, setBackdrop] = useState<CarViewerBackdrop>("studio")
   const mountRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<CarSceneHandle | null>(null)
 
@@ -54,6 +56,10 @@ export function CarModelViewer({ bodyColor, status, plate = "", className, label
     sceneRef.current?.setPan(panEnabled)
   }, [panEnabled])
 
+  useEffect(() => {
+    sceneRef.current?.setBackdrop(backdrop)
+  }, [backdrop])
+
   const chrome = viewerDark
     ? "border-white/15 bg-white/10 text-white/90 hover:bg-white/15"
     : "border-black/10 bg-black/[0.04] text-black/70 hover:bg-black/[0.07]"
@@ -80,6 +86,19 @@ export function CarModelViewer({ bodyColor, status, plate = "", className, label
           aria-pressed={panEnabled}
         >
           <Hand className="size-4" strokeWidth={1.75} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setBackdrop((b) => (b === "studio" ? "garage" : "studio"))}
+          className={cn(studioBtn, backdrop === "garage" ? chromeActive : chrome)}
+          aria-label={backdrop === "garage" ? "Switch to studio scene" : "Switch to garage scene"}
+          aria-pressed={backdrop === "garage"}
+        >
+          {backdrop === "garage" ? (
+            <Grid3x3 className="size-4" strokeWidth={1.75} />
+          ) : (
+            <Warehouse className="size-4" strokeWidth={1.75} />
+          )}
         </button>
         <button
           type="button"

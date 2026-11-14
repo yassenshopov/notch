@@ -27,6 +27,7 @@ const REAR_GLASS_TINT = 0x080a0e
 
 export function classifyCarMesh(name: string): CarMeshRole {
   const n = name.toLowerCase()
+  if (n.includes("licplate") || n.includes("register_plate")) return "default"
   if (n.includes("back_window")) return "rearGlass"
   if (n.includes("windshield") || (n.includes("doors") && n.includes("glass"))) return "glass"
   if (n.startsWith("rim_") || n.startsWith("bolts_")) return "rim"
@@ -50,6 +51,7 @@ export function classifyCarMesh(name: string): CarMeshRole {
   if (n.includes("lights_front") || n.includes("lights_dimension") || n.includes("light_reflection")) {
     return "chrome"
   }
+  if (n.includes("top_2")) return "body"
   if (
     n.includes("top_1") ||
     (n.includes("doors") && !n.includes("glass")) ||
@@ -72,6 +74,16 @@ function asStandard(mat: THREE.Material): THREE.MeshStandardMaterial | null {
     return mat as THREE.MeshStandardMaterial
   }
   return null
+}
+
+function isPlateMeshTree(mesh: THREE.Object3D): boolean {
+  let node: THREE.Object3D | null = mesh
+  while (node) {
+    const n = node.name.toLowerCase()
+    if (n.includes("licplate") || n.includes("register_plate")) return true
+    node = node.parent
+  }
+  return false
 }
 
 /** Palette GLB reuses few materials across the whole car — clone before any edit. */
@@ -235,6 +247,7 @@ export function applyCarVisualDetails(root: THREE.Object3D, bodyColorHex: string
 
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return
+    if (isPlateMeshTree(obj)) return
     obj.castShadow = true
     obj.receiveShadow = true
     const role = classifyCarMesh(obj.name)

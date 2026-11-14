@@ -2,10 +2,16 @@ import * as THREE from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
 import type { CarStatus } from "./car-mock"
 import {
+  applyCarGarageEnvironment,
   applyCarStudioEnvironment,
   CAR_VIEWER_PALETTES,
   type CarViewerTheme,
 } from "./car-3d-studio"
+import {
+  createCarGarageBackdrop,
+  GARAGE_BACKDROP_PALETTES,
+  type CarViewerBackdrop,
+} from "./car-viewer-backdrop"
 import { loadMazda6WagonModel, type CarModelHandle } from "./car-glb-model"
 
 export type CarModelLoadState = "loading" | "ready" | "error"
@@ -17,6 +23,8 @@ export type CarSceneHandle = {
   setBodyColor: (hex: string) => void
   setPlate: (text: string) => void
   setPan: (enabled: boolean) => void
+  setBackdrop: (backdrop: CarViewerBackdrop) => void
+  getBackdrop: () => CarViewerBackdrop
   resize: () => void
   getModelLoadState: () => CarModelLoadState
   onModelLoadState: (cb: (state: CarModelLoadState) => void) => () => void
@@ -26,7 +34,7 @@ function frameCar(
   camera: THREE.PerspectiveCamera,
   controls: OrbitControls,
   object: THREE.Object3D,
-  _container: HTMLElement,
+  container: HTMLElement,
 ) {
   const box = new THREE.Box3().setFromObject(object)
   const size = box.getSize(new THREE.Vector3())
@@ -34,13 +42,18 @@ function frameCar(
   const height = Math.max(size.y, 0.45)
   const length = Math.max(size.x, size.z, 2)
 
-  controls.target.set(center.x, center.y + height * 0.28, center.z)
+  const { width: viewW, height: viewH } = container.getBoundingClientRect()
+  const tallViewport = viewH > viewW * 0.72
+  const verticalDrop = height * (tallViewport ? 0.1 : 0.05)
 
-  const dist = length * 1.05 + height * 0.75
+  const focusY = center.y + height * 0.2 - verticalDrop
+  controls.target.set(center.x, focusY, center.z)
+
+  const dist = length * 1.05 + height * 0.78
   const az = Math.PI / 4.2
   camera.position.set(
     center.x + Math.cos(az) * dist * 0.92,
-    center.y + height * 0.92,
+    focusY + height * 0.58,
     center.z + Math.sin(az) * dist * 0.92,
   )
   camera.near = Math.max(0.05, dist / 120)
@@ -56,6 +69,7 @@ export function createCarScene(
   opts: { bodyColor: string; status: CarStatus; plate?: string; dark?: boolean },
 ): CarSceneHandle {
   let theme: CarViewerTheme = opts.dark ? "dark" : "light"
+  let backdrop: CarViewerBackdrop = "studio"
   let status = opts.status
   let bodyColor = opts.bodyColor
   let plate = opts.plate ?? ""
@@ -120,35 +134,57 @@ export function createCarScene(
   fill.position.set(-5, 4, -6)
   scene.add(fill)
 
+  const studioRoot = new THREE.Group()
+  scene.add(studioRoot)
+
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(40, 40),
     new THREE.ShadowMaterial({ opacity: palette().shadowOpacity }),
   )
   ground.rotation.x = -Math.PI / 2
   ground.receiveShadow = true
-  scene.add(ground)
+  studioRoot.add(ground)
 
   const grid = new THREE.GridHelper(24, 24, palette().gridPrimary, palette().gridSecondary)
   grid.position.y = 0.001
   const gridMat = grid.material as THREE.Material
   gridMat.transparent = true
   ;(gridMat as THREE.LineBasicMaterial).opacity = palette().gridOpacity
-  scene.add(grid)
+  studioRoot.add(grid)
+
+  const garage = createCarGarageBackdrop(theme)
+  garage.group.visible = false
+  scene.add(garage.group)
 
   let raf = 0
   let wheelSpin = 0
 
+  const applyBackdropVisibility = () => {
+    const inGarage = backdrop === "garage"
+    studioRoot.visible = !inGarage
+    garage.group.visible = inGarage
+    const gp = GARAGE_BACKDROP_PALETTES[theme]
+    if (inGarage) {
+      scene.background = new THREE.Color(gp.wall)
+      scene.fog = new THREE.FogExp2(gp.wall, gp.fogDensity)
+      key.intensity = palette().keyIntensity * (theme === "dark" ? 0.72 : 0.88)
+      fill.intensity = palette().fillIntensity * 1.12
+    } else {
+      const p = palette()
+      scene.background = new THREE.Color(p.clearColor)
+      scene.fog = new THREE.FogExp2(p.clearColor, theme === "light" ? 0.028 : 0.022)
+      key.intensity = p.keyIntensity
+      fill.intensity = p.fillIntensity
+    }
+  }
+
   const applyTheme = () => {
     const p = palette()
-    scene.background = new THREE.Color(p.clearColor)
-    scene.fog = new THREE.FogExp2(p.clearColor, theme === "light" ? 0.028 : 0.022)
     hemi.color.setHex(p.hemisphereSky)
     hemi.groundColor.setHex(p.hemisphereGround)
     hemi.intensity = p.hemisphereIntensity
     key.color.setHex(p.keyLight)
-    key.intensity = p.keyIntensity
     fill.color.setHex(p.fillLight)
-    fill.intensity = p.fillIntensity
     ;(ground.material as THREE.ShadowMaterial).opacity = p.shadowOpacity
     const g0 = grid.material as THREE.LineBasicMaterial
     if (Array.isArray(grid.material)) {
@@ -161,8 +197,14 @@ export function createCarScene(
       g0.opacity = p.gridOpacity
     }
     renderer.toneMappingExposure = p.exposure
+    garage.applyTheme(theme)
     scene.environment?.dispose()
-    applyCarStudioEnvironment(renderer, scene, theme)
+    if (backdrop === "garage") {
+      applyCarGarageEnvironment(renderer, scene, theme)
+    } else {
+      applyCarStudioEnvironment(renderer, scene, theme)
+    }
+    applyBackdropVisibility()
   }
 
   const resize = () => {
@@ -247,6 +289,12 @@ export function createCarScene(
         }
       }
     },
+    setBackdrop(next) {
+      if (backdrop === next) return
+      backdrop = next
+      applyTheme()
+    },
+    getBackdrop: () => backdrop,
     resize,
     getModelLoadState: () => modelLoadState,
     onModelLoadState(cb) {
@@ -268,6 +316,7 @@ export function createCarScene(
       grid.geometry.dispose()
       if (Array.isArray(grid.material)) grid.material.forEach((m) => m.dispose())
       else grid.material.dispose()
+      garage.dispose()
       model?.dispose()
     },
   }

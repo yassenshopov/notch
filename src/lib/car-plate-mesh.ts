@@ -4,7 +4,11 @@ const PLATE_W_M = 0.52
 const PLATE_H_M = 0.11
 const PLATE_CANVAS_W = 520
 const PLATE_CANVAS_H = 110
-const PLATE_INSET_M = 0.014
+
+const HUMSTER_FRONT = "LicPlate01"
+const HUMSTER_REAR = "LicPlate02"
+const DECAL_FRONT = "notch-plate-surface-front"
+const DECAL_REAR = "notch-plate-surface-rear"
 
 export type RegistrationPlates = {
   setPlate: (text: string) => void
@@ -100,14 +104,26 @@ function carRig(root: THREE.Object3D) {
   return root.getObjectByName("car-rig") ?? root
 }
 
-function localBounds(rig: THREE.Object3D) {
-  rig.updateMatrixWorld(true)
-  const inv = rig.matrixWorld.clone().invert()
+function humsterPlateRoot(rig: THREE.Object3D, side: "front" | "rear") {
+  const exact = side === "front" ? HUMSTER_FRONT : HUMSTER_REAR
+  const fromName = rig.getObjectByName(exact)
+  if (fromName) return fromName
+  const want = exact.toLowerCase()
+  let found: THREE.Object3D | null = null
+  rig.traverse((obj) => {
+    if (obj.name.toLowerCase() === want) found = obj
+  })
+  return found
+}
+
+function localBoundsForRoot(root: THREE.Object3D, skipNames: Set<string>) {
   const box = new THREE.Box3()
   const tmp = new THREE.Box3()
-  rig.traverse((obj) => {
+  root.updateMatrixWorld(true)
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert()
+  root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return
-    if (obj.name === "plate-front" || obj.name === "plate-rear") return
+    if (skipNames.has(obj.name)) return
     const geom = obj.geometry
     if (!geom.boundingBox) geom.computeBoundingBox()
     tmp.copy(geom.boundingBox!)
@@ -115,163 +131,151 @@ function localBounds(rig: THREE.Object3D) {
     tmp.applyMatrix4(inv)
     box.union(tmp)
   })
-  if (box.isEmpty()) box.setFromObject(rig)
   return box
 }
 
-function lengthAxis(box: THREE.Box3): "x" | "z" {
-  const size = box.getSize(new THREE.Vector3())
-  return size.z >= size.x ? "z" : "x"
-}
-
-function makePlateMesh(tex: THREE.CanvasTexture, side: "front" | "rear") {
-  const mat = new THREE.MeshBasicMaterial({
+function makePlateMaterial(tex: THREE.CanvasTexture) {
+  return new THREE.MeshBasicMaterial({
     map: tex,
-    transparent: true,
-    depthWrite: false,
+    toneMapped: false,
+    transparent: false,
+    opacity: 1,
+    alphaTest: 0,
+    side: THREE.FrontSide,
+    depthWrite: true,
     depthTest: true,
     polygonOffset: true,
-    polygonOffsetFactor: -8,
-    polygonOffsetUnits: -8,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnits: -6,
   })
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(PLATE_W_M, PLATE_H_M), mat)
-  mesh.name = side === "front" ? "plate-front" : "plate-rear"
-  mesh.renderOrder = 60
-  return mesh
 }
 
-function isBuiltinPlateMesh(name: string) {
-  const n = name.toLowerCase()
-  return n.includes("licplate") || n.includes("register_plate")
-}
+function fitDecalOnPlateRoot(root: THREE.Object3D, tex: THREE.CanvasTexture, decalName: string) {
+  root.visible = true
+  root.updateMatrixWorld(true)
 
-function isFrontPlateMesh(name: string) {
-  const n = name.toLowerCase()
-  return n.includes("licplate01") || /register_plate_1(_|$)/.test(n)
-}
+  const skip = new Set([decalName])
+  const bounds = localBoundsForRoot(root, skip)
+  if (bounds.isEmpty()) return null
 
-function isRearPlateMesh(name: string) {
-  const n = name.toLowerCase()
-  return n.includes("licplate02") || n.includes("register_plate_02")
-}
-
-function findPlateAnchors(rig: THREE.Object3D) {
-  let front: THREE.Mesh | null = null
-  let rear: THREE.Mesh | null = null
-  rig.traverse((obj) => {
+  root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return
-    const n = obj.name
-    if (isFrontPlateMesh(n)) front = obj
-    if (isRearPlateMesh(n)) rear = obj
+    if (obj.name === decalName) return
+    obj.visible = false
   })
-  return { front, rear }
-}
 
-function hideBuiltinLicenseMeshes(rig: THREE.Object3D) {
-  rig.traverse((obj) => {
-    if (!(obj instanceof THREE.Mesh)) return
-    if (isBuiltinPlateMesh(obj.name)) obj.visible = false
-  })
-}
-
-function alignPlateToAnchor(plate: THREE.Mesh, anchor: THREE.Mesh, rig: THREE.Object3D, lift = 0.018) {
-  rig.updateMatrixWorld(true)
-  anchor.updateMatrixWorld(true)
-
-  const anchorBox = new THREE.Box3().setFromObject(anchor)
-  const anchorSize = anchorBox.getSize(new THREE.Vector3())
-  const fitW = Math.max(anchorSize.x, anchorSize.z, 0.28)
-  const fitH = Math.max(anchorSize.y, 0.06)
-  const sx = fitW / PLATE_W_M
-  const sy = fitH / PLATE_H_M
-  const s = Math.min(sx, sy, 1.15)
-
-  const worldPos = new THREE.Vector3()
-  const worldQuat = new THREE.Quaternion()
-  anchor.getWorldPosition(worldPos)
-  anchor.getWorldQuaternion(worldQuat)
-  const outward = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat).normalize()
-  worldPos.addScaledVector(outward, lift)
-
-  rig.worldToLocal(worldPos)
-  const rigQuat = new THREE.Quaternion()
-  rig.getWorldQuaternion(rigQuat)
-  plate.quaternion.copy(rigQuat.invert().multiply(worldQuat))
-  plate.position.copy(worldPos)
-  plate.scale.set(s, s, 1)
-}
-
-function placePlatesFallback(front: THREE.Mesh, rear: THREE.Mesh, rig: THREE.Object3D) {
-  const box = localBounds(rig)
-  const size = box.getSize(new THREE.Vector3())
-  const axis = lengthAxis(box)
-  const y = box.min.y + Math.min(0.4, size.y * 0.27)
-  const xMid = (box.min.x + box.max.x) / 2
-  const zMid = (box.min.z + box.max.z) / 2
-
-  if (axis === "z") {
-    front.position.set(xMid, y, box.max.z + PLATE_INSET_M)
-    front.rotation.set(0, 0, 0)
-    rear.position.set(xMid, y, box.min.z - PLATE_INSET_M)
-    rear.rotation.set(0, Math.PI, 0)
-  } else {
-    front.position.set(box.max.x + PLATE_INSET_M, y, zMid)
-    front.rotation.set(0, Math.PI / 2, 0)
-    rear.position.set(box.min.x - PLATE_INSET_M, y, zMid)
-    rear.rotation.set(0, -Math.PI / 2, 0)
+  let decal = root.getObjectByName(decalName) as THREE.Mesh | undefined
+  if (decal) {
+    decal.geometry.dispose()
+    ;(decal.material as THREE.Material).dispose()
+    root.remove(decal)
   }
+
+  const size = bounds.getSize(new THREE.Vector3())
+  const center = bounds.getCenter(new THREE.Vector3())
+  decal = new THREE.Mesh(new THREE.PlaneGeometry(PLATE_W_M, PLATE_H_M), makePlateMaterial(tex))
+  decal.name = decalName
+  decal.renderOrder = 120
+  decal.frustumCulled = false
+  root.add(decal)
+
+  const dims = [
+    { axis: "x" as const, v: size.x },
+    { axis: "y" as const, v: size.y },
+    { axis: "z" as const, v: size.z },
+  ].sort((a, b) => a.v - b.v)
+  const thin = dims[0]
+
+  decal.position.copy(center)
+  decal.rotation.set(0, 0, 0)
+
+  const faceW = thin.axis === "x" ? Math.max(size.y, size.z) : thin.axis === "y" ? Math.max(size.x, size.z) : Math.max(size.x, size.y)
+  const faceH =
+    thin.axis === "x" ? Math.min(size.y, size.z) : thin.axis === "y" ? Math.min(size.x, size.z) : Math.min(size.x, size.y)
+  const s = Math.min(Math.max(faceW / PLATE_W_M, faceH / PLATE_H_M), 1.35)
+
+  if (thin.axis === "y") decal.rotation.x = -Math.PI / 2
+  else if (thin.axis === "x") decal.rotation.y = Math.PI / 2
+
+  const lift = Math.max(thin.v * 0.42, 0.002)
+  if (thin.axis === "z") decal.position.z += lift * Math.sign(size.z || 1)
+  else if (thin.axis === "y") decal.position.y += lift * Math.sign(size.y || 1)
+  else decal.position.x += lift * Math.sign(size.x || 1)
+
+  decal.scale.set(s, s, 1)
+  decal.visible = true
+  return decal
 }
 
-function placePlates(front: THREE.Mesh, rear: THREE.Mesh, rig: THREE.Object3D) {
-  hideBuiltinLicenseMeshes(rig)
-  const anchors = findPlateAnchors(rig)
+function hideDuplicateRegisterMeshes(rig: THREE.Object3D) {
+  rig.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return
+    const n = obj.name.toLowerCase()
+    if (n.includes("register_plate")) obj.visible = false
+  })
+}
 
-  if (!anchors.front || !anchors.rear) placePlatesFallback(front, rear, rig)
-  if (anchors.front) alignPlateToAnchor(front, anchors.front, rig)
-  if (anchors.rear) alignPlateToAnchor(rear, anchors.rear, rig)
+type PlateRun = {
+  textures: THREE.CanvasTexture[]
+  decals: THREE.Mesh[]
+}
+
+function applyHumsterPlates(rig: THREE.Object3D, text: string, prev: PlateRun | null): PlateRun {
+  for (const tex of prev?.textures ?? []) tex.dispose()
+  for (const decal of prev?.decals ?? []) {
+    decal.geometry.dispose()
+    ;(decal.material as THREE.Material).dispose()
+    decal.parent?.remove(decal)
+  }
+
+  const textures: THREE.CanvasTexture[] = []
+  const decals: THREE.Mesh[] = []
+
+  const frontRoot = humsterPlateRoot(rig, "front")
+  const rearRoot = humsterPlateRoot(rig, "rear")
+
+  if (frontRoot) {
+    const tex = drawPlateTexture(text)
+    textures.push(tex)
+    const decal = fitDecalOnPlateRoot(frontRoot, tex, DECAL_FRONT)
+    if (decal) decals.push(decal)
+  }
+  if (rearRoot) {
+    const tex = drawPlateTexture(text, true)
+    textures.push(tex)
+    const decal = fitDecalOnPlateRoot(rearRoot, tex, DECAL_REAR)
+    if (decal) decals.push(decal)
+  }
+
+  hideDuplicateRegisterMeshes(rig)
+  rig.updateMatrixWorld(true)
+  return { textures, decals }
 }
 
 export function hideModelLicensePlates(root: THREE.Object3D) {
-  hideBuiltinLicenseMeshes(carRig(root))
+  hideDuplicateRegisterMeshes(carRig(root))
 }
 
 export function attachRegistrationPlates(root: THREE.Object3D, plateText: string): RegistrationPlates {
   const rig = carRig(root)
-
-  const anchorsAtLoad = findPlateAnchors(rig)
-  let frontTex = drawPlateTexture(plateText)
-  let rearTex = drawPlateTexture(plateText, !anchorsAtLoad.rear)
-  const front = makePlateMesh(frontTex, "front")
-  const rear = makePlateMesh(rearTex, "rear")
-  rig.add(front, rear)
-
-  const reposition = () => placePlates(front, rear, rig)
-
-  reposition()
+  let run: PlateRun = { textures: [], decals: [] }
+  run = applyHumsterPlates(rig, plateText, run)
 
   return {
-    reposition,
+    reposition() {
+      rig.updateMatrixWorld(true)
+    },
     setPlate(text: string) {
-      frontTex.dispose()
-      rearTex.dispose()
-      const anchors = findPlateAnchors(rig)
-      frontTex = drawPlateTexture(text)
-      rearTex = drawPlateTexture(text, !anchors.rear)
-      ;(front.material as THREE.MeshBasicMaterial).map = frontTex
-      ;(rear.material as THREE.MeshBasicMaterial).map = rearTex
-      front.material.needsUpdate = true
-      rear.material.needsUpdate = true
-      reposition()
+      run = applyHumsterPlates(rig, text, run)
     },
     dispose() {
-      front.geometry.dispose()
-      rear.geometry.dispose()
-      ;(front.material as THREE.Material).dispose()
-      ;(rear.material as THREE.Material).dispose()
-      frontTex.dispose()
-      rearTex.dispose()
-      rig.remove(front)
-      rig.remove(rear)
+      for (const tex of run.textures) tex.dispose()
+      for (const decal of run.decals) {
+        decal.geometry.dispose()
+        ;(decal.material as THREE.Material).dispose()
+        decal.parent?.remove(decal)
+      }
+      run = { textures: [], decals: [] }
     },
   }
 }

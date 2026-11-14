@@ -4,7 +4,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js"
 import type { CarViewerPalette } from "./car-3d-studio"
 import type { CarModelHandle } from "./car-model-handle"
 import { publicAssetUrl } from "./car-asset-url"
-import { attachRegistrationPlates, hideModelLicensePlates } from "./car-plate-mesh"
+import { attachRegistrationPlates } from "./car-plate-mesh"
 import { applyBodyColorToPaint, applyCarVisualDetails } from "./car-glb-detail"
 
 const MAZDA6_WAGON_GLB = () => publicAssetUrl("models/mazda-6-wagon.glb")
@@ -76,10 +76,8 @@ export async function loadMazda6WagonModel(
     const root = gltf.scene
     orientAndScaleToMeters(root)
 
-    const { paintMats, interiorMats } = applyCarVisualDetails(root, bodyColorHex)
-    hideModelLicensePlates(root)
-
     let plates = plateText.trim() ? attachRegistrationPlates(root, plateText) : null
+    const { paintMats, interiorMats } = applyCarVisualDetails(root, bodyColorHex)
 
     return {
       root,
