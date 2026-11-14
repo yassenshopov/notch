@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { Suspense, lazy, useState } from "react"
 import type { ServerStatsHistory } from "../lib/server-stats-history"
 import type { ServerStatsStatus } from "../lib/server-stats"
 import type { SpotifyStatus } from "../lib/spotify"
@@ -8,7 +8,11 @@ import { SegmentedControl } from "./SegmentedControl"
 import { ServerStatsPanel } from "./ServerStatsPanel"
 import { PiTvPanel } from "./PiTvPanel"
 
-type Tab = "server" | "tv"
+const PiHardwarePanel = lazy(() =>
+  import("./PiHardwarePanel").then((m) => ({ default: m.PiHardwarePanel })),
+)
+
+type Tab = "server" | "tv" | "hardware"
 
 type Props = {
   status: ServerStatsStatus
@@ -35,6 +39,7 @@ export function PiPanel({ spotify, onTvAction, ...statsProps }: Props) {
         options={[
           { value: "server", label: "Server" },
           { value: "tv", label: "TV" },
+          { value: "hardware", label: "Hardware" },
         ]}
         getIndicatorStyle={(id) =>
           id === "tv" ? { boxShadow: `0 0 0 1px ${PI_PANEL_RED}33` } : undefined
@@ -51,8 +56,18 @@ export function PiPanel({ spotify, onTvAction, ...statsProps }: Props) {
             flavor="pi"
             {...statsProps}
           />
-        ) : (
+        ) : tab === "tv" ? (
           <PiTvPanel spotify={spotify} onTvAction={onTvAction} />
+        ) : (
+          <Suspense
+            fallback={
+              <p className="py-8 text-center text-[13px] text-black/45 dark:text-white/45">
+                Loading 3D board…
+              </p>
+            }
+          >
+            <PiHardwarePanel status={statsProps.status} />
+          </Suspense>
         )}
       </div>
     </div>
