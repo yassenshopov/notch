@@ -31,7 +31,7 @@ Captured: 2026-11-08
 
 | Item | Status |
 |------|--------|
-| Tailscale on Windows | Running (`yassen-hp` online) |
+| Tailscale on Windows | `tailscale set --accept-dns=false` if stuck **NoState** (AdGuard DNS + MagicDNS clash); logon task: `register-tailscale-keepalive-task.ps1` |
 | SSH `pi-home` / `pi-ts` | Fixed (`192.168.1.18` / tailnet IP) |
 | Mint 5 GHz | **Done** — `23_5G` (5260 MHz) |
 | AdGuard DNS | **Mint** `192.168.1.12:53` configured; Pi `.18` can stay as fallback until router DHCP updated |
