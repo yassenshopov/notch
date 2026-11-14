@@ -25,7 +25,7 @@ export const DESKTOP_NAV_GROUPS: DesktopNavGroup[] = [
   {
     id: "life",
     label: "Life",
-    panels: ["strava", "pacman"],
+    panels: ["strava", "car", "pacman"],
   },
   {
     id: "servers",

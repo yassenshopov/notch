@@ -22,6 +22,7 @@ import { ClockPanel } from "./ClockPanel"
 import { MarketsPanel } from "./MarketsPanel"
 import { GitHubPanel } from "./GitHubPanel"
 import { StravaPanel } from "./StravaPanel"
+import { CarPanel } from "./CarPanel"
 import { MintPanel } from "./MintPanel"
 import { WifiSensePanel } from "./WifiSensePanel"
 import type { WifiSenseLiveState } from "../lib/wifi-sense"
@@ -265,6 +266,8 @@ export function NotchActivePanel(props: Props) {
         onDisconnect={() => void disconnectStrava()}
       />
     )
+  } else if (activePanel === "car") {
+    body = <CarPanel />
   } else if (activePanel === "mint") {
     body = (
       <MintPanel
@@ -343,7 +346,11 @@ export function NotchActivePanel(props: Props) {
   return (
     <PanelPageTransition
       panelKey={activePanel}
-      className={layout === "compact" ? "flex h-full min-h-0 flex-col" : undefined}
+      className={
+        layout === "compact"
+          ? "flex h-full min-h-0 flex-col"
+          : "min-h-0 w-full shrink-0"
+      }
     >
       {wrap(body)}
     </PanelPageTransition>

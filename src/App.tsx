@@ -24,7 +24,7 @@ export default function App() {
   if (desktopRoute.isDesktop) {
     return (
       <TimerEngineProvider>
-        <main className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+        <main className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
           <DesktopApp initialPanel={desktopRoute.panel} />
         </main>
       </TimerEngineProvider>

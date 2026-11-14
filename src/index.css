@@ -18,8 +18,16 @@ html.notch-desktop body {
 }
 
 html.notch-desktop,
-html.notch-desktop body,
+html.notch-desktop body {
+  background: #f7f7f5 !important;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
 html.notch-desktop #root {
+  display: flex;
+  flex-direction: column;
   background: #f7f7f5 !important;
   overflow: hidden;
   height: 100%;

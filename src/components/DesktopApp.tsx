@@ -84,7 +84,7 @@ export function DesktopApp({ initialPanel }: Props) {
     <PanelLayoutContext.Provider value="desktop">
       <div
         className={cn(
-          "flex h-full min-h-0 w-full flex-1 transition-colors duration-[480ms] ease-[var(--notch-ease)]",
+          "flex h-full max-h-full min-h-0 w-full flex-1 overflow-hidden transition-colors duration-[480ms] ease-[var(--notch-ease)]",
           bg,
           dark ? "text-white" : "text-[#111111]",
         )}
@@ -98,7 +98,7 @@ export function DesktopApp({ initialPanel }: Props) {
         />
         <main
           ref={mainRef}
-          className="desktop-scroll min-h-0 min-w-0 flex-1 basis-0 overflow-y-scroll overflow-x-hidden px-6 py-6 sm:px-8 sm:py-8"
+          className="desktop-scroll min-h-0 min-w-0 flex-1 basis-0 overflow-x-hidden overflow-y-auto px-6 py-6 sm:px-8 sm:py-8"
         >
           <div className="mx-auto w-full max-w-7xl">
             <NotchActivePanel
