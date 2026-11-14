@@ -14,6 +14,10 @@ release
 *.local
 .env
 .DS_Store
+_car_import/
+public/models/mazda-6-wagon-raw.glb
+public/models/mazda-6-wagon-parts.glb
+scripts/*.pyc
 
 # Editor directories and files
 .vscode/*
