@@ -12,7 +12,8 @@ import {
   GARAGE_BACKDROP_PALETTES,
   type CarViewerBackdrop,
 } from "./car-viewer-backdrop"
-import { loadMazda6WagonModel, type CarModelHandle } from "./car-glb-model"
+import type { CarModelHandle } from "./car-model-handle"
+import { loadCarViewerModel, type CarViewerModelId } from "./car-model-loader"
 
 export type CarModelLoadState = "loading" | "ready" | "error"
 
@@ -66,7 +67,13 @@ function frameCar(
 
 export function createCarScene(
   container: HTMLElement,
-  opts: { bodyColor: string; status: CarStatus; plate?: string; dark?: boolean },
+  opts: {
+    bodyColor: string
+    status: CarStatus
+    plate?: string
+    dark?: boolean
+    modelId?: CarViewerModelId
+  },
 ): CarSceneHandle {
   let theme: CarViewerTheme = opts.dark ? "dark" : "light"
   let backdrop: CarViewerBackdrop = "studio"
@@ -236,7 +243,8 @@ export function createCarScene(
   resize()
   animate()
 
-  void loadMazda6WagonModel(palette(), bodyColor, plate)
+  const modelId = opts.modelId ?? "mazda-6-wagon"
+  void loadCarViewerModel(modelId, palette(), bodyColor, plate)
     .then((loaded) => {
       if (disposed) {
         loaded.dispose()
@@ -244,6 +252,7 @@ export function createCarScene(
       }
       model = loaded
       scene.add(loaded.root)
+      loaded.setBodyColor(bodyColor)
       setModelLoadState("ready")
       resize()
       loaded.repositionPlates?.()

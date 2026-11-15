@@ -1,6 +1,8 @@
 import { Grid3x3, Hand, Moon, Sun, Warehouse } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { CarStatus } from "../lib/car-mock"
+import { CAR_MINI_VIEWER_REVISION } from "../lib/car-glb-model"
+import type { CarViewerModelId } from "../lib/car-model-loader"
 import { createCarScene, type CarSceneHandle } from "../lib/car-scene"
 import type { CarViewerBackdrop } from "../lib/car-viewer-backdrop"
 import { cn } from "../lib/utils"
@@ -10,6 +12,7 @@ type Props = {
   bodyColor: string
   status: CarStatus
   plate?: string
+  modelId?: CarViewerModelId
   className?: string
   label?: string
 }
@@ -17,7 +20,14 @@ type Props = {
 const studioBtn =
   "rounded-lg border p-1.5 transition-colors"
 
-export function CarModelViewer({ bodyColor, status, plate = "", className, label = "3D car model" }: Props) {
+export function CarModelViewer({
+  bodyColor,
+  status,
+  plate = "",
+  modelId = "mazda-6-wagon",
+  className,
+  label = "3D car model",
+}: Props) {
   const appDark = useTheme()
   const [viewerDark, setViewerDark] = useState(appDark)
   const [panEnabled, setPanEnabled] = useState(false)
@@ -28,13 +38,13 @@ export function CarModelViewer({ bodyColor, status, plate = "", className, label
   useEffect(() => {
     const el = mountRef.current
     if (!el) return
-    const handle = createCarScene(el, { bodyColor, status, plate, dark: viewerDark })
+    const handle = createCarScene(el, { bodyColor, status, plate, modelId, dark: viewerDark })
     sceneRef.current = handle
     return () => {
       handle.dispose()
       sceneRef.current = null
     }
-  }, [])
+  }, [modelId, CAR_MINI_VIEWER_REVISION])
 
   useEffect(() => {
     sceneRef.current?.setDark(viewerDark)

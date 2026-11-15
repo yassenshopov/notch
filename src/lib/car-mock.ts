@@ -1,6 +1,13 @@
+import type { CarViewerModelId } from "./car-model-loader"
+
 export type CarStatus = "parked" | "driving" | "idle"
 
+export type CarId = "mazda6" | "mini-clubman"
+
 export type CarVehicle = {
+  id: CarId
+  /** Which 3D asset to load in the studio viewer */
+  viewerModel: CarViewerModelId
   displayName: string
   make: string
   model: string
@@ -119,9 +126,21 @@ export type CarSnapshot = {
 
 export const EMPTY = "—"
 
+const DEFAULT_LIVE_PIDS: CarObdLivePid[] = [
+  { pid: "010C", label: "Engine RPM", value: null, unit: "rpm" },
+  { pid: "010D", label: "Vehicle speed", value: null, unit: "km/h" },
+  { pid: "0105", label: "Coolant temp", value: null, unit: "°C" },
+  { pid: "0104", label: "Engine load", value: null, unit: "%" },
+  { pid: "0111", label: "Throttle", value: null, unit: "%" },
+  { pid: "012F", label: "Fuel level", value: null, unit: "%" },
+  { pid: "0142", label: "ECU voltage", value: null, unit: "V" },
+]
+
 /** Registration-backed snapshot; telemetry/trips filled when integrated */
-export const CAR_MOCK_SNAPSHOT: CarSnapshot = {
+export const MAZDA6_CAR_SNAPSHOT: CarSnapshot = {
   vehicle: {
+    id: "mazda6",
+    viewerModel: "mazda-6-wagon",
     displayName: "Daily driver",
     make: "Mazda",
     model: "6",
@@ -220,14 +239,136 @@ export const CAR_MOCK_SNAPSHOT: CarSnapshot = {
     milOn: null,
     lastScanAt: null,
     dtcs: [],
-    livePids: [
-      { pid: "010C", label: "Engine RPM", value: null, unit: "rpm" },
-      { pid: "010D", label: "Vehicle speed", value: null, unit: "km/h" },
-      { pid: "0105", label: "Coolant temp", value: null, unit: "°C" },
-      { pid: "0104", label: "Engine load", value: null, unit: "%" },
-      { pid: "0111", label: "Throttle", value: null, unit: "%" },
-      { pid: "012F", label: "Fuel level", value: null, unit: "%" },
-      { pid: "0142", label: "ECU voltage", value: null, unit: "V" },
-    ],
+    livePids: DEFAULT_LIVE_PIDS,
   },
 }
+
+/** Sister's Mini Cooper Clubman — registration data from vehicle docs */
+export const MINI_CLUBMAN_CAR_SNAPSHOT: CarSnapshot = {
+  vehicle: {
+    id: "mini-clubman",
+    viewerModel: "mini-clubman-jcw",
+    displayName: "Sister's Mini",
+    make: "Mini",
+    model: "Cooper Clubman",
+    year: 2010,
+    generation: "R55",
+    bodyStyle: "Station wagon (Combi)",
+    trim: "Diesel · Automatic",
+    plate: "CA9290XA",
+    vin: "WMWMN51050TR90878",
+    engineNumber: "0003645",
+    firstRegistration: "2010-06-22",
+    paintName: "Black · white roof",
+    status: "idle",
+    statusLabel: EMPTY,
+    odometerKm: null,
+    fuelPercent: null,
+    rangeKm: null,
+    locationLabel: null,
+    bodyColor: "#0a0a0c",
+  },
+  specs: [
+    { label: "Engine", value: "Diesel" },
+    { label: "Power", value: EMPTY },
+    { label: "Transmission", value: "Automatic · FWD" },
+    { label: "Emissions", value: "Euro 4" },
+    { label: "Seats", value: "4 (3+1)" },
+    { label: "First reg.", value: "22 Jun 2010" },
+    { label: "Color", value: "Black · white roof & mirror caps" },
+    { label: "Purchased", value: "1 Oct 2025" },
+  ],
+  activeTrip: null,
+  tripHistory: [],
+  drivingSegments: [],
+  maintenance: [
+    { id: "vehicle-tax", label: "Vehicle tax (Данък МПС)", detail: "Due 4 Mar 2026" },
+    { id: "gtp", label: "GTP (technical inspection)", detail: "Due 26 Apr 2026" },
+    { id: "go", label: "Civil liability (GO)", detail: "Due 6 Feb 2027" },
+    { id: "vignette", label: "Vignette", detail: "Due 22 Feb 2027" },
+  ],
+  technicalSheet: [
+    {
+      id: "registration",
+      title: "Registration",
+      rows: [
+        { label: "Plate", value: "CA 9290 XA" },
+        { label: "VIN", value: "WMWMN51050TR90878" },
+        { label: "Engine no.", value: "0003645" },
+        { label: "First registration", value: "22 Jun 2010" },
+        { label: "Category", value: "M1 · passenger car" },
+        { label: "Acquired", value: "1 Oct 2025 · private owner" },
+      ],
+    },
+    {
+      id: "vehicle",
+      title: "Vehicle",
+      rows: [
+        { label: "Make / model", value: "Mini Cooper Clubman" },
+        { label: "Generation", value: "R55 (2007–2014)" },
+        { label: "Body", value: "Station wagon (Combi)" },
+        { label: "Trim", value: "Diesel · Automatic" },
+        { label: "Color", value: "Black · white roof & mirror caps" },
+        { label: "Seats", value: "4 (3+1)" },
+      ],
+    },
+    {
+      id: "powertrain",
+      title: "Powertrain",
+      rows: [
+        { label: "Engine", value: "Diesel" },
+        { label: "Power", value: EMPTY },
+        { label: "Transmission", value: "Automatic" },
+        { label: "Drive", value: "Front-wheel drive" },
+        { label: "Fuel", value: "Diesel" },
+        { label: "Emissions", value: "Euro 4" },
+      ],
+    },
+    {
+      id: "homologation",
+      title: "Documents & compliance",
+      rows: [
+        { label: "Vehicle tax", value: "Due 4 Mar 2026" },
+        { label: "GTP (TA)", value: "Valid until 26 Apr 2026" },
+        { label: "Vignette", value: "Until 22 Feb 2027" },
+        { label: "Civil liability (GO)", value: "Until 6 Feb 2027" },
+      ],
+    },
+  ],
+  obd: {
+    adapter: {
+      name: "—",
+      model: "—",
+      interface: "OBD-II",
+      link: "bluetooth",
+      status: "disconnected",
+      statusLabel: "No adapter linked for this vehicle",
+      notes: "Pair a dongle when you want live scans for the Clubman.",
+    },
+    milOn: null,
+    lastScanAt: null,
+    dtcs: [],
+    livePids: DEFAULT_LIVE_PIDS,
+  },
+}
+
+export type CarCatalogEntry = {
+  id: CarId
+  snapshot: CarSnapshot
+}
+
+export const CAR_CATALOG: CarCatalogEntry[] = [
+  { id: "mazda6", snapshot: MAZDA6_CAR_SNAPSHOT },
+  { id: "mini-clubman", snapshot: MINI_CLUBMAN_CAR_SNAPSHOT },
+]
+
+export const DEFAULT_CAR_ID: CarId = "mazda6"
+
+export function getCarSnapshot(id: CarId): CarSnapshot {
+  const hit = CAR_CATALOG.find((c) => c.id === id)
+  if (!hit) return MAZDA6_CAR_SNAPSHOT
+  return hit.snapshot
+}
+
+/** @deprecated use `getCarSnapshot` / `CAR_CATALOG` */
+export const CAR_MOCK_SNAPSHOT = MAZDA6_CAR_SNAPSHOT

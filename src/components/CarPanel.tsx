@@ -11,13 +11,18 @@ import {
   Wrench,
 } from "lucide-react"
 import {
-  CAR_MOCK_SNAPSHOT,
+  CAR_CATALOG,
+  DEFAULT_CAR_ID,
+  getCarSnapshot,
   EMPTY,
   type CarDtc,
+  type CarId,
   type CarSnapshot,
   type CarTrip,
   type ObdAdapterStatus,
 } from "../lib/car-mock"
+import { CAR_MINI_VIEWER_REVISION } from "../lib/car-glb-model"
+import type { CarViewerModelId } from "../lib/car-model-loader"
 import { usePanelLayout } from "../lib/panel-layout"
 import { cn, formatShortDate } from "../lib/utils"
 import { SegmentedControl } from "./SegmentedControl"
@@ -46,12 +51,14 @@ function CarModel3D({
   bodyColor,
   status,
   plate,
+  modelId,
   className,
   label,
 }: {
   bodyColor: string
   status: CarSnapshot["vehicle"]["status"]
   plate: string
+  modelId: CarViewerModelId
   className?: string
   label: string
 }) {
@@ -73,6 +80,7 @@ function CarModel3D({
         bodyColor={bodyColor}
         status={status}
         plate={plate}
+        modelId={modelId}
         className={className}
         label={label}
       />
@@ -241,13 +249,50 @@ function CarSectionCard({ title, children }: { title: string; children: ReactNod
   )
 }
 
+function carPickerLabel(snapshot: CarSnapshot) {
+  const { vehicle } = snapshot
+  return `${vehicle.year} ${vehicle.make} ${vehicle.model} · ${vehicle.displayName}`
+}
+
+function CarVehiclePicker({
+  carId,
+  onChange,
+  compact,
+}: {
+  carId: CarId
+  onChange: (id: CarId) => void
+  compact?: boolean
+}) {
+  return (
+    <select
+      value={carId}
+      onChange={(e) => onChange(e.target.value as CarId)}
+      className={cn(
+        "max-w-full truncate rounded-lg border border-black/10 bg-black/[0.03] py-1 font-medium text-black/75 dark:border-white/15 dark:bg-white/[0.06] dark:text-white/85",
+        compact ? "px-2 text-[11px]" : "px-2.5 text-[12px]",
+      )}
+      aria-label="Choose vehicle"
+    >
+      {CAR_CATALOG.map((entry) => (
+        <option key={entry.id} value={entry.id}>
+          {carPickerLabel(entry.snapshot)}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function CarPanelChrome({
   snapshot,
+  carId,
+  onCarChange,
   desktop,
   tab,
   onTabChange,
 }: {
   snapshot: CarSnapshot
+  carId: CarId
+  onCarChange: (id: CarId) => void
   desktop: boolean
   tab: CarTab
   onTabChange: (t: CarTab) => void
@@ -258,12 +303,10 @@ function CarPanelChrome({
   return (
     <div className={cn("shrink-0", desktop ? "space-y-3" : "space-y-2")}>
       <div className="flex min-h-[1.75rem] items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-black/40 dark:text-white/40">
-          {desktop ? vehicle.displayName : "Car"}
-        </p>
+        <CarVehiclePicker carId={carId} onChange={onCarChange} compact={!desktop} />
         <span
           className={cn(
-            "max-w-[50%] truncate rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+            "max-w-[40%] shrink-0 truncate rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
             statusPill(vehicle.status),
           )}
         >
@@ -366,9 +409,11 @@ function CarOverviewTab({ snapshot, desktop }: { snapshot: CarSnapshot; desktop:
 
         <div className="relative min-h-[min(58vh,520px)]">
           <CarModel3D
+            key={`${vehicle.id}-r${CAR_MINI_VIEWER_REVISION}`}
             bodyColor={vehicle.bodyColor}
             status={vehicle.status}
             plate={vehicle.plate}
+            modelId={vehicle.viewerModel}
             className="h-full min-h-[inherit] w-full border-0 bg-gradient-to-b from-black/[0.03] via-black/[0.01] to-black/[0.05] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:from-white/[0.06] dark:via-transparent dark:to-white/[0.04]"
             label={modelLabel}
           />
@@ -420,9 +465,11 @@ function CarOverviewTab({ snapshot, desktop }: { snapshot: CarSnapshot; desktop:
 
       <div className="relative shrink-0">
         <CarModel3D
+          key={vehicle.id}
           bodyColor={vehicle.bodyColor}
           status={vehicle.status}
           plate={vehicle.plate}
+          modelId={vehicle.viewerModel}
           className="h-[min(42vw,220px)] w-full border-0 bg-gradient-to-b from-black/[0.03] to-black/[0.06] dark:from-white/[0.05] dark:to-white/[0.03]"
           label={modelLabel}
         />
@@ -660,16 +707,25 @@ function CarDtcTab({ snapshot, desktop }: { snapshot: CarSnapshot; desktop: bool
 }
 
 type Props = {
-  snapshot?: CarSnapshot
+  initialCarId?: CarId
 }
 
-export function CarPanel({ snapshot = CAR_MOCK_SNAPSHOT }: Props) {
+export function CarPanel({ initialCarId = DEFAULT_CAR_ID }: Props) {
   const desktop = usePanelLayout() === "desktop"
   const [tab, setTab] = useState<CarTab>("overview")
+  const [carId, setCarId] = useState<CarId>(initialCarId)
+  const snapshot = getCarSnapshot(carId)
 
   return (
     <div className={cn(desktop ? "pb-8" : "flex h-full min-h-0 flex-col gap-3")}>
-      <CarPanelChrome snapshot={snapshot} desktop={desktop} tab={tab} onTabChange={setTab} />
+      <CarPanelChrome
+        snapshot={snapshot}
+        carId={carId}
+        onCarChange={setCarId}
+        desktop={desktop}
+        tab={tab}
+        onTabChange={setTab}
+      />
 
       <div className={cn(desktop ? "mt-5" : "min-h-0 flex-1 overflow-y-auto pr-1", "min-h-0")}>
         {tab === "overview" ? (
