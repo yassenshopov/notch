@@ -210,9 +210,9 @@ interface NotchBridge {
   }
   strava: {
     status: (options?: { force?: boolean }) => Promise<StravaBridgeStatus>
-    activity: (activityId: number) => Promise<import("./lib/strava").StravaActivitySummary>
+    activity: (activityId: string) => Promise<import("./lib/strava").StravaActivitySummary>
     activityStreams: (
-      activityId: number,
+      activityId: string,
     ) => Promise<import("./lib/strava").StravaActivityStreams | null>
     connect: () => Promise<StravaBridgeStatus>
     disconnect: () => Promise<StravaBridgeStatus>

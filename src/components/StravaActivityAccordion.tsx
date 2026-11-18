@@ -33,7 +33,7 @@ export function StravaActivityAccordion({
   listStyle = "card",
 }: Props) {
   const plain = listStyle === "plain"
-  const [openId, setOpenId] = useState<number | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const toggle = (activity: StravaActivitySummary) => {
     setOpenId((id) => (id === activity.id ? null : activity.id))

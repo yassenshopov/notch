@@ -134,7 +134,7 @@ async function getAccessToken() {
     access_token: refreshed.access_token,
     refresh_token: refreshed.refresh_token || tokens.refresh_token,
     expires_at: Date.now() + (refreshed.expires_in ?? 21600) * 1000,
-    athlete_id: refreshed.athlete?.id ?? tokens.athlete_id,
+    athlete_id: stravaObjectId(refreshed.athlete) ?? tokens.athlete_id,
   }
   writeTokens(next)
   return next.access_token
@@ -158,9 +158,28 @@ async function stravaFetch(pathname, options = {}) {
   return res
 }
 
+/** Prefer Strava `id_str` so 64-bit activity/athlete ids stay exact in JS. */
+function stravaObjectId(obj) {
+  if (!obj || typeof obj !== "object") return null
+  if (typeof obj.id_str === "string" && /^\d+$/.test(obj.id_str)) return obj.id_str
+  if (typeof obj.id === "string" && /^\d+$/.test(obj.id)) return obj.id
+  if (typeof obj.id === "number" && Number.isFinite(obj.id) && obj.id > 0) {
+    return String(Math.trunc(obj.id))
+  }
+  return null
+}
+
+function normalizeStoredActivity(a) {
+  if (!a || typeof a !== "object") return null
+  const id = stravaObjectId(a)
+  if (!id) return null
+  return { ...a, id }
+}
+
 function mapActivity(a) {
+  const id = stravaObjectId(a)
   return {
-    id: a.id,
+    id,
     name: a.name,
     type: a.sport_type || a.type,
     startDate: a.start_date_local || a.start_date,
@@ -184,7 +203,7 @@ function mapActivity(a) {
     startLng: Array.isArray(a.start_latlng) ? a.start_latlng[1] : null,
     sufferScore: a.suffer_score ?? null,
     polyline: a.map?.polyline || a.map?.summary_polyline || null,
-    url: `https://www.strava.com/activities/${a.id}`,
+    url: `https://www.strava.com/activities/${id}`,
   }
 }
 
@@ -463,12 +482,18 @@ function buildRouteHeatmap(activities) {
 }
 
 async function syncActivityIndex(athleteId, { force = false } = {}) {
+  const athleteKey = athleteId == null ? null : String(athleteId)
   const existing = readActivityIndex()
   const merged = new Map()
 
-  if (existing?.athleteId === athleteId && Array.isArray(existing.activities)) {
-    for (const a of existing.activities) {
-      if (a?.id) merged.set(a.id, a)
+  if (
+    existing?.athleteId != null &&
+    String(existing.athleteId) === athleteKey &&
+    Array.isArray(existing.activities)
+  ) {
+    for (const row of existing.activities) {
+      const a = normalizeStoredActivity(row)
+      if (a) merged.set(a.id, a)
     }
   }
 
@@ -486,6 +511,7 @@ async function syncActivityIndex(athleteId, { force = false } = {}) {
     let pageAllKnown = true
     for (const row of raw) {
       const mapped = mapActivity(row)
+      if (!mapped.id) continue
       if (!merged.has(mapped.id)) pageAllKnown = false
       merged.set(mapped.id, mapped)
     }
@@ -500,7 +526,7 @@ async function syncActivityIndex(athleteId, { force = false } = {}) {
   )
 
   writeActivityIndex({
-    athleteId,
+    athleteId: athleteKey,
     syncedAt: Date.now(),
     activities,
   })
@@ -517,16 +543,22 @@ async function fetchStatusPayload(options = {}) {
   const athleteRes = await stravaFetch("/athlete")
   if (!athleteRes.ok) throw new Error(`strava_http_${athleteRes.status}`)
   const athlete = await athleteRes.json()
+  const athleteId = stravaObjectId(athlete)
+  if (!athleteId) throw new Error("strava_missing_athlete_id")
 
   const [activities, statsRes] = await Promise.all([
-    syncActivityIndex(athlete.id, { force }).catch((err) => {
+    syncActivityIndex(athleteId, { force }).catch((err) => {
       const cached = readActivityIndex()
-      if (cached?.athleteId === athlete.id && Array.isArray(cached.activities)) {
-        return cached.activities
+      if (
+        cached?.athleteId != null &&
+        String(cached.athleteId) === athleteId &&
+        Array.isArray(cached.activities)
+      ) {
+        return cached.activities.map(normalizeStoredActivity).filter(Boolean)
       }
       throw err
     }),
-    stravaFetch(`/athletes/${athlete.id}/stats`),
+    stravaFetch(`/athletes/${athleteId}/stats`),
   ])
 
   let stats = null
@@ -556,7 +588,7 @@ async function fetchStatusPayload(options = {}) {
   return {
     login: `${athlete.firstname ?? ""} ${athlete.lastname ?? ""}`.trim() || athlete.username,
     avatarUrl: athlete.profile_medium || athlete.profile || null,
-    athleteId: athlete.id,
+    athleteId,
     stats,
     streak,
     calendar,
@@ -616,7 +648,7 @@ async function status(options = {}) {
   }
 
   try {
-    const data = await cache.get("strava:status:v6", {
+    const data = await cache.get("strava:status:v7", {
       ttlMs: STATUS_TTL_MS,
       staleMs: STATUS_STALE_MS,
       force,
@@ -699,7 +731,7 @@ function startAuth() {
           access_token: tokens.access_token,
           refresh_token: tokens.refresh_token,
           expires_at: Date.now() + (tokens.expires_in ?? 21600) * 1000,
-          athlete_id: tokens.athlete?.id,
+          athlete_id: stravaObjectId(tokens.athlete),
         })
 
         res.writeHead(200, { "Content-Type": "text/html" })
@@ -745,6 +777,7 @@ function disconnect() {
   cache.invalidate?.("strava:status:v4")
   cache.invalidate?.("strava:status:v5")
   cache.invalidate?.("strava:status:v6")
+  cache.invalidate?.("strava:status:v7")
   cache.invalidatePrefix?.("strava:activity:")
   cache.invalidatePrefix?.("strava:activity-streams:")
   try {
@@ -803,13 +836,23 @@ async function fetchWeatherTempC(startDate, lat, lng) {
   }
 }
 
-async function getActivity(activityId) {
-  const id = Number(activityId)
-  if (!Number.isFinite(id) || id <= 0) {
+function normalizeActivityId(activityId) {
+  const id =
+    typeof activityId === "string"
+      ? activityId.trim()
+      : typeof activityId === "number" && Number.isFinite(activityId)
+        ? String(Math.trunc(activityId))
+        : ""
+  if (!/^\d+$/.test(id) || id === "0") {
     throw new Error("invalid_activity_id")
   }
+  return id
+}
 
-  return cache.get(`strava:activity:v5:${id}`, {
+async function getActivity(activityId) {
+  const id = normalizeActivityId(activityId)
+
+  return cache.get(`strava:activity:v6:${id}`, {
     ttlMs: ACTIVITY_DETAIL_TTL_MS,
     staleMs: ACTIVITY_DETAIL_STALE_MS,
     fetcher: async () => {
@@ -818,7 +861,8 @@ async function getActivity(activityId) {
         throw new Error(`strava_http_${res.status}`)
       }
       const activity = mapActivity(await res.json())
-      const streams = await fetchActivityStreams(id)
+      if (!activity.id) throw new Error("strava_missing_activity_id")
+      const streams = await fetchActivityStreams(activity.id)
       const weatherTempC = await fetchWeatherTempC(
         activity.startDate,
         activity.startLat,
@@ -830,12 +874,9 @@ async function getActivity(activityId) {
 }
 
 async function getActivityStreams(activityId) {
-  const id = Number(activityId)
-  if (!Number.isFinite(id) || id <= 0) {
-    throw new Error("invalid_activity_id")
-  }
+  const id = normalizeActivityId(activityId)
 
-  return cache.get(`strava:activity-streams:${id}`, {
+  return cache.get(`strava:activity-streams:v2:${id}`, {
     ttlMs: ACTIVITY_DETAIL_TTL_MS,
     staleMs: ACTIVITY_DETAIL_STALE_MS,
     fetcher: async () => fetchActivityStreams(id),

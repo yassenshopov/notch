@@ -1,7 +1,7 @@
 import type { StravaCalendar, StravaCalendarCell } from "./strava"
 
 export type StravaCalendarActivity = {
-  id: number
+  id: string
   type: string
   startDate: string
 }

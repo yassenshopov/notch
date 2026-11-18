@@ -1,5 +1,6 @@
 export type StravaActivitySummary = {
-  id: number
+  /** String form of Strava's activity id (`id_str`) — safe for 64-bit ids. */
+  id: string
   name: string
   type: string
   startDate: string
@@ -45,7 +46,7 @@ export type StravaCalendarCell = {
   inMonth: boolean
   date: string | null
   day: number | null
-  activities: { id: number; type: string }[]
+  activities: { id: string; type: string }[]
   isToday?: boolean
 }
 
@@ -64,7 +65,7 @@ export type StravaHeatmapBounds = {
 }
 
 export type StravaHeatmapRoute = {
-  id?: number
+  id?: string
   polyline: string
   type: string
 }
@@ -109,11 +110,11 @@ export type StravaStatus = {
   connected: boolean
   login: string | null
   avatarUrl: string | null
-  athleteId: number | null
+  athleteId: string | null
   stats: StravaStats | null
   streak: { weeks: number; activitiesInStreak: number } | null
   calendar: StravaCalendar | null
-  calendarActivities: { id: number; type: string; startDate: string }[]
+  calendarActivities: { id: string; type: string; startDate: string }[]
   heatmap: StravaHeatmap | null
   heatmapRouteCount?: number
   activitiesSyncedAt?: number | null
@@ -337,11 +338,11 @@ export function buildStravaRoutePath(encoded: string): { lat: number; lng: numbe
   return densifyRoutePoints(decodePolyline(encoded))
 }
 
-const activityDetailCache = new Map<number, StravaActivitySummary>()
-const activityDetailInflight = new Map<number, Promise<StravaActivitySummary>>()
+const activityDetailCache = new Map<string, StravaActivitySummary>()
+const activityDetailInflight = new Map<string, Promise<StravaActivitySummary>>()
 
 export async function fetchStravaActivity(
-  id: number,
+  id: string,
   options?: { force?: boolean },
 ): Promise<StravaActivitySummary> {
   const bridge = window.notch?.strava
@@ -381,11 +382,11 @@ export async function fetchStravaActivity(
   }
 }
 
-const activityStreamsCache = new Map<number, StravaActivityStreams | null>()
-const activityStreamsInflight = new Map<number, Promise<StravaActivityStreams | null>>()
+const activityStreamsCache = new Map<string, StravaActivityStreams | null>()
+const activityStreamsInflight = new Map<string, Promise<StravaActivityStreams | null>>()
 
 export async function fetchStravaActivityStreams(
-  id: number,
+  id: string,
   options?: { force?: boolean },
 ): Promise<StravaActivityStreams | null> {
   const bridge = window.notch?.strava
