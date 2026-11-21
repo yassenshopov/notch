@@ -144,14 +144,15 @@ export function GitHubDayRepoPieChart({ total, repos, className, size = 64 }: Pr
         repo: "__activity__",
         label: "PRs & reviews",
         count: nonCommit,
-        color: "rgba(120,120,120,0.35)",
+        color: GITHUB_REPO_OTHER_COLOR,
       })
     }
-    if (slices.length === 0 || pieTotal <= 0) {
+    const wedgeTotal = slices.reduce((sum, s) => sum + s.count, 0)
+    if (slices.length === 0 || wedgeTotal <= 0) {
       return { wedges: [] as ReturnType<typeof buildDonutWedges>, legend: [] as Slice[] }
     }
     return {
-      wedges: buildDonutWedges(slices, pieTotal, size),
+      wedges: buildDonutWedges(slices, wedgeTotal, size),
       legend: slices,
     }
   }, [repos, total, size, repoColors])
