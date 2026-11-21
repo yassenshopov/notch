@@ -43,6 +43,9 @@ type Props = {
   ariaDescription?: string
   /** Pad through Dec 31 (incl. future empty days) before building columns. */
   calendarYear?: number
+  /** Open detail UI (e.g. Spotify day dialog). */
+  onDayClick?: (day: GitHubContributionDay) => void
+  selectedDayDate?: string | null
 }
 
 const dayBreakdownCache = new Map<string, GitHubTodayBreakdown>()
@@ -330,6 +333,8 @@ export function GitHubContributionHeatmap({
   formatCount,
   ariaDescription,
   calendarYear,
+  onDayClick,
+  selectedDayDate,
 }: Props) {
   const defaultWeekCount =
     variant === "mini" ? 12 : variant === "desktop" || variant === "year" ? 53 : 26
@@ -468,8 +473,10 @@ export function GitHubContributionHeatmap({
         col.map((day, ri) => {
           const isPad = !day.date
           const active = !isPad && hover?.day.date === day.date
+          const selected = !isPad && Boolean(selectedDayDate) && day.date === selectedDayDate
           const interactive =
             !isPad && (variant === "panel" || variant === "year" || variant === "desktop")
+          const clickable = interactive && Boolean(onDayClick)
           const spotifyDay = isSpotifyListeningDay(day) ? day : null
           const coverUrl = coverGrid && day.count > 0 ? spotifyDay?.artUrl : null
           const fill =
@@ -497,12 +504,33 @@ export function GitHubContributionHeatmap({
                   "bg-[#1db954]/35 dark:bg-[#1db954]/30",
                 coverGrid && !isPad && day.count <= 0 && "bg-black/[0.06] dark:bg-white/[0.08]",
                 !coverGrid && active && "ring-1 ring-black/35 dark:ring-white/45",
-                coverGrid && active && "ring-2 ring-[#1db954]/70 ring-offset-1 ring-offset-transparent",
-                interactive && "cursor-crosshair",
+                coverGrid && (active || selected) &&
+                  "ring-2 ring-[#1db954]/70 ring-offset-1 ring-offset-transparent",
+                !coverGrid && selected && "ring-2 ring-[#1db954]/80",
+                interactive && (clickable ? "cursor-pointer" : "cursor-crosshair"),
                 coverGrid && !isPad && "overflow-hidden",
               )}
               onMouseEnter={(e) => showTip(day, e.currentTarget)}
               onFocus={(e) => showTip(day, e.currentTarget)}
+              onClick={
+                clickable
+                  ? (e) => {
+                      e.stopPropagation()
+                      onDayClick?.(day)
+                    }
+                  : undefined
+              }
+              onKeyDown={
+                clickable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        onDayClick?.(day)
+                      }
+                    }
+                  : undefined
+              }
               tabIndex={interactive ? 0 : -1}
             />
           )

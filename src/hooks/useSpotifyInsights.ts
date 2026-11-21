@@ -27,9 +27,9 @@ export function useSpotifyInsights(active: boolean, chartYear?: number) {
   const [loading, setLoading] = useState(() => active)
 
   const refresh = useCallback(
-    async (force = false) => {
+    async () => {
       if (!active) return
-      if (force) setLoading(true)
+      setLoading(true)
       try {
         const data = await fetchSpotifyInsights({ year: chartYear })
         setInsights(data)

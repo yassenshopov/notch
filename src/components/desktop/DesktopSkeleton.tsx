@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { Icon } from "@iconify/react"
 import { RefreshCw } from "lucide-react"
 import { BentoGrid, BentoTile, bentoPad } from "./DesktopBento"
@@ -6,13 +7,15 @@ import { cn } from "../../lib/utils"
 
 type BlockProps = {
   className?: string
+  style?: CSSProperties
 }
 
 /** Pulsing placeholder bar for desktop fullscreen panel skeletons. */
-export function SkeletonBlock({ className }: BlockProps) {
+export function SkeletonBlock({ className, style }: BlockProps) {
   return (
     <div
       className={cn("animate-pulse rounded-lg bg-black/[0.07] dark:bg-white/[0.09]", className)}
+      style={style}
       aria-hidden
     />
   )

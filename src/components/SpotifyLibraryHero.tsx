@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react"
+import { useCallback, useMemo, useState, type ReactNode } from "react"
 import type { SpotifyActivityInsights } from "../lib/spotify-insights"
 import { formatListeningMinutes } from "../lib/spotify-insights"
 import { padContributionWeeksToCalendarYear } from "../lib/contribution-calendar-year"
@@ -9,6 +9,11 @@ import { SpotifyTopLists } from "./SpotifyTopLists"
 import { SpotifyProfileHeader } from "./SpotifyProfileHeader"
 import { SpotifyMonthlyListeningChart } from "./SpotifyMonthlyListening"
 import { AnimatedNumber } from "./AnimatedNumber"
+import {
+  SpotifyLibraryHeroSkeleton,
+  SpotifyListeningHeatmapSkeleton,
+} from "./SpotifySkeleton"
+import { SpotifyListeningDayModal } from "./SpotifyListeningDayModal"
 import { cn } from "../lib/utils"
 
 type GridMode = "covers" | "heatmap"
@@ -32,6 +37,18 @@ export function SpotifyLibraryHero({
 }: Props) {
   const currentYear = new Date().getFullYear()
   const [gridMode, setGridMode] = useState<GridMode>("covers")
+  const [selectedDay, setSelectedDay] = useState<SpotifyListeningDay | null>(null)
+  const [dayModalOpen, setDayModalOpen] = useState(false)
+
+  const openDay = useCallback((day: SpotifyListeningDay) => {
+    if (!day.date) return
+    setSelectedDay(day)
+    setDayModalOpen(true)
+  }, [])
+
+  const closeDay = useCallback(() => {
+    setDayModalOpen(false)
+  }, [])
   const years = useMemo(() => {
     const fromDb = insights.years?.length ? insights.years : [currentYear]
     return [...fromDb].sort((a, b) => b - a)
@@ -52,12 +69,16 @@ export function SpotifyLibraryHero({
     [insights.weeks, chartYear],
   )
 
+  if (loading && !insights.ready) {
+    return <SpotifyLibraryHeroSkeleton className={className} />
+  }
+
   if (!insights.ready || insights.totalStreams === 0) {
     return (
       <section className={cn("rounded-2xl border border-dashed border-black/10 p-5 dark:border-white/15", className)}>
         <p className="text-[14px] font-semibold">Listening library</p>
         <p className="mt-2 text-[13px] leading-relaxed text-black/45 dark:text-white/45">
-          Import your Spotify Extended Streaming History into Neon to unlock heatmaps and top tracks.
+          Import your Spotify Extended Streaming History to unlock heatmaps and top tracks.
           Run{" "}
           <code className="rounded bg-black/[0.04] px-1.5 py-0.5 text-[12px] dark:bg-white/10">
             npm run import:spotify-history
@@ -118,22 +139,29 @@ export function SpotifyLibraryHero({
           </div>
 
           {loading ? (
-            <p className="text-[12px] text-black/45 dark:text-white/45">Loading listening graph…</p>
+            <SpotifyListeningHeatmapSkeleton />
           ) : insights.ready ? (
-            <GitHubContributionHeatmap
-              weeks={insights.weeks}
-              calendarYear={chartYear}
-              variant="desktop"
-              disableDayBreakdown
-              cellPresentation={gridMode === "covers" ? "cover" : "heatmap"}
-              formatCount={formatListeningHeatmapCount}
-              ariaDescription="Listening activity by day"
-            />
+            <>
+              <GitHubContributionHeatmap
+                weeks={insights.weeks}
+                calendarYear={chartYear}
+                variant="desktop"
+                disableDayBreakdown
+                cellPresentation={gridMode === "covers" ? "cover" : "heatmap"}
+                formatCount={formatListeningHeatmapCount}
+                ariaDescription="Listening activity by day"
+                onDayClick={(day) => openDay(day as SpotifyListeningDay)}
+                selectedDayDate={dayModalOpen ? selectedDay?.date : null}
+              />
+              <p className="mt-3 pl-9 text-[11px] text-black/40 dark:text-white/40">
+                Click any day for tracks, artists, and play actions.
+              </p>
+            </>
           ) : insights.error ? (
             <p className="text-[12px] text-red-400/90">{insights.error}</p>
           ) : null}
 
-          {heroWeeks.length ? (
+          {heroWeeks.length && !loading ? (
             <div className="mt-8 space-y-8">
               <SpotifyListeningStats
                 weeks={heroWeeks}
@@ -155,6 +183,13 @@ export function SpotifyLibraryHero({
           ) : null}
         </div>
       ) : null}
+
+      <SpotifyListeningDayModal
+        seed={selectedDay}
+        open={dayModalOpen}
+        onClose={closeDay}
+        onPlayUri={onPlayUri}
+      />
     </section>
   )
 }
