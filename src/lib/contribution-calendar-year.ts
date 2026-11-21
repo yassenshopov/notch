@@ -7,6 +7,12 @@ function utcDateKey(d: Date) {
   return `${y}-${m}-${day}`
 }
 
+export function isDateInCalendarYear(dateKey: string, year: number) {
+  return dateKey >= `${year}-01-01` && dateKey <= `${year}-12-31`
+}
+
+const OUTSIDE_YEAR_PAD = { date: "", count: 0 }
+
 /** Sunday-aligned grid bounds for a calendar year (includes leading/trailing week pads). */
 export function calendarYearGridBounds(year: number) {
   const start = new Date(Date.UTC(year, 0, 1))
@@ -42,7 +48,11 @@ export function padContributionWeeksToCalendarYear<T extends GitHubContributionD
       const d = new Date(cursor)
       d.setUTCDate(cursor.getUTCDate() + i)
       const key = utcDateKey(d)
-      column.push(byDate.get(key) ?? createEmptyDay(key))
+      if (!isDateInCalendarYear(key, year)) {
+        column.push(OUTSIDE_YEAR_PAD as T)
+      } else {
+        column.push(byDate.get(key) ?? createEmptyDay(key))
+      }
     }
     output.push(column)
     cursor.setUTCDate(cursor.getUTCDate() + 7)
