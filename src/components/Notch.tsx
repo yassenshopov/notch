@@ -554,6 +554,7 @@ export function Notch() {
       activePanel={activePanel}
       data={data}
       error={error}
+      weatherLoading={loading}
       expanded={expanded}
       settings={settings}
       status={status}

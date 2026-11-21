@@ -66,6 +66,7 @@ type Props = {
   settings: AppSettings
   data: WeatherSnapshot | null
   error: string | null
+  weatherLoading: boolean
   status: SpotifyStatus
   connecting: boolean
   connect: () => Promise<unknown>
@@ -206,14 +207,23 @@ export function NotchActivePanel(props: Props) {
         <DesktopOverviewPanel
           onNavigate={props.onNavigatePanel}
           weather={data}
+          weatherLoading={props.weatherLoading}
           weatherError={error}
           spotify={status}
           github={githubStatus}
+          githubLoading={githubLoading}
           cursor={cursorStatus}
+          cursorLoading={cursorLoading}
           strava={stravaStatus}
+          stravaLoading={stravaLoading}
           mint={mintStatus}
+          mintLoading={mintLoading}
           pi={piStatus}
+          piLoading={piLoading}
+          markets={marketsSnapshot}
+          marketsLoading={marketsLoading}
           calendar={calendarSnapshot}
+          calendarLoading={calendarLoading}
         />
       )
     }
@@ -251,6 +261,7 @@ export function NotchActivePanel(props: Props) {
         analyticsLoading={cursorAnalyticsLoading}
         refreshing={cursorRefreshing}
         onRefresh={() => void refreshCursor()}
+        expanded={expanded}
       />
     )
   } else if (activePanel === "clock") {

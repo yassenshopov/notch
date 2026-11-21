@@ -37,7 +37,7 @@ export function useNotchActivePanelProps(
   const [connecting, setConnecting] = useState(false)
   const [stravaConnecting, setStravaConnecting] = useState(false)
   const [calendarConnecting, setCalendarConnecting] = useState(false)
-  const { data, error } = useWeather()
+  const { data, error, loading: weatherLoading } = useWeather()
   const { status, playing, connect, action, playUri, disconnect } = useSpotify()
   const mediaPoll = settings.media.enabled && !playing
   const { status: mediaStatus, action: mediaAction } = useMediaSession(mediaPoll)
@@ -138,6 +138,7 @@ export function useNotchActivePanelProps(
       settings,
       data,
       error,
+      weatherLoading,
       status,
       connecting,
       connect: async () => {
@@ -217,6 +218,7 @@ export function useNotchActivePanelProps(
       settings,
       data,
       error,
+      weatherLoading,
       status,
       connecting,
       connect,

@@ -6,6 +6,10 @@
 import { DEFAULT_WEATHER_LOCATION } from "./default-location"
 import type { GitHubHeatmapPaletteId } from "../lib/github-heatmap-palettes"
 import { topCenterSlot } from "../lib/notch-placement-grid"
+import {
+  defaultOverviewCards,
+  type OverviewCardsConfig,
+} from "../lib/overview-panels"
 
 export type TemperatureUnit = "celsius" | "fahrenheit"
 export type ThemeMode = "system" | "light" | "dark"
@@ -218,6 +222,10 @@ export type AppSettings = {
     width: number
     height: number
   }
+  /** Desktop “Today” overview — which integration cards are visible */
+  overview: {
+    cards: OverviewCardsConfig
+  }
   motion: {
     type: "spring"
     stiffness: number
@@ -367,6 +375,9 @@ export const defaultSettings: AppSettings = {
   window: {
     width: 440,
     height: 660,
+  },
+  overview: {
+    cards: defaultOverviewCards(),
   },
   motion: {
     type: "spring",

@@ -366,14 +366,21 @@ export function CursorPanelDesktopSkeleton({ refreshing, onRefresh }: Refreshabl
       aria-label="Loading Cursor usage"
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div className="flex gap-3">
+          <SkeletonBlock className="size-11 rounded-full" />
+          <div className="space-y-2">
+            <SkeletonBlock className="h-6 w-32" />
+            <SkeletonBlock className="h-3 w-44" />
+          </div>
+        </div>
+        <PanelRefreshButton refreshing={refreshing} onRefresh={onRefresh} label="Refresh Cursor" />
+      </div>
+      <SkeletonBlock className="mb-6 h-36 w-full rounded-2xl" />
       <BentoGrid>
         <BentoTile col={4} className={bentoPad()}>
           <SkeletonBlock className="h-5 w-24" />
           <SkeletonBlock className="mt-2 h-3 w-44" />
-          <SkeletonBlock className="mt-1 h-3 w-32" />
-        </BentoTile>
-        <BentoTile col={8} className={cn(bentoPad(), "flex justify-end")}>
-          <PanelRefreshButton refreshing={refreshing} onRefresh={onRefresh} label="Refresh Cursor" />
         </BentoTile>
         <BentoTile col={6} className={bentoPad()}>
           <SectionLabelSkeleton />
@@ -394,7 +401,7 @@ export function CursorPanelDesktopSkeleton({ refreshing, onRefresh }: Refreshabl
       </BentoGrid>
       <p className="mt-6 flex items-center justify-center gap-2 text-[12px] text-black/40 dark:text-white/40">
         <Icon icon="simple-icons:cursor" className="size-3.5 opacity-60" aria-hidden />
-        Loading quota, models, and cloud agents…
+        Loading usage history, quota, and models…
       </p>
     </div>
   )
@@ -442,6 +449,113 @@ export function ServerStatsPanelDesktopSkeleton({
         <SkeletonBlock className="h-28 rounded-xl" />
         <SkeletonBlock className="h-28 rounded-xl" />
       </div>
+    </div>
+  )
+}
+
+type OverviewSkeletonProps = {
+  cards?: import("../../lib/overview-panels").OverviewCardsConfig
+}
+
+/** Bento-shaped shell for the Today / overview desktop page. */
+export function DesktopOverviewPanelSkeleton({ cards }: OverviewSkeletonProps) {
+  const show = (key: keyof NonNullable<OverviewSkeletonProps["cards"]>) =>
+    !cards || cards[key] !== false
+
+  const mediaTiles = [show("github"), show("cursor"), show("spotify")].filter(Boolean).length
+
+  return (
+    <div
+      className="min-h-[50vh] space-y-6"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading Today overview"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <header className="space-y-2">
+        <SkeletonBlock className="h-3 w-40" />
+        <SkeletonBlock className="h-8 w-52" />
+        <SkeletonBlock className="h-3.5 w-72 max-w-full" />
+      </header>
+
+      <SkeletonBlock className="h-24 w-full rounded-2xl" />
+
+      <BentoGrid>
+        {show("weather") ? (
+          <BentoTile col={show("calendar") ? 8 : 6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <div className="mt-4 flex justify-between gap-3">
+              <div className="space-y-2">
+                <SkeletonBlock className="h-4 w-28" />
+                <SkeletonBlock className="h-10 w-20" />
+                <SkeletonBlock className="h-3 w-36" />
+              </div>
+              <SkeletonBlock className="size-11 rounded-xl" />
+            </div>
+          </BentoTile>
+        ) : null}
+
+        {show("calendar") ? (
+          <BentoTile col={show("weather") ? 4 : 6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <SkeletonBlock className="mt-4 h-4 w-4/5" />
+            <SkeletonBlock className="mt-2 h-3 w-1/2" />
+          </BentoTile>
+        ) : null}
+
+        {Array.from({ length: Math.max(mediaTiles, 0) }, (_, i) => (
+          <BentoTile
+            key={`media-${i}`}
+            col={mediaTiles <= 1 ? 12 : mediaTiles === 2 ? 6 : 4}
+            className={bentoPad()}
+          >
+            <SectionLabelSkeleton />
+            <StatCardSkeleton className="mt-4" tall bare />
+          </BentoTile>
+        ))}
+
+        {show("strava") ? (
+          <BentoTile col={6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <StatCardSkeleton className="mt-4" tall bare />
+          </BentoTile>
+        ) : null}
+
+        {show("homelab") ? (
+          <BentoTile col={6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <HomelabServerSkeleton />
+          </BentoTile>
+        ) : null}
+
+        {show("markets") ? (
+          <BentoTile col={6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <ListSectionSkeleton />
+          </BentoTile>
+        ) : null}
+
+        {show("air") ? (
+          <BentoTile col={6} className={bentoPad()}>
+            <SectionLabelSkeleton />
+            <StatCardSkeleton className="mt-4" tall bare />
+          </BentoTile>
+        ) : null}
+      </BentoGrid>
+
+      <p className="text-center text-[12px] text-black/40 dark:text-white/40">
+        Syncing integrations for your day…
+      </p>
+    </div>
+  )
+}
+
+function HomelabServerSkeleton() {
+  return (
+    <div className="mt-3 grid gap-2">
+      <SkeletonBlock className="h-12 w-full rounded-xl" />
+      <SkeletonBlock className="h-12 w-full rounded-xl" />
     </div>
   )
 }
