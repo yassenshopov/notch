@@ -23,6 +23,139 @@ export type GitHubPullRequest = {
   draft: boolean
 }
 
+export type GitHubPullRequestLabel = {
+  name: string
+  color: string
+}
+
+export type GitHubRepoPullRequest = GitHubPullRequest & {
+  createdAt: string
+  userLogin: string
+  userAvatarUrl: string | null
+  comments: number
+  reviewComments: number
+  labels: GitHubPullRequestLabel[]
+  mergeableState: string | null
+  checksPassed?: number | null
+  checksTotal?: number | null
+  checksState?: GitHubChecksAggregateState | null
+}
+
+export type GitHubRepoPullRequestsPayload = {
+  configured: boolean
+  connected: boolean
+  repo: string
+  items: GitHubRepoPullRequest[]
+  error?: string
+  message?: string
+}
+
+export type GitHubCheckRunStatus = "queued" | "in_progress" | "completed"
+export type GitHubCheckRunConclusion =
+  | "success"
+  | "failure"
+  | "neutral"
+  | "cancelled"
+  | "skipped"
+  | "timed_out"
+  | "action_required"
+  | null
+
+export type GitHubCheckRun = {
+  id: string
+  name: string
+  status: GitHubCheckRunStatus
+  conclusion: GitHubCheckRunConclusion
+  detailsUrl: string | null
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export type GitHubCommitStatus = {
+  context: string
+  state: "pending" | "success" | "failure" | "error"
+  description: string | null
+  targetUrl: string | null
+}
+
+export type GitHubChecksAggregateState = "pending" | "success" | "failure" | "neutral"
+
+export type GitHubPullRequestDetail = {
+  configured: boolean
+  connected: boolean
+  number?: number
+  title?: string
+  repo?: string
+  url?: string
+  state?: "open" | "closed"
+  draft?: boolean
+  body?: string | null
+  createdAt?: string
+  updatedAt?: string
+  mergedAt?: string | null
+  userLogin?: string
+  userAvatarUrl?: string | null
+  headRef?: string
+  baseRef?: string
+  additions?: number
+  deletions?: number
+  changedFiles?: number
+  commits?: number
+  labels?: GitHubPullRequestLabel[]
+  mergeable?: boolean | null
+  mergeableState?: string | null
+  reviewers?: string[]
+  checkRuns?: GitHubCheckRun[]
+  statuses?: GitHubCommitStatus[]
+  checksState?: GitHubChecksAggregateState | null
+  error?: string
+  message?: string
+}
+
+export type GitHubRepoIssue = {
+  number: number
+  title: string
+  repo: string
+  url: string
+  state: "open" | "closed"
+  createdAt: string
+  updatedAt: string
+  userLogin: string
+  userAvatarUrl: string | null
+  comments: number
+  labels: GitHubPullRequestLabel[]
+}
+
+export type GitHubRepoIssuesPayload = {
+  configured: boolean
+  connected: boolean
+  repo: string
+  items: GitHubRepoIssue[]
+  error?: string
+  message?: string
+}
+
+export type GitHubIssueDetail = {
+  configured: boolean
+  connected: boolean
+  number?: number
+  title?: string
+  repo?: string
+  url?: string
+  state?: "open" | "closed"
+  body?: string | null
+  createdAt?: string
+  updatedAt?: string
+  closedAt?: string | null
+  userLogin?: string
+  userAvatarUrl?: string | null
+  comments?: number
+  labels?: GitHubPullRequestLabel[]
+  assignees?: string[]
+  error?: string
+  message?: string
+}
+
 export type GitHubContributionDay = {
   date: string
   count: number
@@ -465,6 +598,127 @@ export async function markAllGitHubNotificationsRead(): Promise<{
   const bridge = window.notch?.github
   if (!bridge?.markAllNotificationsRead) return { ok: false, error: "no_electron" }
   return bridge.markAllNotificationsRead()
+}
+
+export async function fetchGitHubRepoPullRequests(
+  repo: string,
+  options?: { force?: boolean },
+): Promise<GitHubRepoPullRequestsPayload> {
+  const bridge = window.notch?.github
+  if (!bridge?.repoPullRequests) {
+    return { configured: false, connected: false, repo, items: [], error: "no_electron" }
+  }
+  try {
+    const data = (await bridge.repoPullRequests({ repo, force: options?.force })) as
+      | GitHubRepoPullRequestsPayload
+      | { weeks?: unknown }
+    if (!Array.isArray((data as GitHubRepoPullRequestsPayload).items)) {
+      return {
+        configured: true,
+        connected: false,
+        repo,
+        items: [],
+        error: "github_pr_ipc_unavailable",
+        message: "Fully quit and reopen Notch, then open this repo again.",
+      }
+    }
+    const prData = data as GitHubRepoPullRequestsPayload
+    return {
+      configured: prData.configured ?? true,
+      connected: prData.connected ?? true,
+      repo: prData.repo ?? repo,
+      items: prData.items ?? [],
+      error: prData.error,
+      message: prData.message,
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "github_repo_prs_error"
+    return {
+      configured: true,
+      connected: false,
+      repo,
+      items: [],
+      error: msg,
+      message: "Fully quit and reopen Notch, then open this repo again.",
+    }
+  }
+}
+
+export async function fetchGitHubPullRequestDetail(
+  repo: string,
+  number: number,
+  options?: { force?: boolean },
+): Promise<GitHubPullRequestDetail> {
+  const bridge = window.notch?.github
+  if (!bridge?.pullRequestDetail) {
+    return { configured: false, connected: false, error: "no_electron" }
+  }
+  try {
+    return await bridge.pullRequestDetail({ repo, number, force: options?.force })
+  } catch {
+    return { configured: true, connected: false, error: "github_pr_detail_error" }
+  }
+}
+
+export async function fetchGitHubRepoIssues(
+  repo: string,
+  options?: { force?: boolean },
+): Promise<GitHubRepoIssuesPayload> {
+  const bridge = window.notch?.github
+  if (!bridge?.repoIssues) {
+    return { configured: false, connected: false, repo, items: [], error: "no_electron" }
+  }
+  try {
+    const data = (await bridge.repoIssues({ repo, force: options?.force })) as
+      | GitHubRepoIssuesPayload
+      | { weeks?: unknown }
+    if (!Array.isArray((data as GitHubRepoIssuesPayload).items)) {
+      return {
+        configured: true,
+        connected: false,
+        repo,
+        items: [],
+        error: "github_issues_ipc_unavailable",
+        message: "Fully quit and reopen Notch, then open this repo again.",
+      }
+    }
+    const issueData = data as GitHubRepoIssuesPayload
+    return {
+      configured: issueData.configured ?? true,
+      connected: issueData.connected ?? true,
+      repo: issueData.repo ?? repo,
+      items: issueData.items ?? [],
+      error: issueData.error,
+      message: issueData.message,
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "github_repo_issues_error"
+    return {
+      configured: true,
+      connected: false,
+      repo,
+      items: [],
+      error: msg,
+      message: "Fully quit and reopen Notch, then open this repo again.",
+    }
+  }
+}
+
+export async function fetchGitHubIssueDetail(
+  repo: string,
+  number: number,
+  options?: { force?: boolean },
+): Promise<GitHubIssueDetail> {
+  const bridge = window.notch?.github
+  if (!bridge?.issueDetail) {
+    return { configured: false, connected: false, error: "no_electron" }
+  }
+  try {
+    return await bridge.issueDetail({ repo, number, force: options?.force })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "github_issue_detail_error"
+    return { configured: true, connected: false, error: msg }
+  }
 }
 
 export async function fetchGitHubWeeklyRepoStack(options?: {

@@ -162,6 +162,359 @@ function mapPr(pr) {
   }
 }
 
+function mapPrLabels(labels) {
+  return (labels ?? [])
+    .filter((l) => l?.name)
+    .map((l) => ({ name: l.name, color: l.color ? String(l.color).replace(/^#/, "") : "6e7681" }))
+}
+
+function mapRepoPullRequest(pr, repoFullName) {
+  const repo = repoFullName || pr.base?.repo?.full_name || ""
+  return {
+    ...mapPr({ ...pr, repository: { full_name: repo } }),
+    createdAt: pr.created_at ?? "",
+    userLogin: pr.user?.login ?? "",
+    userAvatarUrl: pr.user?.avatar_url ?? null,
+    comments: pr.comments ?? 0,
+    reviewComments: pr.review_comments ?? 0,
+    labels: mapPrLabels(pr.labels),
+    mergeableState: pr.mergeable_state ?? null,
+  }
+}
+
+function mapCheckRun(run) {
+  return {
+    id: String(run.id ?? run.name ?? Math.random()),
+    name: run.name ?? "Check",
+    status: run.status ?? "queued",
+    conclusion: run.conclusion ?? null,
+    detailsUrl: run.details_url ?? null,
+    startedAt: run.started_at ?? null,
+    completedAt: run.completed_at ?? null,
+  }
+}
+
+function mapCommitStatus(row) {
+  return {
+    context: row.context ?? "status",
+    state: row.state ?? "pending",
+    description: row.description ?? null,
+    targetUrl: row.target_url ?? null,
+  }
+}
+
+function deriveChecksState(checkRuns, statuses) {
+  const bucket = []
+  for (const run of checkRuns) {
+    if (run.status !== "completed") bucket.push("pending")
+    else if (run.conclusion === "success" || run.conclusion === "skipped") bucket.push("success")
+    else if (run.conclusion === "neutral") bucket.push("neutral")
+    else if (run.conclusion === "failure" || run.conclusion === "timed_out" || run.conclusion === "action_required") {
+      bucket.push("failure")
+    } else bucket.push("neutral")
+  }
+  for (const row of statuses) {
+    if (row.state === "pending") bucket.push("pending")
+    else if (row.state === "success") bucket.push("success")
+    else bucket.push("failure")
+  }
+  if (!bucket.length) return null
+  if (bucket.some((s) => s === "failure")) return "failure"
+  if (bucket.some((s) => s === "pending")) return "pending"
+  if (bucket.every((s) => s === "success" || s === "neutral")) return "success"
+  return "neutral"
+}
+
+function summarizeCheckCounts(checkRuns, statuses) {
+  let passed = 0
+  let total = 0
+  for (const run of checkRuns) {
+    total += 1
+    if (run.status === "completed" && (run.conclusion === "success" || run.conclusion === "skipped")) {
+      passed += 1
+    }
+  }
+  for (const row of statuses) {
+    total += 1
+    if (row.state === "success") passed += 1
+  }
+  if (total <= 0) return null
+  return {
+    checksPassed: passed,
+    checksTotal: total,
+    checksState: deriveChecksState(checkRuns, statuses),
+  }
+}
+
+async function fetchPrCheckSummary(owner, repo, sha) {
+  const [checkRuns, statusPayload] = await Promise.all([
+    fetchCommitCheckRuns(owner, repo, sha).catch(() => []),
+    gh(`/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}/status`).catch(() => null),
+  ])
+  const statuses = (statusPayload?.statuses ?? []).map(mapCommitStatus)
+  return summarizeCheckCounts(checkRuns, statuses)
+}
+
+async function fetchCommitCheckRuns(owner, repo, ref) {
+  const runs = []
+  let page = 1
+  for (;;) {
+    const data = await ghGet(
+      `/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100&page=${page}`,
+    )
+    runs.push(...(data.check_runs ?? []))
+    const total = data.total_count ?? runs.length
+    if (runs.length >= total || !(data.check_runs?.length)) break
+    page += 1
+    if (page > 3) break
+  }
+  return runs.map(mapCheckRun)
+}
+
+const REPO_PRS_TTL_MS = 60_000
+const REPO_PRS_STALE_MS = 5 * 60_000
+const PR_DETAIL_TTL_MS = 45_000
+const PR_DETAIL_STALE_MS = 3 * 60_000
+
+async function repoPullRequests(repo, options = {}) {
+  if (!token()) {
+    return { configured: false, connected: false, repo: String(repo ?? ""), items: [] }
+  }
+  const full = String(repo ?? "").trim()
+  const parts = full.split("/")
+  if (parts.length < 2) {
+    return { configured: true, connected: false, repo: full, items: [], error: "invalid_repo" }
+  }
+  const [owner, name] = parts
+  const cacheKey = `github:repo-prs:v2:${full}`
+  if (options.force === true) cache.invalidate(cacheKey)
+  const REPO_PR_CHECK_CONCURRENCY = 6
+  try {
+    const items = await cache.get(cacheKey, {
+      ttlMs: REPO_PRS_TTL_MS,
+      staleMs: REPO_PRS_STALE_MS,
+      force: options.force === true,
+      fetcher: async () => {
+        const rows = await gh(
+          `/repos/${owner}/${name}/pulls?state=open&sort=updated&direction=desc&per_page=30`,
+        )
+        const list = rows ?? []
+        const mapped = new Array(list.length)
+        let next = 0
+        async function worker() {
+          while (next < list.length) {
+            const idx = next++
+            const pr = list[idx]
+            const item = mapRepoPullRequest(pr, full)
+            const sha = pr.head?.sha
+            if (sha) {
+              const summary = await fetchPrCheckSummary(owner, name, sha).catch(() => null)
+              if (summary) {
+                item.checksPassed = summary.checksPassed
+                item.checksTotal = summary.checksTotal
+                item.checksState = summary.checksState
+              }
+            }
+            mapped[idx] = item
+          }
+        }
+        const workers = Math.min(REPO_PR_CHECK_CONCURRENCY, list.length || 1)
+        await Promise.all(Array.from({ length: workers }, () => worker()))
+        return mapped.sort((a, b) => b.number - a.number)
+      },
+    })
+    return { configured: true, connected: true, repo: full, items }
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      repo: full,
+      items: [],
+      error: err instanceof Error ? err.message : "github_repo_prs_error",
+    }
+  }
+}
+
+async function pullRequestDetail(repo, number, options = {}) {
+  if (!token()) {
+    return { configured: false, connected: false, error: "not_configured" }
+  }
+  const full = String(repo ?? "").trim()
+  const parts = full.split("/")
+  const prNumber = Number(number)
+  if (parts.length < 2 || !Number.isFinite(prNumber) || prNumber <= 0) {
+    return { configured: true, connected: false, error: "invalid_pr" }
+  }
+  const [owner, name] = parts
+  const cacheKey = `github:pr-detail:v1:${full}:${prNumber}`
+  if (options.force === true) cache.invalidate(cacheKey)
+  try {
+    const payload = await cache.get(cacheKey, {
+      ttlMs: PR_DETAIL_TTL_MS,
+      staleMs: PR_DETAIL_STALE_MS,
+      force: options.force === true,
+      fetcher: async () => {
+        const pr = await gh(`/repos/${owner}/${name}/pulls/${prNumber}`)
+        const sha = pr.head?.sha
+        const [checkRuns, statusPayload] = await Promise.all([
+          sha ? fetchCommitCheckRuns(owner, name, sha).catch(() => []) : [],
+          sha
+            ? gh(`/repos/${owner}/${name}/commits/${encodeURIComponent(sha)}/status`).catch(() => null)
+            : null,
+        ])
+        const statuses = (statusPayload?.statuses ?? []).map(mapCommitStatus)
+        const reviewers = [...(pr.requested_reviewers ?? []).map((u) => u?.login).filter(Boolean)]
+        return {
+          number: pr.number,
+          title: pr.title,
+          repo: full,
+          url: pr.html_url ?? `https://github.com/${full}/pull/${pr.number}`,
+          state: pr.state === "closed" ? "closed" : "open",
+          draft: Boolean(pr.draft),
+          body: pr.body ?? null,
+          createdAt: pr.created_at ?? "",
+          updatedAt: pr.updated_at ?? "",
+          mergedAt: pr.merged_at ?? null,
+          userLogin: pr.user?.login ?? "",
+          userAvatarUrl: pr.user?.avatar_url ?? null,
+          headRef: pr.head?.ref ?? "",
+          baseRef: pr.base?.ref ?? "",
+          additions: pr.additions ?? 0,
+          deletions: pr.deletions ?? 0,
+          changedFiles: pr.changed_files ?? 0,
+          commits: pr.commits ?? 0,
+          labels: mapPrLabels(pr.labels),
+          mergeable: typeof pr.mergeable === "boolean" ? pr.mergeable : null,
+          mergeableState: pr.mergeable_state ?? null,
+          reviewers,
+          checkRuns,
+          statuses,
+          checksState: deriveChecksState(checkRuns, statuses),
+        }
+      },
+    })
+    return { configured: true, connected: true, ...payload }
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      error: err instanceof Error ? err.message : "github_pr_detail_error",
+    }
+  }
+}
+
+function mapRepoIssue(issue, repoFullName) {
+  return {
+    number: issue.number,
+    title: issue.title,
+    repo: repoFullName,
+    url: issue.html_url ?? "",
+    state: issue.state === "closed" ? "closed" : "open",
+    createdAt: issue.created_at ?? "",
+    updatedAt: issue.updated_at ?? "",
+    userLogin: issue.user?.login ?? "",
+    userAvatarUrl: issue.user?.avatar_url ?? null,
+    comments: issue.comments ?? 0,
+    labels: mapPrLabels(issue.labels),
+  }
+}
+
+const REPO_ISSUES_TTL_MS = 60_000
+const REPO_ISSUES_STALE_MS = 5 * 60_000
+const ISSUE_DETAIL_TTL_MS = 45_000
+const ISSUE_DETAIL_STALE_MS = 3 * 60_000
+
+async function repoIssues(repo, options = {}) {
+  if (!token()) {
+    return { configured: false, connected: false, repo: String(repo ?? ""), items: [] }
+  }
+  const full = String(repo ?? "").trim()
+  const parts = full.split("/")
+  if (parts.length < 2) {
+    return { configured: true, connected: false, repo: full, items: [], error: "invalid_repo" }
+  }
+  const [owner, name] = parts
+  const cacheKey = `github:repo-issues:v1:${full}`
+  if (options.force === true) cache.invalidate(cacheKey)
+  try {
+    const items = await cache.get(cacheKey, {
+      ttlMs: REPO_ISSUES_TTL_MS,
+      staleMs: REPO_ISSUES_STALE_MS,
+      force: options.force === true,
+      fetcher: async () => {
+        const rows = await gh(
+          `/repos/${owner}/${name}/issues?state=open&sort=updated&direction=desc&per_page=50`,
+        )
+        return (rows ?? [])
+          .filter((row) => !row.pull_request)
+          .map((row) => mapRepoIssue(row, full))
+          .sort((a, b) => b.number - a.number)
+          .slice(0, 30)
+      },
+    })
+    return { configured: true, connected: true, repo: full, items }
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      repo: full,
+      items: [],
+      error: err instanceof Error ? err.message : "github_repo_issues_error",
+    }
+  }
+}
+
+async function issueDetail(repo, number, options = {}) {
+  if (!token()) {
+    return { configured: false, connected: false, error: "not_configured" }
+  }
+  const full = String(repo ?? "").trim()
+  const parts = full.split("/")
+  const issueNumber = Number(number)
+  if (parts.length < 2 || !Number.isFinite(issueNumber) || issueNumber <= 0) {
+    return { configured: true, connected: false, error: "invalid_issue" }
+  }
+  const [owner, name] = parts
+  const cacheKey = `github:issue-detail:v1:${full}:${issueNumber}`
+  if (options.force === true) cache.invalidate(cacheKey)
+  try {
+    const payload = await cache.get(cacheKey, {
+      ttlMs: ISSUE_DETAIL_TTL_MS,
+      staleMs: ISSUE_DETAIL_STALE_MS,
+      force: options.force === true,
+      fetcher: async () => {
+        const issue = await gh(`/repos/${owner}/${name}/issues/${issueNumber}`)
+        if (issue.pull_request) {
+          throw new Error("issue_is_pull_request")
+        }
+        return {
+          number: issue.number,
+          title: issue.title,
+          repo: full,
+          url: issue.html_url ?? `https://github.com/${full}/issues/${issue.number}`,
+          state: issue.state === "closed" ? "closed" : "open",
+          body: issue.body ?? null,
+          createdAt: issue.created_at ?? "",
+          updatedAt: issue.updated_at ?? "",
+          closedAt: issue.closed_at ?? null,
+          userLogin: issue.user?.login ?? "",
+          userAvatarUrl: issue.user?.avatar_url ?? null,
+          comments: issue.comments ?? 0,
+          labels: mapPrLabels(issue.labels),
+          assignees: (issue.assignees ?? []).map((u) => u?.login).filter(Boolean),
+        }
+      },
+    })
+    return { configured: true, connected: true, ...payload }
+  } catch (err) {
+    return {
+      configured: true,
+      connected: false,
+      error: err instanceof Error ? err.message : "github_issue_detail_error",
+    }
+  }
+}
+
 function mapContributionWeeks(weeks) {
   const mapped = []
   const days = []
@@ -1671,5 +2024,9 @@ module.exports = {
   notificationsInbox,
   markNotificationRead,
   markAllNotificationsRead,
+  repoPullRequests,
+  pullRequestDetail,
+  repoIssues,
+  issueDetail,
   configured: () => Boolean(token()),
 }

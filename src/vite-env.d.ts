@@ -124,6 +124,9 @@ interface NotchBridge {
   cursor: {
     status: (options?: { force?: boolean }) => Promise<CursorBridgeStatus>
     analytics: (options?: { force?: boolean }) => Promise<import("./lib/cursor").CursorAnalyticsPayload | null>
+    insights: (options?: { force?: boolean; year?: number }) => Promise<
+      import("./lib/cursor-insights").CursorActivityInsights
+    >
     openDashboard: () => Promise<void>
     openUrl: (url: string) => Promise<void>
   }
@@ -217,6 +220,24 @@ interface NotchBridge {
       items?: import("./lib/github").GitHubNotification[]
       error?: string
     }>
+    repoPullRequests: (options: {
+      repo: string
+      force?: boolean
+    }) => Promise<import("./lib/github").GitHubRepoPullRequestsPayload>
+    pullRequestDetail: (options: {
+      repo: string
+      number: number
+      force?: boolean
+    }) => Promise<import("./lib/github").GitHubPullRequestDetail>
+    repoIssues: (options: {
+      repo: string
+      force?: boolean
+    }) => Promise<import("./lib/github").GitHubRepoIssuesPayload>
+    issueDetail: (options: {
+      repo: string
+      number: number
+      force?: boolean
+    }) => Promise<import("./lib/github").GitHubIssueDetail>
   }
   mint: {
     status: (options?: { force?: boolean; host?: string }) => Promise<MintBridgeStatus>
