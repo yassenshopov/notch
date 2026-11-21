@@ -2,6 +2,15 @@ const http = require("http")
 const fs = require("fs")
 const path = require("path")
 const { shell, app } = require("electron")
+const kv = require("./snapshot-kv.cjs")
+
+const SPOTIFY_NOW_STALE_MS = 3 * 60 * 1000
+const SPOTIFY_NOW_REFRESH_MS = 15_000
+const SPOTIFY_RECENT_STALE_MS = 15 * 60 * 1000
+const SPOTIFY_KV_NS = "spotify"
+const LISTENING_HISTORY_MAX = 200
+
+let spotifyNowBackgroundRefresh = null
 
 const SCOPES = [
   "user-read-currently-playing",
@@ -227,21 +236,72 @@ async function fetchPlaybackFromApi() {
 /** @type {Promise<unknown> | null} */
 let statusInflight = null
 
+function scheduleSpotifyNowRefresh() {
+  if (spotifyNowBackgroundRefresh) return
+  spotifyNowBackgroundRefresh = refreshSpotifyNowPlaying()
+    .catch(() => {})
+    .finally(() => {
+      spotifyNowBackgroundRefresh = null
+    })
+}
+
+async function refreshSpotifyNowPlaying() {
+  if (!isConfigured() || !isConnected()) return null
+  try {
+    const api = await fetchPlaybackFromApi()
+    let result = api
+    if (!api.track) {
+      const smtc = await smtcSpotifyFallback()
+      if (smtc) result = smtc
+    }
+    await kv.write(SPOTIFY_KV_NS, "now_playing", result)
+    return result
+  } catch {
+    return null
+  }
+}
+
+async function readCachedNowPlaying() {
+  const row = await kv.readWithMeta(SPOTIFY_KV_NS, "now_playing")
+  if (!row?.payload) return null
+  const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+  if (age >= SPOTIFY_NOW_STALE_MS) return null
+  return {
+    ...row.payload,
+    fromCache: true,
+    cachedAt: row.syncedAt,
+  }
+}
+
 async function getCurrentlyPlayingInner() {
   if (!isConfigured()) {
     return { connected: false, configured: false, isPlaying: false, track: null }
   }
   if (!isConnected()) {
+    const cached = await readCachedNowPlaying()
+    if (cached) return cached
     return { connected: false, configured: true, isPlaying: false, track: null }
+  }
+
+  const cached = await readCachedNowPlaying()
+  if (cached) {
+    const age = cached.cachedAt ? Date.now() - cached.cachedAt : 0
+    if (age >= SPOTIFY_NOW_REFRESH_MS) scheduleSpotifyNowRefresh()
+    return cached
   }
 
   try {
     const api = await fetchPlaybackFromApi()
-    if (api.track) return api
-    const smtc = await smtcSpotifyFallback()
-    if (smtc) return smtc
-    return api
+    let result = api
+    if (!api.track) {
+      const smtc = await smtcSpotifyFallback()
+      if (smtc) result = smtc
+    }
+    await kv.write(SPOTIFY_KV_NS, "now_playing", result)
+    return result
   } catch (err) {
+    const stale = await readCachedNowPlaying()
+    if (stale) return stale
     if (err.code === "not_connected") {
       return { connected: false, configured: true, isPlaying: false, track: null }
     }
@@ -288,20 +348,47 @@ function mapPlayback(data) {
   }
 }
 
-async function getRecentlyPlayed(limit = 6) {
+function mergeListeningHistory(prev, incoming) {
+  const map = new Map()
+  for (const row of [...(prev || []), ...(incoming || [])]) {
+    if (!row?.track?.id) continue
+    const key = `${row.track.id}:${row.playedAt ?? ""}`
+    map.set(key, row)
+  }
+  return [...map.values()]
+    .sort((a, b) => new Date(b.playedAt || 0).getTime() - new Date(a.playedAt || 0).getTime())
+    .slice(0, LISTENING_HISTORY_MAX)
+}
+
+async function getRecentlyPlayed(limit = 6, options = {}) {
+  const force = options?.force === true
+  const capped = Math.min(Math.max(1, limit), 20)
+  const cacheKind = `recently_played_${capped}`
+
+  if (!force) {
+    const row = await kv.readWithMeta(SPOTIFY_KV_NS, cacheKind)
+    if (row?.payload?.items?.length) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < SPOTIFY_RECENT_STALE_MS) {
+        return row.payload.items
+      }
+    }
+  }
+
   if (!isConfigured() || !isConnected()) {
-    return []
+    const row = await kv.readWithMeta(SPOTIFY_KV_NS, cacheKind)
+    return row?.payload?.items ?? []
   }
 
   try {
-    const capped = Math.min(Math.max(1, limit), 20)
     const res = await spotifyFetch(`/me/player/recently-played?limit=${capped}`)
     if (res.status === 401) {
       clearTokens()
       return []
     }
     if (!res.ok) {
-      return []
+      const row = await kv.readWithMeta(SPOTIFY_KV_NS, cacheKind)
+      return row?.payload?.items ?? []
     }
     const data = await res.json()
     const items = data.items || []
@@ -313,11 +400,25 @@ async function getRecentlyPlayed(limit = 6) {
       seen.add(track.id)
       out.push({ track, playedAt: row.played_at ?? null })
     }
+    await kv.write(SPOTIFY_KV_NS, cacheKind, { items: out, limit: capped })
+    const historyRow = await kv.read(SPOTIFY_KV_NS, "listening_history")
+    const merged = mergeListeningHistory(historyRow?.items, out)
+    await kv.write(SPOTIFY_KV_NS, "listening_history", { items: merged })
     return out
   } catch (err) {
-    if (err.code === "not_connected") return []
+    if (err.code === "not_connected") {
+      const row = await kv.readWithMeta(SPOTIFY_KV_NS, cacheKind)
+      return row?.payload?.items ?? []
+    }
     throw err
   }
+}
+
+async function getListeningHistory(limit = 50) {
+  const capped = Math.min(Math.max(1, limit), LISTENING_HISTORY_MAX)
+  const history = await kv.read(SPOTIFY_KV_NS, "listening_history")
+  const items = history?.items ?? []
+  return items.slice(0, capped)
 }
 
 function piDeviceHints() {
@@ -506,6 +607,7 @@ function startAuth() {
 
 function disconnect() {
   clearTokens()
+  void kv.remove(SPOTIFY_KV_NS, "now_playing")
   return { connected: false, configured: isConfigured(), isPlaying: false, track: null }
 }
 
@@ -549,6 +651,7 @@ module.exports = {
   isConnected,
   getCurrentlyPlaying,
   getRecentlyPlayed,
+  getListeningHistory,
   playUri,
   playbackAction,
   startAuth,

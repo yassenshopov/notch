@@ -1,20 +1,18 @@
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
+import { useState, type CSSProperties, type ReactNode } from "react"
 import { useSettings } from "../config/settings-store"
 import { useSpotifyLyrics } from "../hooks/useSpotifyLyrics"
 import type { AlbumPalette } from "../lib/album-color"
-import {
-  fetchSpotifyRecentlyPlayed,
-  formatMs,
-  type SpotifyRecentItem,
-  type SpotifyStatus,
-} from "../lib/spotify"
+import { formatMs, type SpotifyStatus } from "../lib/spotify"
 import { cn } from "../lib/utils"
 import { EqualizerBars } from "./EqualizerBars"
 import { usePanelLayout } from "../lib/panel-layout"
 import { BentoGrid, BentoTile, bentoPad } from "./desktop/DesktopBento"
 import { SpotifyLyrics } from "./SpotifyLyrics"
+import { SpotifyListenHistory } from "./SpotifyListenHistory"
+import { SpotifyLibraryHero } from "./SpotifyLibraryHero"
+import { useSpotifyInsights } from "../hooks/useSpotifyInsights"
 
 type Props = {
   status: SpotifyStatus
@@ -35,6 +33,21 @@ export function SpotifyPanel({
 }: Props) {
   const settings = useSettings()
   const desktop = usePanelLayout() === "desktop"
+  const [heroYear, setHeroYear] = useState(() => new Date().getFullYear())
+  const insightsActive = desktop && status.connected
+  const { insights, loading: insightsLoading } = useSpotifyInsights(insightsActive, heroYear)
+  const librarySection =
+    insightsActive ? (
+      <BentoTile col={12} className={bentoPad("mt-2")}>
+        <SpotifyLibraryHero
+          insights={insights}
+          chartYear={heroYear}
+          onChartYearChange={setHeroYear}
+          loading={insightsLoading}
+          onPlayUri={onPlayUri}
+        />
+      </BentoTile>
+    ) : null
   const showLyrics = settings.spotify.showLyrics ?? true
   const track = status.track
   const duration = status.durationMs ?? 0
@@ -84,6 +97,7 @@ export function SpotifyPanel({
       <SpotifyIdlePanel
         onAction={onAction}
         onPlayUri={onPlayUri}
+        librarySection={librarySection}
       />
     )
   }
@@ -308,42 +322,48 @@ export function SpotifyPanel({
               </p>
             )}
           </BentoTile>
+          <BentoTile col={12} className={bentoPad("max-h-[min(22rem,40vh)]")} scroll>
+            <SpotifyListenHistory
+              onPlayUri={onPlayUri}
+              recentLimit={8}
+              historyLimit={50}
+              className="h-full min-h-0"
+            />
+          </BentoTile>
+          {librarySection}
         </BentoGrid>
       </div>
     )
   }
 
-  return nowPlaying
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="min-h-0 shrink-0">{nowPlaying}</div>
+      <motion.div
+        className="notch-scroll min-h-0 flex-1 border-t border-black/[0.06] pt-3 dark:border-white/[0.08]"
+        initial={false}
+      >
+        <SpotifyListenHistory
+          onPlayUri={onPlayUri}
+          recentLimit={6}
+          historyLimit={24}
+          className="h-full"
+          scrollClassName="max-h-[9.5rem]"
+        />
+      </motion.div>
+    </div>
+  )
 }
 
 function SpotifyIdlePanel({
   onAction,
   onPlayUri,
+  librarySection,
 }: {
   onAction: (action: "play" | "pause" | "next" | "previous") => void
   onPlayUri: (uri: string) => void
+  librarySection?: ReactNode
 }) {
-  const [recent, setRecent] = useState<SpotifyRecentItem[]>([])
-  const [recentLoading, setRecentLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    setRecentLoading(true)
-    void fetchSpotifyRecentlyPlayed(6)
-      .then((items) => {
-        if (!cancelled) setRecent(items)
-      })
-      .catch(() => {
-        if (!cancelled) setRecent([])
-      })
-      .finally(() => {
-        if (!cancelled) setRecentLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
   const desktop = usePanelLayout() === "desktop"
 
   if (desktop) {
@@ -366,42 +386,9 @@ function SpotifyIdlePanel({
           </div>
         </BentoTile>
         <BentoTile col={7} className={bentoPad()} scroll>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/40 dark:text-white/40">
-            Listen again
-          </p>
-          {recentLoading ? (
-            <p className="mt-4 text-[13px] text-black/35 dark:text-white/35">Loading recent tracks…</p>
-          ) : recent.length === 0 ? (
-            <p className="mt-4 text-[13px] leading-relaxed text-black/45 dark:text-white/45">
-              Open Spotify and hit Play to wake your active device.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-1">
-              {recent.map(({ track: t }) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onPlayUri(t.uri)
-                    }}
-                    className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-                  >
-                    <div className="size-11 shrink-0 overflow-hidden rounded-xl bg-black/5 dark:bg-white/10">
-                      {t.artUrl ? (
-                        <img src={t.artUrl} alt="" className="size-full object-cover" draggable={false} />
-                      ) : null}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[14px] font-medium">{t.name}</p>
-                      <p className="truncate text-[12px] text-black/45 dark:text-white/45">{t.artists}</p>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <SpotifyListenHistory onPlayUri={onPlayUri} recentLimit={8} historyLimit={50} className="h-full" />
         </BentoTile>
+        {librarySection}
       </BentoGrid>
     )
   }
@@ -430,48 +417,12 @@ function SpotifyIdlePanel({
       </div>
 
       <div className="mt-6 min-h-0 flex-1">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-black/40 dark:text-white/40">
-          Listen again
-        </p>
-        {recentLoading ? (
-          <p className="mt-4 text-[13px] text-black/35 dark:text-white/35">Loading recent tracks…</p>
-        ) : recent.length === 0 ? (
-          <p className="mt-4 text-[13px] leading-relaxed text-black/45 dark:text-white/45">
-            Open Spotify on this PC or your phone, then hit Play here to wake your active device.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-1">
-            {recent.map(({ track }) => (
-              <li key={track.id}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onPlayUri(track.uri)
-                  }}
-                  className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition-colors hover:bg-black/[0.04] active:bg-black/[0.06] dark:hover:bg-white/[0.06] dark:active:bg-white/[0.08]"
-                >
-                  <div className="size-11 shrink-0 overflow-hidden rounded-xl bg-black/5 dark:bg-white/10">
-                    {track.artUrl ? (
-                      <img src={track.artUrl} alt="" className="size-full object-cover" draggable={false} />
-                    ) : (
-                      <div className="flex size-full items-center justify-center text-[10px] text-black/30 dark:text-white/30">
-                        ♪
-                      </div>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-medium leading-tight">{track.name}</p>
-                    <p className="mt-0.5 truncate text-[12px] text-black/45 dark:text-white/45">
-                      {track.artists}
-                    </p>
-                  </div>
-                  <Play className="size-4 shrink-0 opacity-35" strokeWidth={1.75} aria-hidden />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <SpotifyListenHistory
+          onPlayUri={onPlayUri}
+          recentLimit={6}
+          historyLimit={40}
+          className="h-full min-h-0"
+        />
       </div>
     </div>
   )

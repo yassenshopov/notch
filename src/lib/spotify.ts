@@ -58,6 +58,29 @@ export async function fetchSpotifyRecentlyPlayed(limit = 6): Promise<SpotifyRece
   return window.notch.spotify.recentlyPlayed(limit)
 }
 
+export async function fetchSpotifyListeningHistory(limit = 40): Promise<SpotifyRecentItem[]> {
+  if (!window.notch?.spotify?.listeningHistory) return []
+  return window.notch.spotify.listeningHistory(limit)
+}
+
+export function formatPlayedAt(iso: string | null): string {
+  if (!iso) return ""
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return ""
+  const now = Date.now()
+  const diffMs = now - at.getTime()
+  if (diffMs < 60_000) return "Just now"
+  if (diffMs < 60 * 60_000) {
+    const m = Math.floor(diffMs / 60_000)
+    return `${m}m ago`
+  }
+  if (diffMs < 24 * 60 * 60_000) {
+    const h = Math.floor(diffMs / (60 * 60_000))
+    return `${h}h ago`
+  }
+  return at.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
 export async function playSpotifyUri(
   uri: string,
   options?: SpotifyPlaybackOptions,
