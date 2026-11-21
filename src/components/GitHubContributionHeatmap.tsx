@@ -8,9 +8,11 @@ import type {
   GitHubTodayBreakdown,
 } from "../lib/github"
 import {
+  dayBreakdownMatchesCalendar,
   fetchGitHubDayBreakdown,
   formatContributionCount,
   maxContributionCount,
+  sumGitHubRepoCounts,
 } from "../lib/github"
 import { GitHubDayRepoPieChart } from "./GitHubDayRepoPieChart"
 import { GitHubHeatmapPaletteModal } from "./GitHubHeatmapPaletteModal"
@@ -196,22 +198,31 @@ function HeatmapTooltip({
       return
     }
     const cached = dayBreakdownCache.get(day.date)
-    if (cached) {
+    if (cached && dayBreakdownMatchesCalendar(cached, day.date, day.count)) {
       setBreakdown(cached)
       setLoading(false)
       return
     }
-    if (dayBreakdownSeed?.date === day.date && !dayBreakdownSeed.error) {
+    if (
+      dayBreakdownSeed?.date === day.date &&
+      !dayBreakdownSeed.error &&
+      dayBreakdownMatchesCalendar(dayBreakdownSeed, day.date, day.count)
+    ) {
       dayBreakdownCache.set(day.date, dayBreakdownSeed)
       setBreakdown(dayBreakdownSeed)
       setLoading(false)
       return
     }
     let cancelled = false
+    const needsFresh =
+      !dayBreakdownMatchesCalendar(cached, day.date, day.count) &&
+      !dayBreakdownMatchesCalendar(dayBreakdownSeed, day.date, day.count)
     setLoading(true)
-    void fetchGitHubDayBreakdown(day.date, day.count).then((data) => {
+    void fetchGitHubDayBreakdown(day.date, day.count, { force: needsFresh }).then((data) => {
       if (cancelled) return
-      dayBreakdownCache.set(day.date, data)
+      if (dayBreakdownMatchesCalendar(data, day.date, day.count)) {
+        dayBreakdownCache.set(day.date, data)
+      }
       setBreakdown(data)
       setLoading(false)
     })
@@ -269,12 +280,19 @@ function HeatmapTooltip({
         <p className="mt-1 text-[10px] text-black/40 dark:text-white/40">Loading repos…</p>
       ) : null}
       {showPie && !loading && breakdown && !breakdown.error && breakdown.repos.length > 0 ? (
-        <GitHubDayRepoPieChart
-          total={day.count}
-          repos={breakdown.repos}
-          className="mt-1.5 border-t border-black/8 pt-1.5 dark:border-white/10"
-          size={variant === "desktop" ? 68 : 58}
-        />
+        <>
+          {sumGitHubRepoCounts(breakdown.repos) !== day.count ? (
+            <p className="mt-1 text-[10px] leading-snug text-black/40 dark:text-white/40">
+              {sumGitHubRepoCounts(breakdown.repos)} commits by repo · {day.count} on calendar
+            </p>
+          ) : null}
+          <GitHubDayRepoPieChart
+            total={day.count}
+            repos={breakdown.repos}
+            className="mt-1.5 border-t border-black/8 pt-1.5 dark:border-white/10"
+            size={variant === "desktop" ? 68 : 58}
+          />
+        </>
       ) : null}
       {showPie && !loading && breakdown && breakdown.repos.length === 0 && !breakdown.error ? (
         <p className="mt-1 text-[10px] leading-snug text-black/40 dark:text-white/40">

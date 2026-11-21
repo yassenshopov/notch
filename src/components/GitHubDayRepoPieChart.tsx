@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import type { GitHubTodayRepoContribution } from "../lib/github"
-import { scaleRepoCountsToTarget, shortRepoName } from "../lib/github"
+import { shortRepoName, sumGitHubRepoCounts } from "../lib/github"
 import { useSettings } from "../config/settings-store"
 import {
   GITHUB_REPO_OTHER_COLOR,
@@ -115,30 +115,36 @@ export function GitHubDayRepoPieChart({ total, repos, className, size = 64 }: Pr
   const repoColors = settings.github.repoColors
 
   const { wedges, legend } = useMemo(() => {
-    const scaled = scaleRepoCountsToTarget(repos, total)
-    const positive = scaled.filter((r) => r.count > 0)
+    const positive = repos.filter((r) => r.count > 0)
     const topRepos = positive.filter((r) => r.repo !== "__other__")
     const otherRow = positive.find((r) => r.repo === "__other__")
     const top = topRepos.slice(0, 4)
-    const foldedOther =
+    const foldedRepoOther =
       (otherRow?.count ?? 0) +
       topRepos.slice(4).reduce((sum, row) => sum + row.count, 0)
-    const stackSum = top.reduce((sum, row) => sum + row.count, 0) + foldedOther
-    const other =
-      foldedOther > 0 ? foldedOther : Math.max(0, total - stackSum)
-    const pieTotal = Math.max(total, stackSum)
+    const commitTotal = sumGitHubRepoCounts(positive)
+    const pieTotal = commitTotal > 0 ? commitTotal : total
+    const nonCommit = total > commitTotal && commitTotal > 0 ? total - commitTotal : 0
     const slices: Slice[] = top.map((row, i) => ({
       repo: row.repo,
       label: shortRepoName(row.repo),
       count: row.count,
       color: resolveRepoColor(row.repo, i, repoColors),
     }))
-    if (other > 0) {
+    if (foldedRepoOther > 0) {
       slices.push({
         repo: "__other__",
-        label: "Other",
-        count: other,
+        label: "Other repos",
+        count: foldedRepoOther,
         color: GITHUB_REPO_OTHER_COLOR,
+      })
+    }
+    if (nonCommit > 0) {
+      slices.push({
+        repo: "__activity__",
+        label: "PRs & reviews",
+        count: nonCommit,
+        color: "rgba(120,120,120,0.35)",
       })
     }
     if (slices.length === 0 || pieTotal <= 0) {

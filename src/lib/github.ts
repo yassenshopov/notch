@@ -73,7 +73,26 @@ export function scaleRepoCountsToTarget(
 export type GitHubTodayBreakdown = {
   date: string
   repos: GitHubTodayRepoContribution[]
+  /** Heatmap calendar total when this breakdown was fetched — not scaled onto repos. */
+  expectedCount?: number
   error?: string
+}
+
+export function sumGitHubRepoCounts(repos: GitHubTodayRepoContribution[]) {
+  return repos.reduce((sum, row) => sum + (row.count ?? 0), 0)
+}
+
+export function dayBreakdownMatchesCalendar(
+  breakdown: GitHubTodayBreakdown | null | undefined,
+  dateKey: string,
+  calendarCount: number,
+) {
+  if (!breakdown || breakdown.error) return false
+  if (breakdown.date !== dateKey) return false
+  if (typeof breakdown.expectedCount === "number") {
+    return breakdown.expectedCount === calendarCount
+  }
+  return false
 }
 
 export function localContributionDateKey(d = new Date()) {

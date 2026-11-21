@@ -4,7 +4,7 @@ import {
   contributionCountForDate,
   localContributionDateKey,
   openGitHubUrl,
-  scaleRepoCountsToTarget,
+  sumGitHubRepoCounts,
 } from "../lib/github"
 import { cn } from "../lib/utils"
 
@@ -23,16 +23,12 @@ export function GitHubTodayPanel({ weeks = [], breakdown, loading, className }: 
     [weeks, todayKey],
   )
 
-  const rawRepos = breakdown?.repos ?? []
   const repos = useMemo(
-    () => scaleRepoCountsToTarget(rawRepos, total),
-    [rawRepos, total],
+    () => (breakdown?.repos ?? []).filter((row) => row.count > 0),
+    [breakdown?.repos],
   )
-  const listed = useMemo(
-    () => repos.reduce((sum, row) => sum + row.count, 0),
-    [repos],
-  )
-  const other = Math.max(0, total - listed)
+  const commitSum = useMemo(() => sumGitHubRepoCounts(repos), [repos])
+  const otherActivity = Math.max(0, total - commitSum)
   const stale = Boolean(breakdown && breakdown.date !== todayKey)
 
   return (
@@ -95,9 +91,9 @@ export function GitHubTodayPanel({ weeks = [], breakdown, loading, className }: 
               </button>
             </li>
           ))}
-          {other > 0 ? (
+          {otherActivity > 0 ? (
             <li className="px-1 py-1 text-[11px] leading-snug text-black/38 dark:text-white/38">
-              • Other / private / not listed — {other}
+              • PRs, reviews, and other — {otherActivity}
             </li>
           ) : null}
         </ul>

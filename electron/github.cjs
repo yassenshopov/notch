@@ -264,7 +264,7 @@ function contributionDateKeyForToday(contributions) {
 }
 
 function dayCacheKey(dateKey) {
-  return `github:day:v5:${dateKey}`
+  return `github:day:v6:${dateKey}`
 }
 
 function sumRepoCounts(repos) {
@@ -278,7 +278,7 @@ function breakdownMatchesExpected(breakdown, expectedCount) {
   if (typeof breakdown.expectedCount === "number") {
     return breakdown.expectedCount === expectedCount
   }
-  return sumRepoCounts(breakdown.repos) === expectedCount
+  return false
 }
 
 const TODAY_BREAKDOWN_CALENDAR = `
@@ -341,10 +341,7 @@ async function fetchTodayBreakdownForRange(dateKey, range) {
 
   if (!col) return { calendarCount: 0, repos: [] }
   const calendarCount = calendarCountForDate(col, dateKey)
-  const repos = scaleRepoCountsToTarget(
-    mergeContributionsByRepository([col.commitContributionsByRepository]),
-    calendarCount,
-  )
+  const repos = mergeContributionsByRepository([col.commitContributionsByRepository])
   return {
     calendarCount,
     repos,
