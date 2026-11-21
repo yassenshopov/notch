@@ -1,14 +1,21 @@
 const { createSmartCache } = require("./smart-cache.cjs")
+const githubStore = require("./github-persistence.cjs")
 
 const API = "https://api.github.com"
 const cache = createSmartCache()
 
 const INBOX_TTL_MS = 60_000
 const INBOX_STALE_MS = 3 * 60_000
+const NOTIFICATIONS_INBOX_KIND = "notifications_inbox"
+const NOTIFICATIONS_PER_PAGE = 15
 const HEATMAP_TTL_MS = 45 * 60_000
 const HEATMAP_STALE_MS = 6 * 60 * 60_000
 const TODAY_TTL_MS = 10 * 60_000
 const TODAY_STALE_MS = 60 * 60_000
+/** Status bundle in Neon — beyond this, refetch from GitHub API. */
+const STATUS_DB_STALE_MS = HEATMAP_STALE_MS
+
+let statusBackgroundRefresh = null
 
 function token() {
   const t = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
@@ -34,6 +41,24 @@ async function gh(path) {
   return res.json()
 }
 
+async function ghRequest(method, path, body) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: {
+      ...headers(),
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (res.status === 401) throw new Error("github_unauthorized")
+  if (res.status === 403) throw new Error("github_forbidden")
+  if (!res.ok && res.status !== 204 && res.status !== 205) throw new Error(`github_http_${res.status}`)
+  if (res.status === 204 || res.status === 205) return null
+  const text = await res.text()
+  if (!text) return null
+  return JSON.parse(text)
+}
+
 async function ghGraphql(query, variables) {
   const res = await fetch(`${API}/graphql`, {
     method: "POST",
@@ -50,23 +75,69 @@ async function ghGraphql(query, variables) {
   return data.data
 }
 
+function mapNotificationSubjectType(type) {
+  const map = {
+    Issue: "Issue",
+    PullRequest: "Pull request",
+    Discussion: "Discussion",
+    Commit: "Commit",
+    Release: "Release",
+    RepositoryVulnerabilityAlert: "Security alert",
+    RepositoryDependabotAlertsThread: "Dependabot",
+  }
+  if (!type) return "Update"
+  return map[type] ?? type.replace(/([a-z])([A-Z])/g, "$1 $2")
+}
+
+function mapNotificationAction(reason, subjectType) {
+  const reasonMap = {
+    assign: "Assigned to you",
+    author: "Your activity",
+    comment: "New comment",
+    invitation: "Invitation",
+    manual: "Subscribed",
+    mention: "Mentioned you",
+    review_requested: "Review requested",
+    security_alert: "Security alert",
+    state_change: "Status changed",
+    subscribed: "New activity",
+    team_mention: "Team mention",
+  }
+  if (reason && reasonMap[reason]) return reasonMap[reason]
+  if (subjectType === "PullRequest" && reason === "review_requested") return "Review requested"
+  if (typeof reason === "string" && reason) {
+    return reason.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+  return "Notification"
+}
+
 function mapNotification(n) {
   const repo = n.repository?.full_name ?? ""
   const base = n.repository?.html_url ?? ""
   let url = base
-  const type = n.subject?.type
+  const subjectType = n.subject?.type
   const num = n.subject?.url?.match(/\/(\d+)$/)?.[1]
-  if (base && num && (type === "Issue" || type === "PullRequest")) {
-    const segment = type === "PullRequest" ? "pull" : "issues"
+  if (base && num && (subjectType === "Issue" || subjectType === "PullRequest")) {
+    const segment = subjectType === "PullRequest" ? "pull" : "issues"
     url = `${base}/${segment}/${num}`
   }
+  const owner = n.repository?.owner
+  const ownerType =
+    owner?.type === "Organization" ? "organization" : owner?.type === "User" ? "user" : "unknown"
   return {
     id: String(n.id),
     title: n.subject?.title ?? "Update",
     repo,
     url,
     updatedAt: n.updated_at,
-    unread: n.unread,
+    unread: Boolean(n.unread),
+    reason: n.reason ?? null,
+    subjectType: subjectType ?? null,
+    actionLabel: mapNotificationAction(n.reason, subjectType),
+    subjectTypeLabel: mapNotificationSubjectType(subjectType),
+    ownerLogin: owner?.login ?? (repo.includes("/") ? repo.split("/")[0] : ""),
+    ownerAvatarUrl: owner?.avatar_url ?? null,
+    ownerType,
   }
 }
 
@@ -192,8 +263,8 @@ function contributionDateKeyForToday(contributions) {
   return local
 }
 
-function todayCacheKey(dateKey) {
-  return `github:today:v4:${dateKey}`
+function dayCacheKey(dateKey) {
+  return `github:day:v4:${dateKey}`
 }
 
 const TODAY_BREAKDOWN_CALENDAR = `
@@ -300,11 +371,22 @@ async function fetchTodayBreakdownForDate(dateKey, expectedCount) {
   return { date: dateKey, repos: picked?.repos ?? [] }
 }
 
-async function loadTodayBreakdown(force, contributions) {
-  const dateKey = contributionDateKeyForToday(contributions)
-  const expectedCount = contributionCountForDateKey(contributions, dateKey)
-  const key = todayCacheKey(dateKey)
+async function loadDayBreakdown(dateKey, expectedCount, force = false) {
+  const key = dayCacheKey(dateKey)
   if (force) cache.invalidate(key)
+
+  if (!force) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const row = login
+      ? await githubStore.readSnapshotWithMeta(login, `day:${dateKey}`)
+      : null
+    if (row?.payload?.date === dateKey) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < TODAY_STALE_MS) {
+        return { ...row.payload, fromCache: true, cachedAt: row.syncedAt }
+      }
+    }
+  }
 
   try {
     const breakdown = await cache.get(key, {
@@ -313,16 +395,51 @@ async function loadTodayBreakdown(force, contributions) {
       force,
       fetcher: () => fetchTodayBreakdownForDate(dateKey, expectedCount),
     })
-    if (breakdown?.date === dateKey) return breakdown
+    if (breakdown?.date === dateKey) {
+      const login = await githubStore.readLatestLogin().catch(() => null)
+      if (login) {
+        void githubStore.writeSnapshot(login, `day:${dateKey}`, breakdown)
+      }
+      return breakdown
+    }
     cache.invalidate(key)
-    return await fetchTodayBreakdownForDate(dateKey)
+    return await fetchTodayBreakdownForDate(dateKey, expectedCount)
   } catch (err) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const cached = login
+      ? await githubStore.readSnapshot(login, `day:${dateKey}`).catch(() => null)
+      : null
+    if (cached?.date === dateKey) {
+      return { ...cached, fromCache: true }
+    }
     return {
       date: dateKey,
       repos: [],
-      error: err instanceof Error ? err.message : "github_today_error",
+      error: err instanceof Error ? err.message : "github_day_error",
     }
   }
+}
+
+async function loadTodayBreakdown(force, contributions) {
+  const dateKey = contributionDateKeyForToday(contributions)
+  const expectedCount = contributionCountForDateKey(contributions, dateKey)
+  return loadDayBreakdown(dateKey, expectedCount, force)
+}
+
+async function dayBreakdown(options = {}) {
+  const dateKey = String(options.date ?? "").trim()
+  if (!dateKey) {
+    return { date: "", repos: [], error: "missing_date" }
+  }
+  const configured = Boolean(token())
+  if (!configured) {
+    return { date: dateKey, repos: [], error: "not_configured" }
+  }
+  const expectedCount =
+    typeof options.count === "number" && Number.isFinite(options.count)
+      ? options.count
+      : undefined
+  return loadDayBreakdown(dateKey, expectedCount, options.force === true)
 }
 
 async function fetchContributions() {
@@ -370,10 +487,183 @@ function normalizeContributions(raw) {
   return { total: raw.total ?? 0, days, weeks }
 }
 
+function mapProfile(user) {
+  if (!user) return null
+  return {
+    name: user.name ?? null,
+    bio: user.bio ?? null,
+    company: user.company ?? null,
+    location: user.location ?? null,
+    blog: user.blog || null,
+    followers: user.followers ?? 0,
+    following: user.following ?? 0,
+    publicRepos: user.public_repos ?? 0,
+    url: user.html_url ?? `https://github.com/${user.login}`,
+    twitterUsername: user.twitter_username ?? null,
+  }
+}
+
+async function fetchNotificationsList({ before, perPage = NOTIFICATIONS_PER_PAGE } = {}) {
+  const qs = new URLSearchParams({ per_page: String(perPage) })
+  if (before) qs.set("before", before)
+  const rows = await gh(`/notifications?${qs}`)
+  return (rows ?? []).map(mapNotification)
+}
+
+async function persistNotificationsInbox(login, inboxPayload) {
+  if (!login || !inboxPayload) return
+  await githubStore.writeSnapshot(login, NOTIFICATIONS_INBOX_KIND, inboxPayload).catch(() => {})
+  const statusRow = await githubStore.readSnapshot(login, "status").catch(() => null)
+  if (statusRow?.login) {
+    await githubStore
+      .writeStatusBundle({
+        ...statusRow,
+        notifications: (inboxPayload.items ?? []).slice(0, 12),
+      })
+      .catch(() => {})
+  }
+  cache.invalidate("github:inbox")
+}
+
+async function readNotificationsInboxCached(login) {
+  return githubStore.readSnapshotWithMeta(login, NOTIFICATIONS_INBOX_KIND)
+}
+
+async function patchInboxUnread(login, patchFn) {
+  const snap = (await githubStore.readSnapshot(login, NOTIFICATIONS_INBOX_KIND)) ?? {
+    items: [],
+    hasMore: false,
+    perPage: NOTIFICATIONS_PER_PAGE,
+    savedAt: Date.now(),
+  }
+  const items = (snap.items ?? []).map(patchFn)
+  const next = { ...snap, items, savedAt: Date.now() }
+  await persistNotificationsInbox(login, next)
+  return next
+}
+
+async function notificationsInbox(options = {}) {
+  const configured = Boolean(token())
+  if (!configured) {
+    return {
+      configured: false,
+      connected: false,
+      items: [],
+      hasMore: false,
+      message: "Add GITHUB_TOKEN to .env",
+    }
+  }
+
+  const force = options.force === true
+  const before = options.before ? String(options.before) : null
+  const loadMore = Boolean(before)
+
+  let login = await githubStore.readLatestLogin().catch(() => null)
+  if (!login) {
+    try {
+      login = (await gh("/user"))?.login
+    } catch {
+      login = null
+    }
+  }
+
+  if (!loadMore && !force && login) {
+    const cached = await readNotificationsInboxCached(login)
+    if (cached?.payload?.items?.length) {
+      const age = cached.syncedAt ? Date.now() - cached.syncedAt : Number.POSITIVE_INFINITY
+      if (age < INBOX_STALE_MS) {
+        return {
+          configured: true,
+          connected: true,
+          items: cached.payload.items,
+          hasMore: Boolean(cached.payload.hasMore),
+          perPage: cached.payload.perPage ?? NOTIFICATIONS_PER_PAGE,
+          fromCache: true,
+          cachedAt: cached.syncedAt,
+        }
+      }
+    }
+  }
+
+  try {
+    const fetched = await fetchNotificationsList({ before, perPage: NOTIFICATIONS_PER_PAGE })
+    const hasMore = fetched.length >= NOTIFICATIONS_PER_PAGE
+
+    let items = fetched
+    if (loadMore && login) {
+      const prev = (await githubStore.readSnapshot(login, NOTIFICATIONS_INBOX_KIND))?.items ?? []
+      const ids = new Set(prev.map((n) => n.id))
+      items = [...prev, ...fetched.filter((n) => !ids.has(n.id))]
+    }
+
+    const payload = {
+      items,
+      hasMore,
+      perPage: NOTIFICATIONS_PER_PAGE,
+      savedAt: Date.now(),
+    }
+
+    if (login) await persistNotificationsInbox(login, payload)
+
+    return {
+      configured: true,
+      connected: true,
+      ...payload,
+    }
+  } catch (err) {
+    if (login) {
+      const cached = await githubStore.readSnapshot(login, NOTIFICATIONS_INBOX_KIND).catch(() => null)
+      if (cached?.items?.length) {
+        return {
+          configured: true,
+          connected: true,
+          ...cached,
+          fromCache: true,
+          error: err instanceof Error ? err.message : "github_notifications_error",
+        }
+      }
+    }
+    return {
+      configured: true,
+      connected: false,
+      items: [],
+      hasMore: false,
+      error: err instanceof Error ? err.message : "github_notifications_error",
+    }
+  }
+}
+
+async function markNotificationRead(threadId) {
+  if (!threadId) return { ok: false, error: "missing_id" }
+  if (!token()) return { ok: false, error: "not_configured" }
+  await ghRequest("PATCH", `/notifications/threads/${encodeURIComponent(String(threadId))}`)
+  const login = await githubStore.readLatestLogin().catch(() => null)
+  if (login) {
+    const next = await patchInboxUnread(login, (n) =>
+      n.id === String(threadId) ? { ...n, unread: false } : n,
+    )
+    return { ok: true, items: next.items }
+  }
+  cache.invalidate("github:inbox")
+  return { ok: true, items: [] }
+}
+
+async function markAllNotificationsRead() {
+  if (!token()) return { ok: false, error: "not_configured" }
+  await ghRequest("PUT", "/notifications")
+  const login = await githubStore.readLatestLogin().catch(() => null)
+  if (login) {
+    const next = await patchInboxUnread(login, (n) => ({ ...n, unread: false }))
+    return { ok: true, items: next.items }
+  }
+  cache.invalidate("github:inbox")
+  return { ok: true, items: [] }
+}
+
 async function fetchInbox() {
   const user = await gh("/user")
   const [notifications, search] = await Promise.all([
-    gh("/notifications?per_page=8"),
+    fetchNotificationsList({ perPage: NOTIFICATIONS_PER_PAGE }),
     gh(
       `/search/issues?q=type:pr+state:open+involves:${encodeURIComponent(user.login)}&sort=updated&per_page=8`,
     ),
@@ -391,12 +681,100 @@ async function fetchInbox() {
     })
   })
 
+  const notificationItems = notifications ?? []
+  const inboxPayload = {
+    items: notificationItems,
+    hasMore: notificationItems.length >= NOTIFICATIONS_PER_PAGE,
+    perPage: NOTIFICATIONS_PER_PAGE,
+    savedAt: Date.now(),
+  }
+  await persistNotificationsInbox(user.login, inboxPayload).catch(() => {})
+
   return {
     login: user.login,
     avatarUrl: user.avatar_url,
-    notifications: (notifications ?? []).map(mapNotification),
+    profile: mapProfile(user),
+    notifications: notificationItems,
     pullRequests,
   }
+}
+
+function scheduleStatusBackgroundRefresh(options) {
+  if (statusBackgroundRefresh) return
+  statusBackgroundRefresh = fetchGitHubStatusFromApi(options)
+    .catch(() => {})
+    .finally(() => {
+      statusBackgroundRefresh = null
+    })
+}
+
+async function fetchGitHubStatusFromApi(options = {}) {
+  const force = options.force === true
+  const [inbox, contributions] = await Promise.all([
+    cache.get("github:inbox", {
+      ttlMs: INBOX_TTL_MS,
+      staleMs: INBOX_STALE_MS,
+      force,
+      fetcher: fetchInbox,
+    }),
+    cache
+      .get("github:contributions:v2", {
+        ttlMs: HEATMAP_TTL_MS,
+        staleMs: HEATMAP_STALE_MS,
+        force,
+        fetcher: fetchContributions,
+      })
+      .catch(() => null),
+  ])
+
+  const normalizedContributions = normalizeContributions(contributions)
+  const todayBreakdown = await loadTodayBreakdown(force, normalizedContributions)
+
+  const payload = {
+    configured: true,
+    connected: true,
+    login: inbox.login,
+    avatarUrl: inbox.avatarUrl,
+    profile: inbox.profile ?? null,
+    notifications: inbox.notifications,
+    pullRequests: inbox.pullRequests,
+    contributions: normalizedContributions,
+    todayBreakdown,
+  }
+
+  if (options.includeInsights === true) {
+    payload.insights = await loadActivityInsights({
+      force,
+      year: options.year,
+    })
+  }
+
+  await githubStore.writeStatusBundle(payload).catch(() => {})
+
+  return payload
+}
+
+async function loadStatusFromStore(options = {}) {
+  const row = await githubStore.readStatusWithMeta()
+  if (!row?.payload?.login) return null
+
+  const payload = githubStore.statusPayloadFromBundle(row.payload, {
+    cachedAt: row.syncedAt,
+  })
+  if (!payload) return null
+
+  if (options.includeInsights === true && !payload.insights) {
+    const year =
+      typeof options.year === "number" && Number.isFinite(options.year)
+        ? Math.floor(options.year)
+        : new Date().getFullYear()
+    const ins = await githubStore.readSnapshotWithMeta(payload.login, `activity_insights:${year}`)
+    if (ins?.payload) {
+      payload.insights = ins.payload
+    }
+  }
+
+  return payload
 }
 
 async function status(options = {}) {
@@ -408,6 +786,7 @@ async function status(options = {}) {
       connected: false,
       login: null,
       avatarUrl: null,
+      profile: null,
       notifications: [],
       pullRequests: [],
       contributions: null,
@@ -416,52 +795,34 @@ async function status(options = {}) {
     }
   }
 
+  if (!force) {
+    const row = await githubStore.readStatusWithMeta()
+    if (row?.payload?.login) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < STATUS_DB_STALE_MS) {
+        const payload = await loadStatusFromStore(options)
+        if (payload) {
+          if (age >= INBOX_TTL_MS) {
+            scheduleStatusBackgroundRefresh(options)
+          }
+          return payload
+        }
+      }
+    }
+  }
+
   try {
-    const [inbox, contributions] = await Promise.all([
-      cache.get("github:inbox", {
-        ttlMs: INBOX_TTL_MS,
-        staleMs: INBOX_STALE_MS,
-        force,
-        fetcher: fetchInbox,
-      }),
-      cache
-        .get("github:contributions:v2", {
-          ttlMs: HEATMAP_TTL_MS,
-          staleMs: HEATMAP_STALE_MS,
-          force,
-          fetcher: fetchContributions,
-        })
-        .catch(() => null),
-    ])
-
-    const normalizedContributions = normalizeContributions(contributions)
-    const todayBreakdown = await loadTodayBreakdown(force, normalizedContributions)
-
-    const payload = {
-      configured: true,
-      connected: true,
-      login: inbox.login,
-      avatarUrl: inbox.avatarUrl,
-      notifications: inbox.notifications,
-      pullRequests: inbox.pullRequests,
-      contributions: normalizedContributions,
-      todayBreakdown,
-    }
-
-    if (options.includeInsights === true) {
-      payload.insights = await loadActivityInsights({
-        force,
-        year: options.year,
-      })
-    }
-
-    return payload
+    return await fetchGitHubStatusFromApi(options)
   } catch (err) {
+    const cached = await githubStore.readCachedStatus().catch(() => null)
+    if (cached) return cached
+
     return {
       configured: true,
       connected: false,
       login: null,
       avatarUrl: null,
+      profile: null,
       notifications: [],
       pullRequests: [],
       contributions: null,
@@ -479,10 +840,7 @@ function yearContributionRangeIso(year) {
   const now = new Date()
   if (year > now.getFullYear()) return null
   if (year < 1970) return null
-  const isCurrent = year === now.getFullYear()
-  const to = isCurrent
-    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toISOString()
-    : `${year + 1}-01-01T00:00:00.000Z`
+  const to = `${year + 1}-01-01T00:00:00.000Z`
   return { from, to }
 }
 
@@ -653,7 +1011,7 @@ async function fetchRepoMonthlySeries(year) {
 }
 
 async function loadContributionYears(force) {
-  const cacheKey = "github:insights:years:v1"
+  const cacheKey = "github:insights:years:v2"
   if (force) cache.invalidate(cacheKey)
   return cache.get(cacheKey, {
     ttlMs: INSIGHTS_TTL_MS,
@@ -677,8 +1035,128 @@ async function loadContributionYears(force) {
   })
 }
 
+async function fetchReposCreatedInYear(login, year) {
+  if (!login) return null
+  const now = new Date()
+  const end =
+    year === now.getUTCFullYear()
+      ? now.toISOString().slice(0, 10)
+      : `${year}-12-31`
+  const from = `${year}-01-01`
+  const q = `user:${login} created:${from}..${end}`
+  try {
+    const data = await gh(
+      `/search/repositories?q=${encodeURIComponent(q)}&per_page=1`,
+    )
+    return typeof data.total_count === "number" ? data.total_count : null
+  } catch {
+    return null
+  }
+}
+
+async function loadReposCreatedStats(force) {
+  const cacheKey = "github:insights:repos-created:v1"
+  if (force) cache.invalidate(cacheKey)
+  return cache.get(cacheKey, {
+    ttlMs: INSIGHTS_TTL_MS,
+    staleMs: INSIGHTS_STALE_MS,
+    force,
+    fetcher: async () => {
+      const user = await gh("/user")
+      const year = new Date().getFullYear()
+      const priorYear = year - 1
+      const [count, priorCount] = await Promise.all([
+        fetchReposCreatedInYear(user.login, year),
+        fetchReposCreatedInYear(user.login, priorYear),
+      ])
+      return {
+        year,
+        count,
+        priorYear,
+        priorCount,
+        delta:
+          count != null && priorCount != null ? count - priorCount : null,
+      }
+    },
+  })
+}
+
+const REPO_PROFILE_TTL_MS = 24 * 60 * 60_000
+const REPO_PROFILE_STALE_MS = 7 * 24 * 60 * 60_000
+const REPO_PROFILE_CONCURRENCY = 6
+
+function mapRepoProfile(data, nameWithOwner) {
+  if (!data) return null
+  const ownerType =
+    data.owner?.type === "Organization" ? "organization" : "user"
+  return {
+    repo: nameWithOwner,
+    description: data.description ?? null,
+    stars: data.stargazers_count ?? 0,
+    forks: data.forks_count ?? 0,
+    openIssues: data.open_issues_count ?? 0,
+    ownerLogin: data.owner?.login ?? nameWithOwner.split("/")[0] ?? "",
+    ownerType,
+    ownerAvatarUrl: data.owner?.avatar_url ?? null,
+    createdAt: data.created_at ?? null,
+    pushedAt: data.pushed_at ?? null,
+    updatedAt: data.updated_at ?? null,
+    language: data.language ?? null,
+    isFork: Boolean(data.fork),
+    isArchived: Boolean(data.archived),
+    isPrivate: Boolean(data.private),
+  }
+}
+
+async function fetchRepoProfile(nameWithOwner) {
+  const parts = String(nameWithOwner).split("/")
+  if (parts.length < 2) return null
+  const [owner, repo] = parts
+  try {
+    const data = await gh(`/repos/${owner}/${repo}`)
+    return mapRepoProfile(data, nameWithOwner)
+  } catch {
+    return null
+  }
+}
+
+async function loadRepoProfilesMap(names, force) {
+  const unique = [...new Set(names.filter(Boolean))]
+  if (!unique.length) return {}
+  const cacheKey = `github:repo-profiles:v3:${unique.sort().join("|")}`
+  if (force) cache.invalidate(cacheKey)
+  return cache.get(cacheKey, {
+    ttlMs: REPO_PROFILE_TTL_MS,
+    staleMs: REPO_PROFILE_STALE_MS,
+    force,
+    fetcher: async () => {
+      const results = new Array(unique.length)
+      let index = 0
+      async function worker() {
+        while (index < unique.length) {
+          const i = index++
+          results[i] = await fetchRepoProfile(unique[i])
+        }
+      }
+      const workers = Math.min(REPO_PROFILE_CONCURRENCY, unique.length)
+      await Promise.all(Array.from({ length: workers }, () => worker()))
+      const map = {}
+      for (const row of results) {
+        if (row?.repo) map[row.repo] = row
+      }
+      const login = await githubStore.readLatestLogin().catch(() => null)
+      if (login) {
+        await githubStore
+          .writeSnapshot(login, `repo_profiles:${unique.sort().join("|").slice(0, 200)}`, map)
+          .catch(() => {})
+      }
+      return map
+    },
+  })
+}
+
 async function loadRepoChartsForYear(year, force) {
-  const cacheKey = `github:insights:repos:v1:${year}`
+  const cacheKey = `github:insights:repos:v2:${year}`
   if (force) cache.invalidate(cacheKey)
   return cache.get(cacheKey, {
     ttlMs: INSIGHTS_TTL_MS,
@@ -688,13 +1166,256 @@ async function loadRepoChartsForYear(year, force) {
       const range = yearContributionRangeIso(year)
       const repoTotals = range ? await fetchRepoTotalsForRange(range.from, range.to) : []
       const { months, series } = await fetchRepoMonthlySeries(year)
+      const sliced = repoTotals.slice(0, 30)
+      const profileMap = await loadRepoProfilesMap(
+        sliced.map((row) => row.repo),
+        force,
+      )
+      const repoCatalog = sliced.map((row) => ({
+        ...row,
+        profile: profileMap[row.repo] ?? null,
+      }))
       return {
-        repoTotals: repoTotals.slice(0, 12),
+        repoTotals: sliced,
+        repoCatalog,
         repoSeries: series,
         monthLabels: months,
       }
     },
   })
+}
+
+const WEEKLY_STACK_TOP = 7
+const WEEKLY_STACK_DETAIL_TOP = 30
+const WEEKLY_STACK_CONCURRENCY = 5
+const DAILY_STACK_DAYS = 45
+
+function rollingWeekRangesUtc(days = 365) {
+  const ranges = []
+  const end = new Date()
+  end.setUTCHours(0, 0, 0, 0)
+  const windowStart = new Date(end)
+  windowStart.setUTCDate(windowStart.getUTCDate() - days)
+  let cursor = new Date(windowStart)
+  while (cursor < end) {
+    const from = cursor.toISOString()
+    const weekEnd = new Date(cursor)
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+    const cappedEnd = weekEnd > end ? end : weekEnd
+    ranges.push({
+      weekStart: from.slice(0, 10),
+      from,
+      to: cappedEnd.toISOString(),
+    })
+    cursor = new Date(cappedEnd)
+  }
+  return ranges
+}
+
+function rollingDayRangesUtc(dayCount = DAILY_STACK_DAYS) {
+  const ranges = []
+  const end = new Date()
+  end.setUTCHours(0, 0, 0, 0)
+  const windowStart = new Date(end)
+  windowStart.setUTCDate(windowStart.getUTCDate() - dayCount)
+  let cursor = new Date(windowStart)
+  while (cursor < end) {
+    const from = cursor.toISOString()
+    const dayEnd = new Date(cursor)
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+    ranges.push({
+      weekStart: from.slice(0, 10),
+      from,
+      to: dayEnd.toISOString(),
+    })
+    cursor = dayEnd
+  }
+  return ranges
+}
+
+function packRepoStackBuckets(rawRows, detailRepos, topRepos, repoUrls) {
+  const detailSet = new Set(detailRepos)
+  const topSet = new Set(topRepos)
+  return rawRows.map((row) => {
+    const byDetail = new Map()
+    let other = 0
+    for (const item of row.repos ?? []) {
+      if (detailSet.has(item.repo)) {
+        byDetail.set(item.repo, (byDetail.get(item.repo) ?? 0) + item.count)
+      }
+      if (!topSet.has(item.repo)) {
+        if (!detailSet.has(item.repo)) {
+          other += item.count
+        }
+      }
+    }
+    const repos = detailRepos
+      .map((repo) => ({
+        repo,
+        url: repoUrls[repo] ?? `https://github.com/${repo}`,
+        count: byDetail.get(repo) ?? 0,
+      }))
+      .filter((r) => r.count > 0)
+    if (other > 0) {
+      repos.push({ repo: "__other__", url: "", count: other })
+    }
+    return {
+      weekStart: row.weekStart,
+      total: row.total,
+      repos,
+    }
+  })
+}
+
+async function asyncPool(concurrency, items, fn) {
+  const results = new Array(items.length)
+  let index = 0
+  async function worker() {
+    while (index < items.length) {
+      const i = index++
+      results[i] = await fn(items[i], i)
+    }
+  }
+  const workers = Math.max(1, Math.min(concurrency, items.length))
+  await Promise.all(Array.from({ length: workers }, () => worker()))
+  return results
+}
+
+async function fetchRepoCommitsForRange(from, to) {
+  const data = await ghGraphql(
+    `query ($from: DateTime!, $to: DateTime!) {
+      viewer {
+        contributionsCollection(from: $from, to: $to) {
+          contributionCalendar { totalContributions }
+          ${REPO_COMMIT_FIELDS}
+        }
+      }
+    }`,
+    { from, to },
+  )
+  const col = data?.viewer?.contributionsCollection
+  const target = col?.contributionCalendar?.totalContributions ?? 0
+  const repos = mergeContributionsByRepository([col?.commitContributionsByRepository])
+  return { target, repos: scaleRepoCountsToTarget(repos, target) }
+}
+
+async function loadWeeklyRepoStack(force) {
+  const cacheKey = "github:insights:weekly-stack:v3"
+  if (force) cache.invalidate(cacheKey)
+  return cache.get(cacheKey, {
+    ttlMs: INSIGHTS_TTL_MS,
+    staleMs: INSIGHTS_STALE_MS,
+    force,
+    fetcher: async () => {
+      const ranges = rollingWeekRangesUtc(365)
+      const fetched = await asyncPool(WEEKLY_STACK_CONCURRENCY, ranges, async (range) => {
+        try {
+          const { target, repos } = await fetchRepoCommitsForRange(range.from, range.to)
+          return {
+            weekStart: range.weekStart,
+            total: target,
+            repos,
+          }
+        } catch {
+          return { weekStart: range.weekStart, total: 0, repos: [] }
+        }
+      })
+
+      const totalsByRepo = new Map()
+      const repoUrls = {}
+      for (const week of fetched) {
+        for (const row of week.repos) {
+          totalsByRepo.set(row.repo, (totalsByRepo.get(row.repo) ?? 0) + row.count)
+          if (!repoUrls[row.repo]) repoUrls[row.repo] = row.url
+        }
+      }
+
+      const rankedRepos = [...totalsByRepo.entries()].sort((a, b) => b[1] - a[1])
+      const topRepos = rankedRepos.slice(0, WEEKLY_STACK_TOP).map(([repo]) => repo)
+      const detailRepos = rankedRepos.slice(0, WEEKLY_STACK_DETAIL_TOP).map(([repo]) => repo)
+
+      const weeks = packRepoStackBuckets(fetched, detailRepos, topRepos, repoUrls)
+
+      const dayRanges = rollingDayRangesUtc(DAILY_STACK_DAYS)
+      const dayFetched = await asyncPool(WEEKLY_STACK_CONCURRENCY, dayRanges, async (range) => {
+        try {
+          const { target, repos } = await fetchRepoCommitsForRange(range.from, range.to)
+          return {
+            weekStart: range.weekStart,
+            total: target,
+            repos,
+          }
+        } catch {
+          return { weekStart: range.weekStart, total: 0, repos: [] }
+        }
+      })
+      const days = packRepoStackBuckets(dayFetched, detailRepos, topRepos, repoUrls)
+
+      return { topRepos, repoUrls, weeks, days }
+    },
+  })
+}
+
+async function weeklyRepoStack(options = {}) {
+  const force = options.force === true
+  const configured = Boolean(token())
+  if (!configured) {
+    return {
+      configured: false,
+      connected: false,
+      topRepos: [],
+      repoUrls: {},
+      weeks: [],
+      days: [],
+      message: "Add GITHUB_TOKEN to .env",
+    }
+  }
+
+  if (!force) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const row = login
+      ? await githubStore.readSnapshotWithMeta(login, "weekly_repo_stack")
+      : null
+    if (row?.payload?.weeks?.length) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < INSIGHTS_STALE_MS) {
+        return { ...row.payload, configured: true, connected: true, fromCache: true, cachedAt: row.syncedAt }
+      }
+    }
+  }
+
+  try {
+    const payload = await loadWeeklyRepoStack(force)
+    const result = {
+      configured: true,
+      connected: true,
+      ...payload,
+    }
+    const login = await gh("/user")
+      .then((u) => u?.login)
+      .catch(() => githubStore.readLatestLogin())
+    if (login) {
+      await githubStore.writeSnapshot(login, "weekly_repo_stack", result).catch(() => {})
+    }
+    return result
+  } catch (err) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const cached = login
+      ? await githubStore.readSnapshot(login, "weekly_repo_stack").catch(() => null)
+      : null
+    if (cached?.weeks) {
+      return { ...cached, fromCache: true }
+    }
+    return {
+      configured: true,
+      connected: false,
+      topRepos: [],
+      repoUrls: {},
+      weeks: [],
+      days: [],
+      error: err instanceof Error ? err.message : "github_weekly_stack_error",
+    }
+  }
 }
 
 async function loadActivityInsights(options = {}) {
@@ -705,7 +1426,14 @@ async function loadActivityInsights(options = {}) {
       : new Date().getFullYear()
 
   let years = []
-  let charts = { repoTotals: [], repoSeries: [], monthLabels: [] }
+  let charts = { repoTotals: [], repoCatalog: [], repoSeries: [], monthLabels: [] }
+  let reposCreated = {
+    year: new Date().getFullYear(),
+    count: null,
+    priorYear: new Date().getFullYear() - 1,
+    priorCount: null,
+    delta: null,
+  }
   let yearsError
   let chartsError
 
@@ -721,14 +1449,24 @@ async function loadActivityInsights(options = {}) {
     chartsError = err instanceof Error ? err.message : "github_charts_error"
   }
 
+  try {
+    reposCreated = await loadReposCreatedStats(force)
+  } catch {
+    /* keep null counts */
+  }
+
   const error = yearsError && chartsError ? `${yearsError}; ${chartsError}` : yearsError ?? chartsError
 
   return {
     years,
     chartYear: year,
     repoTotals: charts.repoTotals,
+    repoCatalog: charts.repoCatalog?.length
+      ? charts.repoCatalog
+      : charts.repoTotals.map((row) => ({ ...row, profile: null })),
     repoSeries: charts.repoSeries,
     monthLabels: charts.monthLabels,
+    reposCreated,
     error,
   }
 }
@@ -742,31 +1480,98 @@ async function activityInsights(options = {}) {
       years: [],
       chartYear: new Date().getFullYear(),
       repoTotals: [],
+      repoCatalog: [],
       repoSeries: [],
       monthLabels: [],
+      reposCreated: {
+        year: new Date().getFullYear(),
+        count: null,
+        priorYear: new Date().getFullYear() - 1,
+        priorCount: null,
+        delta: null,
+      },
       message: "Add GITHUB_TOKEN to .env",
     }
   }
 
+  const year =
+    typeof options.year === "number" && Number.isFinite(options.year)
+      ? Math.floor(options.year)
+      : new Date().getFullYear()
+
+  if (!options.force) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const row = login
+      ? await githubStore.readSnapshotWithMeta(login, `activity_insights:${year}`)
+      : null
+    if (row?.payload?.years) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < INSIGHTS_STALE_MS) {
+        return {
+          ...row.payload,
+          configured: true,
+          connected: true,
+          fromCache: true,
+          cachedAt: row.syncedAt,
+        }
+      }
+    }
+  }
+
   try {
-    const payload = await loadActivityInsights(options)
-    return {
+    const payload = await loadActivityInsights({ force: options.force === true, year })
+    const result = {
       configured: true,
       connected: true,
       ...payload,
     }
+    const login = await gh("/user")
+      .then((u) => u?.login)
+      .catch(() => githubStore.readLatestLogin())
+    if (login) {
+      await githubStore
+        .writeSnapshot(login, `activity_insights:${year}`, result)
+        .catch(() => {})
+    }
+    return result
   } catch (err) {
+    const login = await githubStore.readLatestLogin().catch(() => null)
+    const cached = login
+      ? await githubStore
+          .readSnapshot(login, `activity_insights:${year}`)
+          .catch(() => null)
+      : null
+    if (cached?.years) {
+      return { ...cached, fromCache: true }
+    }
     return {
       configured: true,
       connected: false,
       years: [],
-      chartYear: new Date().getFullYear(),
+      chartYear: year,
       repoTotals: [],
+      repoCatalog: [],
       repoSeries: [],
       monthLabels: [],
+      reposCreated: {
+        year: new Date().getFullYear(),
+        count: null,
+        priorYear: new Date().getFullYear() - 1,
+        priorCount: null,
+        delta: null,
+      },
       error: err instanceof Error ? err.message : "github_insights_error",
     }
   }
 }
 
-module.exports = { status, activityInsights, configured: () => Boolean(token()) }
+module.exports = {
+  status,
+  activityInsights,
+  weeklyRepoStack,
+  dayBreakdown,
+  notificationsInbox,
+  markNotificationRead,
+  markAllNotificationsRead,
+  configured: () => Boolean(token()),
+}

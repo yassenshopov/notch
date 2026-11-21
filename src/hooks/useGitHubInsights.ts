@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useState } from "react"
 import { fetchGitHubInsights, type GitHubActivityInsights } from "../lib/github"
 
+const year = new Date().getFullYear()
 const idle: GitHubActivityInsights = {
   configured: false,
   connected: false,
   years: [],
-  chartYear: new Date().getFullYear(),
+  chartYear: year,
   repoTotals: [],
+  repoCatalog: [],
   repoSeries: [],
   monthLabels: [],
+  reposCreated: {
+    year,
+    count: null,
+    priorYear: year - 1,
+    priorCount: null,
+    delta: null,
+  },
 }
 
 export function useGitHubInsights(active: boolean, chartYear?: number) {

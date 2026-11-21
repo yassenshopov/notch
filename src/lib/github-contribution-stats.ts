@@ -1,6 +1,14 @@
 import type { GitHubContributionWeek } from "./github"
 import { localContributionDateKey } from "./github"
 
+function sliceContributionWindow(
+  days: { date: string; count: number }[],
+  windowDays: number,
+) {
+  if (!Number.isFinite(windowDays)) return days
+  return days.slice(-windowDays)
+}
+
 export function iterContributionDays(weeks: GitHubContributionWeek[]) {
   const out: { date: string; count: number }[] = []
   for (const week of weeks) {
@@ -87,4 +95,53 @@ export function yearToDateComparison(weeks: GitHubContributionWeek[], now = new 
     previous > 0 ? Math.round(((current - previous) / previous) * 100) : current > 0 ? 100 : 0
 
   return { year, prevYear, current, previous, delta, deltaPct }
+}
+
+export function sumContributionsInDays(
+  weeks: GitHubContributionWeek[],
+  windowDays: number,
+): number {
+  const days = iterContributionDays(weeks)
+  const slice = sliceContributionWindow(days, windowDays)
+  return slice.reduce((sum, d) => sum + d.count, 0)
+}
+
+export function activeContributionDays(weeks: GitHubContributionWeek[], windowDays = 365) {
+  return sliceContributionWindow(iterContributionDays(weeks), windowDays).filter((d) => d.count > 0)
+    .length
+}
+
+export function bestContributionDay(
+  weeks: GitHubContributionWeek[],
+  windowDays = 365,
+): { date: string; count: number } | null {
+  const days = sliceContributionWindow(iterContributionDays(weeks), windowDays)
+  let best: { date: string; count: number } | null = null
+  for (const day of days) {
+    if (!best || day.count > best.count) best = day
+  }
+  return best && best.count > 0 ? best : null
+}
+
+/** Compare the latest 365 days of data to the 365 days before that (when history exists). */
+export function trailingYearComparison(weeks: GitHubContributionWeek[]) {
+  const days = iterContributionDays(weeks)
+  const recent = days.slice(-365)
+  const prior = days.slice(-730, -365)
+  const recentTotal = recent.reduce((sum, d) => sum + d.count, 0)
+  const priorTotal = prior.reduce((sum, d) => sum + d.count, 0)
+  const delta = recentTotal - priorTotal
+  const deltaPct =
+    priorTotal > 0
+      ? Math.round((delta / priorTotal) * 100)
+      : recentTotal > 0
+        ? 100
+        : 0
+  return {
+    recentTotal,
+    priorTotal,
+    delta,
+    deltaPct,
+    hasPrior: prior.length >= 200,
+  }
 }

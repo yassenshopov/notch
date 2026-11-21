@@ -7,6 +7,7 @@ const idle: GitHubStatus = {
   connected: false,
   login: null,
   avatarUrl: null,
+  profile: null,
   notifications: [],
   pullRequests: [],
   contributions: null,
