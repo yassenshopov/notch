@@ -14,6 +14,7 @@ import {
 import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
 import { PanelHeaderActions } from "./PanelHeaderActions"
+import { ServerStatsPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
 
 type Props = {
   title: string
@@ -163,6 +164,15 @@ export function ServerStatsPanel({
   const clockFormat = useSettings().clock.format
   const panelAccent = flavor === "mint" ? MINT_PANEL_GREEN : PI_PANEL_RED
   if (!status.connected && loading) {
+    if (desktop) {
+      return (
+        <ServerStatsPanelDesktopSkeleton
+          title={title}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
+      )
+    }
     return (
       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
         <Server className="mb-2 size-8 text-black/30 dark:text-white/30" strokeWidth={1.5} />
@@ -267,7 +277,15 @@ export function ServerStatsPanel({
       </header>
 
       {loading ? (
-        <p className="text-[12px] text-black/40 dark:text-white/40">Loading…</p>
+        desktop ? (
+          <ServerStatsPanelDesktopSkeleton
+            title={title}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        ) : (
+          <p className="text-[12px] text-black/40 dark:text-white/40">Loading…</p>
+        )
       ) : (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-3 gap-2">

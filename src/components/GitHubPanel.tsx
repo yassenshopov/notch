@@ -74,7 +74,7 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh, expanded }
     [fullPage, status.connected, heroPeriod, insights.years, status.contributions, currentYear],
   )
 
-  if (fullPage && loading && !status.connected) {
+  if (fullPage && loading && status.configured && !status.login) {
     return (
       <GitHubPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
     )

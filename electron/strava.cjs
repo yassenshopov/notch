@@ -507,6 +507,20 @@ function scheduleStravaStatusBackgroundRefresh() {
     })
 }
 
+async function loadStatusFromStore() {
+  const snap = await stravaStore.readStatusSnapshot()
+  if (!snap?.payload) return null
+  const hasIdentity = Boolean(snap.payload.login || snap.payload.athleteId)
+  const hasActivities =
+    Array.isArray(snap.payload.activities) && snap.payload.activities.length > 0
+  if (!hasIdentity && !hasActivities) return null
+  return {
+    ...snap.payload,
+    fromCache: true,
+    cachedAt: snap.syncedAt ?? null,
+  }
+}
+
 async function fetchStatusPayload(options = {}) {
   const force = options.force === true
 
@@ -514,13 +528,15 @@ async function fetchStatusPayload(options = {}) {
     const snap = await stravaStore.readStatusSnapshot()
     if (snap?.payload && snap.syncedAt) {
       const age = Date.now() - snap.syncedAt
+      const payload = { ...snap.payload, fromCache: true, cachedAt: snap.syncedAt }
       if (age < STATUS_STALE_MS) {
-        const payload = { ...snap.payload, fromCache: true, cachedAt: snap.syncedAt }
         if (age >= STATUS_TTL_MS) {
           scheduleStravaStatusBackgroundRefresh()
         }
         return payload
       }
+      scheduleStravaStatusBackgroundRefresh()
+      return payload
     }
   }
 
@@ -635,6 +651,17 @@ async function status(options = {}) {
     }
   }
 
+  if (!force) {
+    const persisted = await loadStatusFromStore()
+    if (persisted) {
+      const age = persisted.cachedAt ? Date.now() - persisted.cachedAt : Number.POSITIVE_INFINITY
+      if (age >= STATUS_TTL_MS) {
+        scheduleStravaStatusBackgroundRefresh()
+      }
+      return { configured: true, connected: true, ...persisted }
+    }
+  }
+
   try {
     const data = await cache.get("strava:status:v7", {
       ttlMs: STATUS_TTL_MS,
@@ -660,6 +687,15 @@ async function status(options = {}) {
         activities: [],
         monthDistance: 0,
         message: "Connect Strava in Settings",
+      }
+    }
+    const persisted = await loadStatusFromStore()
+    if (persisted) {
+      return {
+        configured: true,
+        connected: true,
+        ...persisted,
+        error: err instanceof Error ? err.message : "strava_error",
       }
     }
     return {

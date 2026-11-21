@@ -12,11 +12,13 @@ const empty: CalendarSnapshot = { configured: false, connected: false, calendars
 export function useCalendar(active: boolean) {
   const settings = useSettings()
   const [snapshot, setSnapshot] = useState<CalendarSnapshot>(empty)
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const refresh = useCallback(async (force = false) => {
     if (!active) {
       setSnapshot(empty)
+      setLoading(false)
       return
     }
     setRefreshing(true)
@@ -24,6 +26,7 @@ export function useCalendar(active: boolean) {
       const next = await fetchCalendarSnapshot({ force })
       setSnapshot(next)
     } finally {
+      setLoading(false)
       setRefreshing(false)
     }
   }, [active])
@@ -52,6 +55,7 @@ export function useCalendar(active: boolean) {
   return {
     snapshot,
     ready,
+    loading,
     refreshing,
     refresh,
     connect,

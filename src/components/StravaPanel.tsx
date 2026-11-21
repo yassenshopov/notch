@@ -8,6 +8,8 @@ import { StravaActivityRoutePanel } from "./StravaActivityRoutePanel"
 import { usePanelLayout } from "../lib/panel-layout"
 import { PanelHeaderActions } from "./PanelHeaderActions"
 import { StravaRouteHeatmap } from "./StravaRouteHeatmap"
+import { StravaPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
+import { readDesktopRouteFromLocation } from "../lib/desktop-route"
 
 type Props = {
   status: StravaStatus
@@ -29,7 +31,14 @@ export function StravaPanel({
   onDisconnect,
 }: Props) {
   const layout = usePanelLayout()
-  const desktop = layout === "desktop"
+  const routeDesktop = readDesktopRouteFromLocation().isDesktop
+  const desktop = layout === "desktop" || routeDesktop
+
+  if (desktop && loading && status.configured && !status.login) {
+    return (
+      <StravaPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+    )
+  }
 
   if (!status.configured) {
     return (

@@ -75,6 +75,7 @@ type Props = {
   connectStrava: () => Promise<unknown>
   disconnectStrava: () => void
   cursorStatus: CursorStatus
+  cursorLoading: boolean
   cursorAnalyticsLoading: boolean
   cursorRefreshing: boolean
   refreshCursor: () => void
@@ -104,6 +105,7 @@ type Props = {
   piRefreshing: boolean
   refreshPi: () => void
   calendarSnapshot: CalendarSnapshot
+  calendarLoading: boolean
   calendarRefreshing: boolean
   refreshCalendar: (force?: boolean) => void
   calendarConnecting: boolean
@@ -134,6 +136,7 @@ export function NotchActivePanel(props: Props) {
     connectStrava,
     disconnectStrava,
     cursorStatus,
+    cursorLoading,
     cursorAnalyticsLoading,
     cursorRefreshing,
     refreshCursor,
@@ -163,6 +166,7 @@ export function NotchActivePanel(props: Props) {
     piRefreshing,
     refreshPi,
     calendarSnapshot,
+    calendarLoading,
     calendarRefreshing,
     refreshCalendar,
     calendarConnecting,
@@ -243,6 +247,7 @@ export function NotchActivePanel(props: Props) {
     body = (
       <CursorPanel
         status={cursorStatus}
+        loading={cursorLoading}
         analyticsLoading={cursorAnalyticsLoading}
         refreshing={cursorRefreshing}
         onRefresh={() => void refreshCursor()}
@@ -333,6 +338,7 @@ export function NotchActivePanel(props: Props) {
     body = (
       <CalendarPanel
         snapshot={calendarSnapshot}
+        loading={calendarLoading}
         refreshing={calendarRefreshing}
         onRefresh={() => void refreshCalendar(true)}
         connecting={calendarConnecting}

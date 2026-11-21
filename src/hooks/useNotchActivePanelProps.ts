@@ -53,6 +53,7 @@ export function useNotchActivePanelProps(
 
   const {
     snapshot: calendarSnapshot,
+    loading: calendarLoading,
     refreshing: calendarRefreshing,
     refresh: refreshCalendar,
     connect: connectCalendar,
@@ -117,6 +118,7 @@ export function useNotchActivePanelProps(
   const cursorPoll = pollPanel("cursor", activePanel, mode, true) || overviewPoll
   const {
     status: cursorStatus,
+    loading: cursorLoading,
     analyticsLoading: cursorAnalyticsLoading,
     refreshing: cursorRefreshing,
     refresh: refreshCursor,
@@ -159,6 +161,7 @@ export function useNotchActivePanelProps(
       },
       disconnectStrava,
       cursorStatus,
+      cursorLoading,
       cursorAnalyticsLoading,
       cursorRefreshing,
       refreshCursor,
@@ -188,6 +191,7 @@ export function useNotchActivePanelProps(
       piRefreshing,
       refreshPi,
       calendarSnapshot,
+      calendarLoading,
       calendarRefreshing,
       refreshCalendar,
       calendarConnecting,
@@ -225,6 +229,7 @@ export function useNotchActivePanelProps(
       connectCalendar,
       disconnectCalendar,
       cursorStatus,
+      cursorLoading,
       cursorAnalyticsLoading,
       cursorRefreshing,
       refreshCursor,
@@ -254,6 +259,7 @@ export function useNotchActivePanelProps(
       piRefreshing,
       refreshPi,
       calendarSnapshot,
+      calendarLoading,
       calendarRefreshing,
       refreshCalendar,
       mediaStatus,

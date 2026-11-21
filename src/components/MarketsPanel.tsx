@@ -16,6 +16,7 @@ import { usePanelLayout } from "../lib/panel-layout"
 import { MetricChart } from "./MetricChart"
 import { SegmentedControl } from "./SegmentedControl"
 import { PanelHeaderActions } from "./PanelHeaderActions"
+import { MarketsPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
 
 type Props = {
   snapshot: MarketsSnapshot
@@ -50,6 +51,12 @@ export function MarketsPanel({ snapshot, loading, refreshing, hasWatchlist, onRe
 
   const accent = activeQuote ? marketAccentColor(activeQuote) : undefined
   const periodUp = (series.changePercent ?? 0) >= 0
+
+  if (desktop && loading && quotes.length === 0 && hasWatchlist && !snapshot.error) {
+    return (
+      <MarketsPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+    )
+  }
 
   return (
     <div

@@ -140,6 +140,7 @@ export function Notch() {
   const {
     snapshot: calendarSnapshot,
     ready: calendarReady,
+    loading: calendarLoading,
     refreshing: calendarRefreshing,
     refresh: refreshCalendar,
     connect: connectCalendar,
@@ -336,6 +337,7 @@ export function Notch() {
 
   const {
     status: cursorStatus,
+    loading: cursorLoading,
     analyticsLoading: cursorAnalyticsLoading,
     refreshing: cursorRefreshing,
     refresh: refreshCursor,
@@ -577,6 +579,7 @@ export function Notch() {
       }}
       disconnectStrava={disconnectStrava}
       cursorStatus={cursorStatus}
+      cursorLoading={cursorLoading}
       cursorAnalyticsLoading={cursorAnalyticsLoading}
       cursorRefreshing={cursorRefreshing}
       refreshCursor={refreshCursor}
@@ -606,6 +609,7 @@ export function Notch() {
       piRefreshing={piRefreshing}
       refreshPi={refreshPi}
       calendarSnapshot={calendarSnapshot}
+      calendarLoading={calendarLoading}
       calendarRefreshing={calendarRefreshing}
       refreshCalendar={refreshCalendar}
       calendarConnecting={calendarConnecting}

@@ -18,11 +18,13 @@ import { PanelPageHeader } from "./desktop/PanelPageHeader"
 import { CalendarDesktopView } from "./desktop/CalendarDesktopView"
 import { CalendarEventDetailModal } from "./desktop/CalendarEventDetailModal"
 import { CalendarEventRow } from "./CalendarEventRow"
+import { CalendarPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"]
 
 type Props = {
   snapshot: CalendarSnapshot
+  loading?: boolean
   refreshing?: boolean
   onRefresh?: () => void
   connecting?: boolean
@@ -32,6 +34,7 @@ type Props = {
 
 export function CalendarPanel({
   snapshot,
+  loading,
   refreshing,
   onRefresh,
   connecting,
@@ -75,6 +78,15 @@ export function CalendarPanel({
       setSelected((prev) => defaultSelectedForMonth(nextMonth, prev))
       return nextMonth
     })
+  }
+
+  if (desktop && loading && snapshot.configured) {
+    return (
+      <CalendarPanelDesktopSkeleton
+        refreshing={refreshing}
+        onRefresh={onRefresh ? () => onRefresh() : undefined}
+      />
+    )
   }
 
   if (!snapshot.configured) {

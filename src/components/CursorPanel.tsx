@@ -16,9 +16,12 @@ import { CursorModelBars } from "./CursorModelBars"
 import { MetricChart } from "./MetricChart"
 import { CursorCyclePace } from "./CursorCyclePace"
 import { maskEmail, usePrivacyMode } from "../lib/privacy"
+import { CursorPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
+import { readDesktopRouteFromLocation } from "../lib/desktop-route"
 
 type Props = {
   status: CursorStatus
+  loading?: boolean
   analyticsLoading?: boolean
   refreshing: boolean
   onRefresh: () => void
@@ -139,10 +142,15 @@ function UsageBar({
   )
 }
 
-export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }: Props) {
+export function CursorPanel({ status, loading, analyticsLoading, refreshing, onRefresh }: Props) {
   const settings = useSettings()
-  const desktop = usePanelLayout() === "desktop"
+  const routeDesktop = readDesktopRouteFromLocation().isDesktop
+  const desktop = usePanelLayout() === "desktop" || routeDesktop
   const privacy = usePrivacyMode()
+
+  if (desktop && loading && !status.connected && status.error !== "no_electron") {
+    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+  }
 
   if (status.error === "no_electron") {
     return (
@@ -192,6 +200,10 @@ export function CursorPanel({ status, analyticsLoading, refreshing, onRefresh }:
     Boolean(analytics?.models?.length) ||
     Boolean(analytics?.recentEvents?.length) ||
     Boolean(cloud?.agents?.length)
+
+  if (desktop && status.connected && analyticsLoading && !hasAnalytics) {
+    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+  }
 
   const refreshButton = (
     <button
