@@ -44,7 +44,7 @@ export function SpotifyProfileHeader({ insights, actions, className }: Props) {
                   format={(n) => n.toLocaleString()}
                   className="text-[12px] font-semibold"
                 />{" "}
-                streams in Neon
+                imported streams
               </span>
               {insights.firstPlayed && insights.lastPlayed ? (
                 <>

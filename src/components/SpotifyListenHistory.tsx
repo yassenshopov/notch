@@ -64,7 +64,7 @@ export function SpotifyListenHistory({
         </p>
         {fromNeon ? (
           <p className="mt-1 text-[11px] leading-relaxed text-black/35 dark:text-white/35">
-            Saved in Neon — tap a track to play
+            Saved history — tap a track to play
           </p>
         ) : null}
       </header>
