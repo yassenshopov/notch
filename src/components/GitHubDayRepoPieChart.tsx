@@ -116,9 +116,17 @@ export function GitHubDayRepoPieChart({ total, repos, className, size = 64 }: Pr
 
   const { wedges, legend } = useMemo(() => {
     const scaled = scaleRepoCountsToTarget(repos, total)
-    const top = scaled.filter((r) => r.count > 0).slice(0, 5)
-    const listed = top.reduce((sum, row) => sum + row.count, 0)
-    const other = Math.max(0, total - listed)
+    const positive = scaled.filter((r) => r.count > 0)
+    const topRepos = positive.filter((r) => r.repo !== "__other__")
+    const otherRow = positive.find((r) => r.repo === "__other__")
+    const top = topRepos.slice(0, 4)
+    const foldedOther =
+      (otherRow?.count ?? 0) +
+      topRepos.slice(4).reduce((sum, row) => sum + row.count, 0)
+    const stackSum = top.reduce((sum, row) => sum + row.count, 0) + foldedOther
+    const other =
+      foldedOther > 0 ? foldedOther : Math.max(0, total - stackSum)
+    const pieTotal = Math.max(total, stackSum)
     const slices: Slice[] = top.map((row, i) => ({
       repo: row.repo,
       label: shortRepoName(row.repo),
@@ -133,11 +141,11 @@ export function GitHubDayRepoPieChart({ total, repos, className, size = 64 }: Pr
         color: GITHUB_REPO_OTHER_COLOR,
       })
     }
-    if (slices.length === 0 || total <= 0) {
+    if (slices.length === 0 || pieTotal <= 0) {
       return { wedges: [] as ReturnType<typeof buildDonutWedges>, legend: [] as Slice[] }
     }
     return {
-      wedges: buildDonutWedges(slices, total, size),
+      wedges: buildDonutWedges(slices, pieTotal, size),
       legend: slices,
     }
   }, [repos, total, size, repoColors])

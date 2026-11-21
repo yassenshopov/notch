@@ -264,7 +264,21 @@ function contributionDateKeyForToday(contributions) {
 }
 
 function dayCacheKey(dateKey) {
-  return `github:day:v4:${dateKey}`
+  return `github:day:v5:${dateKey}`
+}
+
+function sumRepoCounts(repos) {
+  return (repos ?? []).reduce((sum, row) => sum + (row.count ?? 0), 0)
+}
+
+/** Day snapshots are invalid when the heatmap total for that date changed (e.g. more commits landed). */
+function breakdownMatchesExpected(breakdown, expectedCount) {
+  if (!breakdown || breakdown.error) return false
+  if (expectedCount === undefined) return true
+  if (typeof breakdown.expectedCount === "number") {
+    return breakdown.expectedCount === expectedCount
+  }
+  return sumRepoCounts(breakdown.repos) === expectedCount
 }
 
 const TODAY_BREAKDOWN_CALENDAR = `
@@ -328,12 +342,7 @@ async function fetchTodayBreakdownForRange(dateKey, range) {
   if (!col) return { calendarCount: 0, repos: [] }
   const calendarCount = calendarCountForDate(col, dateKey)
   const repos = scaleRepoCountsToTarget(
-    mergeContributionsByRepository([
-      col.commitContributionsByRepository,
-      col.pullRequestContributionsByRepository,
-      col.issueContributionsByRepository,
-      col.pullRequestReviewContributionsByRepository,
-    ]),
+    mergeContributionsByRepository([col.commitContributionsByRepository]),
     calendarCount,
   )
   return {
@@ -364,11 +373,20 @@ async function fetchTodayBreakdownForDate(dateKey, expectedCount) {
     const result = await fetchTodayBreakdownForRange(dateKey, rangeFn(dateKey))
     candidates.push(result)
     if (expectedCount !== undefined && result.calendarCount === expectedCount) {
-      return { date: dateKey, repos: result.repos }
+      return {
+        date: dateKey,
+        repos: result.repos,
+        expectedCount: result.calendarCount,
+      }
     }
   }
   const picked = pickTodayBreakdownRange(dateKey, expectedCount, candidates)
-  return { date: dateKey, repos: picked?.repos ?? [] }
+  const calendarCount = picked?.calendarCount ?? expectedCount ?? 0
+  return {
+    date: dateKey,
+    repos: picked?.repos ?? [],
+    expectedCount: calendarCount,
+  }
 }
 
 async function loadDayBreakdown(dateKey, expectedCount, force = false) {
@@ -382,7 +400,10 @@ async function loadDayBreakdown(dateKey, expectedCount, force = false) {
       : null
     if (row?.payload?.date === dateKey) {
       const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
-      if (age < TODAY_STALE_MS) {
+      if (
+        age < TODAY_STALE_MS &&
+        breakdownMatchesExpected(row.payload, expectedCount)
+      ) {
         return { ...row.payload, fromCache: true, cachedAt: row.syncedAt }
       }
     }
@@ -424,6 +445,24 @@ async function loadTodayBreakdown(force, contributions) {
   const dateKey = contributionDateKeyForToday(contributions)
   const expectedCount = contributionCountForDateKey(contributions, dateKey)
   return loadDayBreakdown(dateKey, expectedCount, force)
+}
+
+async function syncTodayBreakdownWithContributions(payload, force = false) {
+  if (!payload?.contributions) return payload
+  const dateKey = contributionDateKeyForToday(payload.contributions)
+  const expectedCount = contributionCountForDateKey(payload.contributions, dateKey)
+  const bd = payload.todayBreakdown
+  const stale =
+    !bd ||
+    bd.date !== dateKey ||
+    !breakdownMatchesExpected(bd, expectedCount)
+  if (!force && !stale) return payload
+  const fresh = await loadDayBreakdown(
+    dateKey,
+    expectedCount,
+    force || stale,
+  )
+  return { ...payload, todayBreakdown: fresh }
 }
 
 async function dayBreakdown(options = {}) {
@@ -774,7 +813,7 @@ async function loadStatusFromStore(options = {}) {
     }
   }
 
-  return payload
+  return syncTodayBreakdownWithContributions(payload, options.force === true)
 }
 
 async function status(options = {}) {
@@ -1186,7 +1225,7 @@ async function loadRepoChartsForYear(year, force) {
 }
 
 const WEEKLY_STACK_TOP = 7
-const WEEKLY_STACK_DETAIL_TOP = 30
+const WEEKLY_STACK_VERSION = 4
 const WEEKLY_STACK_CONCURRENCY = 5
 const DAILY_STACK_DAYS = 45
 
@@ -1233,35 +1272,33 @@ function rollingDayRangesUtc(dayCount = DAILY_STACK_DAYS) {
   return ranges
 }
 
-function packRepoStackBuckets(rawRows, detailRepos, topRepos, repoUrls) {
-  const detailSet = new Set(detailRepos)
+/** Legend + bars use top N repos; everything else rolls into __other__ so stacks always sum to total. */
+function packRepoStackBuckets(rawRows, topRepos, repoUrls) {
   const topSet = new Set(topRepos)
   return rawRows.map((row) => {
-    const byDetail = new Map()
+    const byTop = new Map()
     let other = 0
     for (const item of row.repos ?? []) {
-      if (detailSet.has(item.repo)) {
-        byDetail.set(item.repo, (byDetail.get(item.repo) ?? 0) + item.count)
-      }
-      if (!topSet.has(item.repo)) {
-        if (!detailSet.has(item.repo)) {
-          other += item.count
-        }
+      if (topSet.has(item.repo)) {
+        byTop.set(item.repo, (byTop.get(item.repo) ?? 0) + item.count)
+      } else {
+        other += item.count
       }
     }
-    const repos = detailRepos
+    const repos = topRepos
       .map((repo) => ({
         repo,
         url: repoUrls[repo] ?? `https://github.com/${repo}`,
-        count: byDetail.get(repo) ?? 0,
+        count: byTop.get(repo) ?? 0,
       }))
       .filter((r) => r.count > 0)
     if (other > 0) {
       repos.push({ repo: "__other__", url: "", count: other })
     }
+    const stackTotal = repos.reduce((sum, r) => sum + r.count, 0)
     return {
       weekStart: row.weekStart,
-      total: row.total,
+      total: stackTotal,
       repos,
     }
   })
@@ -1294,13 +1331,13 @@ async function fetchRepoCommitsForRange(from, to) {
     { from, to },
   )
   const col = data?.viewer?.contributionsCollection
-  const target = col?.contributionCalendar?.totalContributions ?? 0
   const repos = mergeContributionsByRepository([col?.commitContributionsByRepository])
-  return { target, repos: scaleRepoCountsToTarget(repos, target) }
+  const listed = repos.reduce((sum, row) => sum + row.count, 0)
+  return { target: listed, repos }
 }
 
 async function loadWeeklyRepoStack(force) {
-  const cacheKey = "github:insights:weekly-stack:v3"
+  const cacheKey = "github:insights:weekly-stack:v4"
   if (force) cache.invalidate(cacheKey)
   return cache.get(cacheKey, {
     ttlMs: INSIGHTS_TTL_MS,
@@ -1332,9 +1369,8 @@ async function loadWeeklyRepoStack(force) {
 
       const rankedRepos = [...totalsByRepo.entries()].sort((a, b) => b[1] - a[1])
       const topRepos = rankedRepos.slice(0, WEEKLY_STACK_TOP).map(([repo]) => repo)
-      const detailRepos = rankedRepos.slice(0, WEEKLY_STACK_DETAIL_TOP).map(([repo]) => repo)
 
-      const weeks = packRepoStackBuckets(fetched, detailRepos, topRepos, repoUrls)
+      const weeks = packRepoStackBuckets(fetched, topRepos, repoUrls)
 
       const dayRanges = rollingDayRangesUtc(DAILY_STACK_DAYS)
       const dayFetched = await asyncPool(WEEKLY_STACK_CONCURRENCY, dayRanges, async (range) => {
@@ -1349,9 +1385,15 @@ async function loadWeeklyRepoStack(force) {
           return { weekStart: range.weekStart, total: 0, repos: [] }
         }
       })
-      const days = packRepoStackBuckets(dayFetched, detailRepos, topRepos, repoUrls)
+      const days = packRepoStackBuckets(dayFetched, topRepos, repoUrls)
 
-      return { topRepos, repoUrls, weeks, days }
+      return {
+        stackVersion: WEEKLY_STACK_VERSION,
+        topRepos,
+        repoUrls,
+        weeks,
+        days,
+      }
     },
   })
 }
@@ -1376,7 +1418,10 @@ async function weeklyRepoStack(options = {}) {
     const row = login
       ? await githubStore.readSnapshotWithMeta(login, "weekly_repo_stack")
       : null
-    if (row?.payload?.weeks?.length) {
+    if (
+      row?.payload?.weeks?.length &&
+      row.payload.stackVersion === WEEKLY_STACK_VERSION
+    ) {
       const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
       if (age < INSIGHTS_STALE_MS) {
         return { ...row.payload, configured: true, connected: true, fromCache: true, cachedAt: row.syncedAt }

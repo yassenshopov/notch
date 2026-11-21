@@ -231,9 +231,10 @@ export function GitHubRepoWeeklyStackChart({ data, loading, className }: Props) 
                       return (
                         <div
                           key={repo}
-                          className="w-full min-h-px shrink-0 rounded-sm"
+                          className="w-full shrink-0 rounded-sm"
                           style={{
                             flex: `${count} 0 0`,
+                            minHeight: count > 0 ? 2 : 0,
                             backgroundColor: repoColor(repo, ri),
                           }}
                         />
@@ -350,7 +351,7 @@ function BucketStackTooltip({
   const [style, setStyle] = useState<{ left: number; top: number; transform: string } | null>(null)
 
   const reposForPie = useMemo(
-    () => bucket.repos.filter((r) => r.repo !== OTHER_KEY && r.count > 0),
+    () => bucket.repos.filter((r) => r.count > 0),
     [bucket.repos],
   )
 
