@@ -22,6 +22,7 @@ import {
   heatmapCellFill,
   heatmapLevelColor,
   resolveGitHubHeatmapPalette,
+  type GitHubHeatmapPaletteId,
 } from "../lib/github-heatmap-palettes"
 import { useSettings } from "../config/settings-store"
 import { useTheme } from "../hooks/useTheme"
@@ -46,6 +47,8 @@ type Props = {
   /** Open detail UI (e.g. Spotify day dialog). */
   onDayClick?: (day: GitHubContributionDay) => void
   selectedDayDate?: string | null
+  /** Force palette (e.g. Cursor usage = monochrome). Hides GitHub palette settings when set. */
+  heatmapPalette?: GitHubHeatmapPaletteId
 }
 
 const dayBreakdownCache = new Map<string, GitHubTodayBreakdown>()
@@ -335,6 +338,7 @@ export function GitHubContributionHeatmap({
   calendarYear,
   onDayClick,
   selectedDayDate,
+  heatmapPalette: heatmapPaletteOverride,
 }: Props) {
   const defaultWeekCount =
     variant === "mini" ? 12 : variant === "desktop" || variant === "year" ? 53 : 26
@@ -393,7 +397,8 @@ export function GitHubContributionHeatmap({
   const maxCount = useMemo(() => maxContributionCount(weeks ?? []), [weeks])
   const settings = useSettings()
   const dark = useTheme()
-  const paletteId = resolveGitHubHeatmapPalette(settings.github.heatmapPalette)
+  const paletteId = heatmapPaletteOverride ?? resolveGitHubHeatmapPalette(settings.github.heatmapPalette)
+  const showPaletteSettings = heatmapPaletteOverride == null
   const coverGrid = cellPresentation === "cover"
 
   const monthLabels = useMemo(
@@ -601,23 +606,32 @@ export function GitHubContributionHeatmap({
           </p>
         ) : (
           <>
-            <div className="mt-4 flex w-full items-center justify-between gap-2 pl-9">
+            <div
+              className={cn(
+                "mt-4 flex w-full items-center gap-2 pl-9",
+                showPaletteSettings ? "justify-between" : "justify-start",
+              )}
+            >
               <ContributionIntensityLegend cellPx={legendPx} paletteId={paletteId} dark={dark} />
-              <button
-                type="button"
-                aria-label="Heatmap color settings"
-                aria-haspopup="dialog"
-                aria-expanded={paletteOpen}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setPaletteOpen(true)
-                }}
-                className="shrink-0 rounded-full p-1.5 text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
-              >
-                <MoreVertical className="size-4" />
-              </button>
+              {showPaletteSettings ? (
+                <button
+                  type="button"
+                  aria-label="Heatmap color settings"
+                  aria-haspopup="dialog"
+                  aria-expanded={paletteOpen}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPaletteOpen(true)
+                  }}
+                  className="shrink-0 rounded-full p-1.5 text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
+                >
+                  <MoreVertical className="size-4" />
+                </button>
+              ) : null}
             </div>
-            <GitHubHeatmapPaletteModal open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+            {showPaletteSettings ? (
+              <GitHubHeatmapPaletteModal open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+            ) : null}
           </>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { Icon } from "@iconify/react"
 import { ExternalLink, RefreshCw } from "lucide-react"
-import type { ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import {
   formatCursorCents,
   openCursorDashboard,
@@ -18,6 +18,9 @@ import { CursorCyclePace } from "./CursorCyclePace"
 import { maskEmail, usePrivacyMode } from "../lib/privacy"
 import { CursorPanelDesktopSkeleton } from "./desktop/DesktopSkeleton"
 import { readDesktopRouteFromLocation } from "../lib/desktop-route"
+import { CursorProfileHeader } from "./CursorProfileHeader"
+import { CursorUsageHero } from "./CursorUsageHero"
+import { useCursorInsights } from "../hooks/useCursorInsights"
 
 type Props = {
   status: CursorStatus
@@ -25,6 +28,8 @@ type Props = {
   analyticsLoading?: boolean
   refreshing: boolean
   onRefresh: () => void
+  /** Expanded notch shell — same full-page layout as the desktop window. */
+  expanded?: boolean
 }
 
 function formatCycleDate(iso: string | null | undefined) {
@@ -142,14 +147,35 @@ function UsageBar({
   )
 }
 
-export function CursorPanel({ status, loading, analyticsLoading, refreshing, onRefresh }: Props) {
+export function CursorPanel({
+  status,
+  loading,
+  analyticsLoading,
+  refreshing,
+  onRefresh,
+  expanded,
+}: Props) {
   const settings = useSettings()
+  const layout = usePanelLayout()
   const routeDesktop = readDesktopRouteFromLocation().isDesktop
-  const desktop = usePanelLayout() === "desktop" || routeDesktop
+  const fullPage = layout === "desktop" || routeDesktop || Boolean(expanded)
+  const desktop = fullPage
   const privacy = usePrivacyMode()
+  const [heroYear, setHeroYear] = useState(() => new Date().getFullYear())
+  const insightsActive = fullPage && status.connected
+  const {
+    insights,
+    loading: insightsLoading,
+    refresh: refreshInsights,
+  } = useCursorInsights(insightsActive, heroYear)
+
+  const handleRefresh = () => {
+    onRefresh()
+    if (insightsActive) refreshInsights()
+  }
 
   if (desktop && loading && !status.connected && status.error !== "no_electron") {
-    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={handleRefresh} />
   }
 
   if (status.error === "no_electron") {
@@ -202,25 +228,42 @@ export function CursorPanel({ status, loading, analyticsLoading, refreshing, onR
     Boolean(cloud?.agents?.length)
 
   if (desktop && status.connected && analyticsLoading && !hasAnalytics) {
-    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={onRefresh} />
+    return <CursorPanelDesktopSkeleton refreshing={refreshing} onRefresh={handleRefresh} />
   }
 
   const refreshButton = (
     <button
       type="button"
       aria-label="Refresh usage"
-      disabled={refreshing}
+      disabled={refreshing || insightsLoading}
       onClick={(e) => {
         e.stopPropagation()
-        onRefresh()
+        handleRefresh()
       }}
-      className="flex size-8 shrink-0 items-center justify-center rounded-full border border-black/[0.07] bg-black/[0.03] text-black/50 transition-colors hover:bg-black/[0.06] hover:text-black/75 disabled:pointer-events-none disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/[0.08] dark:hover:text-white/80"
+      className={cn(
+        fullPage
+          ? "rounded-full p-2 text-black/40 hover:bg-black/5 disabled:pointer-events-none disabled:opacity-50 dark:text-white/40 dark:hover:bg-white/10"
+          : "flex size-8 shrink-0 items-center justify-center rounded-full border border-black/[0.07] bg-black/[0.03] text-black/50 transition-colors hover:bg-black/[0.06] hover:text-black/75 disabled:pointer-events-none disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/50 dark:hover:bg-white/[0.08] dark:hover:text-white/80",
+      )}
     >
-      <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+      <RefreshCw
+        className={cn(fullPage ? "size-4" : "size-3.5", (refreshing || insightsLoading) && "animate-spin")}
+      />
     </button>
   )
 
-  const planSummary = (
+  const emailLabel = status.user?.email ? maskEmail(status.user.email, privacy) : "Signed in"
+  const planLine = [
+    formatPlanLabel(billing?.membershipType),
+    billing?.daysLeft != null ? `${billing.daysLeft}d left in cycle` : null,
+    billing?.cycleStart && billing?.cycleEnd
+      ? `${formatCycleDate(billing.cycleStart)} – ${formatCycleDate(billing.cycleEnd)}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  const planSummary = fullPage ? null : (
     <>
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[15px] font-semibold tracking-tight">Cursor</p>
@@ -230,16 +273,9 @@ export function CursorPanel({ status, loading, analyticsLoading, refreshing, onR
           </span>
         ) : null}
       </div>
-      <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">
-        {formatPlanLabel(billing?.membershipType)}
-        {billing?.daysLeft != null ? ` · ${billing.daysLeft}d left` : ""}
-        {" · "}
-        {formatCycleDate(billing?.cycleStart)} – {formatCycleDate(billing?.cycleEnd)}
-      </p>
+      <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">{planLine}</p>
       {status.user?.email ? (
-        <p className="mt-0.5 truncate text-[11px] text-black/35 dark:text-white/35">
-          {maskEmail(status.user.email, privacy)}
-        </p>
+        <p className="mt-0.5 truncate text-[11px] text-black/35 dark:text-white/35">{emailLabel}</p>
       ) : null}
     </>
   )
@@ -413,24 +449,67 @@ export function CursorPanel({ status, loading, analyticsLoading, refreshing, onR
   )
 
   if (desktop) {
+    const displayName = status.user?.name?.trim() || "Cursor"
+  const yearlyModelsBlock =
+    insights.topModels.length > 0 ? (
+      <Section title="Top models" subtitle={`${heroYear} estimated cost`} bare>
+        <CursorModelBars
+          models={insights.topModels.map((m) => ({
+            model: m.model,
+            label: m.label,
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            totalCents: m.cents,
+          }))}
+        />
+      </Section>
+    ) : null
+
     return (
-      <div onClick={(e) => e.stopPropagation()}>
-        <BentoGrid>
+      <div
+        className={cn(
+          "space-y-6",
+          layout === "compact" && "notch-scroll min-h-0 max-h-full pr-1",
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <CursorProfileHeader
+          displayName={displayName}
+          emailLabel={emailLabel}
+          planLabel={planLine || undefined}
+          actions={<PanelHeaderActions>{refreshButton}</PanelHeaderActions>}
+          className="pb-2"
+        />
+
+        <CursorUsageHero
+          insights={insights}
+          chartYear={heroYear}
+          onChartYearChange={setHeroYear}
+          loading={insightsLoading}
+          className="w-full min-w-0"
+        />
+
+        <BentoGrid className="mt-10">
           <BentoTile col={4} className={bentoPad()}>
-            <div className="mb-4 flex items-start justify-between gap-2">
-              <div className="min-w-0">{planSummary}</div>
-              <PanelHeaderActions>{refreshButton}</PanelHeaderActions>
-            </div>
             {quotaBlock}
             <div className="mt-4">
               <CursorCyclePace status={status} bare />
             </div>
           </BentoTile>
           {tokensBlock ? (
-            <BentoTile col={8} className={bentoPad()}>{tokensBlock}</BentoTile>
+            <BentoTile col={8} className={bentoPad()}>
+              {tokensBlock}
+            </BentoTile>
           ) : null}
           {modelsBlock ? (
-            <BentoTile col={6} className={bentoPad()}>{modelsBlock}</BentoTile>
+            <BentoTile col={6} className={bentoPad()}>
+              {modelsBlock}
+            </BentoTile>
+          ) : yearlyModelsBlock ? (
+            <BentoTile col={6} className={bentoPad()}>
+              {yearlyModelsBlock}
+            </BentoTile>
           ) : null}
           {recentBlock ? (
             <BentoTile col={6} className={bentoPad()} scroll>
@@ -443,10 +522,14 @@ export function CursorPanel({ status, loading, analyticsLoading, refreshing, onR
             </BentoTile>
           ) : null}
           {onDemandBlock ? (
-            <BentoTile col={6} className={bentoPad()}>{onDemandBlock}</BentoTile>
+            <BentoTile col={6} className={bentoPad()}>
+              {onDemandBlock}
+            </BentoTile>
           ) : null}
           {analyticsFallback ? (
-            <BentoTile col={12} className={bentoPad()}>{analyticsFallback}</BentoTile>
+            <BentoTile col={12} className={bentoPad()}>
+              {analyticsFallback}
+            </BentoTile>
           ) : null}
           <BentoTile col={12} className={bentoPad()} surface={false}>
             {dashboardButton}

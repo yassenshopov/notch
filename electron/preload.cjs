@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld("notch", {
   cursor: {
     status: (options) => ipcRenderer.invoke("cursor:status", options),
     analytics: (options) => ipcRenderer.invoke("cursor:analytics", options),
+    insights: (options) => ipcRenderer.invoke("cursor:insights", options),
     openDashboard: () => ipcRenderer.invoke("cursor:open-dashboard"),
     openUrl: (url) => ipcRenderer.invoke("cursor:open-url", url),
   },
@@ -80,6 +81,94 @@ contextBridge.exposeInMainWorld("notch", {
     markNotificationRead: (threadId) => ipcRenderer.invoke("github:notification-read", threadId),
     markAllNotificationsRead: () => ipcRenderer.invoke("github:notifications-read-all"),
     openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
+    repoPullRequests: async (options) => {
+      try {
+        return await ipcRenderer.invoke("github:repo-pull-requests", options)
+      } catch (primary) {
+        try {
+          return await ipcRenderer.invoke("github:weekly-repo-stack", {
+            repoPullRequests: options?.repo,
+            force: options?.force,
+          })
+        } catch {
+          const msg = primary?.message ?? "github_repo_prs_error"
+          return {
+            configured: true,
+            connected: false,
+            repo: options?.repo ?? "",
+            items: [],
+            error: msg,
+            message:
+              /no handler registered/i.test(msg) || msg === "github_repo_prs_error"
+                ? "Fully quit and reopen Notch so the GitHub PR API can load."
+                : undefined,
+          }
+        }
+      }
+    },
+    pullRequestDetail: async (options) => {
+      try {
+        return await ipcRenderer.invoke("github:pull-request-detail", options)
+      } catch (primary) {
+        try {
+          return await ipcRenderer.invoke("github:weekly-repo-stack", {
+            pullRequestDetail: { repo: options?.repo, number: options?.number },
+            force: options?.force,
+          })
+        } catch {
+          return {
+            configured: true,
+            connected: false,
+            error: primary?.message ?? "github_pr_detail_error",
+            message: "Fully quit and reopen Notch, then try again.",
+          }
+        }
+      }
+    },
+    repoIssues: async (options) => {
+      try {
+        return await ipcRenderer.invoke("github:repo-issues", options)
+      } catch (primary) {
+        try {
+          return await ipcRenderer.invoke("github:weekly-repo-stack", {
+            repoIssues: options?.repo,
+            force: options?.force,
+          })
+        } catch {
+          const msg = primary?.message ?? "github_repo_issues_error"
+          return {
+            configured: true,
+            connected: false,
+            repo: options?.repo ?? "",
+            items: [],
+            error: msg,
+            message:
+              /no handler registered/i.test(msg) || msg === "github_repo_issues_error"
+                ? "Fully quit and reopen Notch so the GitHub issues API can load."
+                : undefined,
+          }
+        }
+      }
+    },
+    issueDetail: async (options) => {
+      try {
+        return await ipcRenderer.invoke("github:issue-detail", options)
+      } catch (primary) {
+        try {
+          return await ipcRenderer.invoke("github:weekly-repo-stack", {
+            issueDetail: { repo: options?.repo, number: options?.number },
+            force: options?.force,
+          })
+        } catch {
+          return {
+            configured: true,
+            connected: false,
+            error: primary?.message ?? "github_issue_detail_error",
+            message: "Fully quit and reopen Notch, then try again.",
+          }
+        }
+      }
+    },
   },
   mint: {
     status: (options) => ipcRenderer.invoke("mint:status", options),

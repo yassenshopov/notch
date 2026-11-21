@@ -3,6 +3,7 @@ const db = require("../db.cjs")
 const spotify = require("../spotify.cjs")
 const spotifyLibrary = require("../spotify-library.cjs")
 const cursor = require("../cursor.cjs")
+const cursorInsights = require("../cursor-insights.cjs")
 const systemControls = require("../system-controls.cjs")
 const keyboardLayout = require("../keyboard-layout.cjs")
 const markets = require("../markets.cjs")
@@ -174,6 +175,31 @@ function registerServicesIpc(ipcMain, deps) {
     }
   })
 
+  ipcMain.handle("cursor:insights", async (_event, options) => {
+    try {
+      return await cursorInsights.getActivityInsights({
+        force: options?.force === true,
+        year: options?.year,
+      })
+    } catch (err) {
+      return {
+        configured: true,
+        connected: false,
+        ready: false,
+        years: [],
+        chartYear: new Date().getFullYear(),
+        weeks: [],
+        days: [],
+        totalEvents: 0,
+        totalCents: 0,
+        topModels: [],
+        monthly: [],
+        yearsData: [],
+        error: err instanceof Error ? err.message : "cursor_insights_error",
+      }
+    }
+  })
+
   ipcMain.handle("cursor:open-dashboard", async () => {
     await shell.openExternal("https://cursor.com/dashboard?tab=usage")
   })
@@ -248,6 +274,24 @@ function registerServicesIpc(ipcMain, deps) {
 
   ipcMain.handle("github:weekly-repo-stack", async (_event, options) => {
     try {
+      if (typeof options?.repoPullRequests === "string") {
+        return await github.repoPullRequests(options.repoPullRequests, {
+          force: options?.force === true,
+        })
+      }
+      if (options?.pullRequestDetail?.repo && options?.pullRequestDetail?.number != null) {
+        return await github.pullRequestDetail(options.pullRequestDetail.repo, options.pullRequestDetail.number, {
+          force: options?.force === true,
+        })
+      }
+      if (typeof options?.repoIssues === "string") {
+        return await github.repoIssues(options.repoIssues, { force: options?.force === true })
+      }
+      if (options?.issueDetail?.repo && options?.issueDetail?.number != null) {
+        return await github.issueDetail(options.issueDetail.repo, options.issueDetail.number, {
+          force: options?.force === true,
+        })
+      }
       return await github.weeklyRepoStack({ force: options?.force === true })
     } catch (err) {
       return {
@@ -305,6 +349,62 @@ function registerServicesIpc(ipcMain, deps) {
   })
 
   ipcMain.handle("github:open-url", async (_event, url) => openExternalHttpUrl(url))
+
+  ipcMain.handle("github:repo-pull-requests", async (_event, options) => {
+    try {
+      return await github.repoPullRequests(options?.repo, { force: options?.force === true })
+    } catch (err) {
+      return {
+        configured: github.configured(),
+        connected: false,
+        repo: typeof options?.repo === "string" ? options.repo : "",
+        items: [],
+        error: err instanceof Error ? err.message : "github_repo_prs_error",
+      }
+    }
+  })
+
+  ipcMain.handle("github:pull-request-detail", async (_event, options) => {
+    try {
+      return await github.pullRequestDetail(options?.repo, options?.number, {
+        force: options?.force === true,
+      })
+    } catch (err) {
+      return {
+        configured: github.configured(),
+        connected: false,
+        error: err instanceof Error ? err.message : "github_pr_detail_error",
+      }
+    }
+  })
+
+  ipcMain.handle("github:repo-issues", async (_event, options) => {
+    try {
+      return await github.repoIssues(options?.repo, { force: options?.force === true })
+    } catch (err) {
+      return {
+        configured: github.configured(),
+        connected: false,
+        repo: typeof options?.repo === "string" ? options.repo : "",
+        items: [],
+        error: err instanceof Error ? err.message : "github_repo_issues_error",
+      }
+    }
+  })
+
+  ipcMain.handle("github:issue-detail", async (_event, options) => {
+    try {
+      return await github.issueDetail(options?.repo, options?.number, {
+        force: options?.force === true,
+      })
+    } catch (err) {
+      return {
+        configured: github.configured(),
+        connected: false,
+        error: err instanceof Error ? err.message : "github_issue_detail_error",
+      }
+    }
+  })
 
   ipcMain.handle("mint:status", async (_event, options) => {
     try {

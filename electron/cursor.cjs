@@ -188,11 +188,20 @@ async function fetchModelAggregations(cookie, me, cycleStart, cycleEnd) {
 }
 
 async function fetchFilteredEvents(cookie, me, cycleStart, cycleEnd) {
-  const base = usageWindowBody(me, cycleStart, cycleEnd)
+  return fetchEventsForRange(cookie, me, cycleStart, cycleEnd, FILTERED_MAX_PAGES)
+}
+
+async function fetchEventsForRange(cookie, me, startMs, endMs, maxPages = FILTERED_MAX_PAGES) {
+  const base = {
+    teamId: 0,
+    startDate: String(new Date(startMs).getTime()),
+    endDate: String(new Date(endMs).getTime()),
+    userId: me.id,
+  }
   const events = []
   let totalCount = 0
 
-  for (let page = 1; page <= FILTERED_MAX_PAGES; page += 1) {
+  for (let page = 1; page <= maxPages; page += 1) {
     const data = await dashboardPost(cookie, "/api/dashboard/get-filtered-usage-events", {
       ...base,
       page,
@@ -205,6 +214,14 @@ async function fetchFilteredEvents(cookie, me, cycleStart, cycleEnd) {
   }
 
   return { events, totalCount, sampled: events.length }
+}
+
+async function getAuthContext() {
+  const cookie = resolveSessionCookie()
+  if (!cookie) return null
+  const me = await dashboardGet(cookie, "/api/auth/me")
+  const accountKey = String(me?.email || me?.id || "default")
+  return { cookie, me, accountKey }
 }
 
 function bucketDailyCents(events) {
@@ -472,4 +489,8 @@ module.exports = {
   getUsageSummary,
   getUsageAnalytics,
   resolveSessionCookie,
+  getAuthContext,
+  fetchEventsForRange,
+  parseNum,
+  formatModelLabel,
 }
