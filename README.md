@@ -43,6 +43,7 @@ Settings, weather detail, Spotify, GitHub, Strava, calendar, air quality, market
 - Strava API (OAuth loopback `127.0.0.1:43111`)
 - Google Calendar API (OAuth loopback `127.0.0.1:43112`)
 - Year wallpaper PNG generation (`pngjs` in the main process)
+- Optional [Neon](https://neon.tech) Postgres (`DATABASE_URL`) for Strava activity cache (migrates from local JSON on first sync)
 
 ## Prerequisites
 
@@ -59,6 +60,22 @@ npm install
 ```
 
 Copy `.env.example` → `.env` and fill in what you use. Restart Notch after changing `.env`.
+
+### Neon (Postgres + Functions)
+
+This repo is linked to Neon via `.neon` and `neon.ts`. After `neon login`:
+
+```bash
+neon deploy
+```
+
+That applies `neon.ts` and writes `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, and function env vars into `.env`. Migrations run when Electron starts. With `DATABASE_URL` set, Neon holds **settings** (sync on save; newer copy wins on launch), **GitHub** / **Strava** snapshots, **Google Calendar** events, **markets** quotes, **Strava activity detail**, **Spotify** now playing + recent/listening history, **Spotify extended streaming history** (`spotify_streams` — import via `npm run import:spotify-history`, optional `SPOTIFY_EXTENDED_HISTORY_DIR`), and **Mint/Pi SSH stats** — each with local `kv-mirror` fallbacks under Electron `userData`. OAuth tokens stay in local JSON only.
+
+```bash
+npm run verify:neon   # migrations + pooled query + deployed hello function
+```
+
+OAuth tokens stay in local JSON files in either mode.
 
 ### Spotify (optional)
 
