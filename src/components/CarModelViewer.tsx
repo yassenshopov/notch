@@ -1,4 +1,4 @@
-import { Grid3x3, Hand, Moon, Sun, Warehouse } from "lucide-react"
+import { Grid3x3, Moon, Move, Sun, Warehouse } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { CarStatus } from "../lib/car-mock"
 import { CAR_MINI_VIEWER_REVISION } from "../lib/car-glb-model"
@@ -95,7 +95,7 @@ export function CarModelViewer({
           aria-label={panEnabled ? "Disable drag to pan" : "Enable drag to pan"}
           aria-pressed={panEnabled}
         >
-          <Hand className="size-4" strokeWidth={1.75} />
+          <Move className="size-4" strokeWidth={1.75} />
         </button>
         <button
           type="button"

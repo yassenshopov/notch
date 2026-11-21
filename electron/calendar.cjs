@@ -9,6 +9,9 @@ const { shell, app } = require("electron")
 const SCOPES = "https://www.googleapis.com/auth/calendar.readonly"
 const CALLBACK_PORT = 43112
 const CACHE_MS = 5 * 60 * 1000
+const CALENDAR_DB_STALE_MS = 30 * 60 * 1000
+const kv = require("./snapshot-kv.cjs")
+const CALENDAR_KV_NS = "calendar"
 
 let cache = { at: 0, events: [], calendars: [] }
 
@@ -408,6 +411,29 @@ async function snapshot(options = {}) {
     }
   }
 
+  if (!force) {
+    const row = await kv.readWithMeta(CALENDAR_KV_NS, "default")
+    if (row?.payload && Array.isArray(row.payload.events)) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < CALENDAR_DB_STALE_MS) {
+        cache = {
+          at: row.syncedAt ?? now,
+          events: row.payload.events,
+          calendars: row.payload.calendars ?? [],
+        }
+        return {
+          configured: true,
+          connected: true,
+          calendars: cache.calendars,
+          events: cache.events,
+          error: row.payload.error ?? null,
+          fromCache: true,
+          cachedAt: row.syncedAt,
+        }
+      }
+    }
+  }
+
   try {
     const { horizonStart, horizonEnd } = eventTimeRange()
     const { events: rawEvents, calendars } = await fetchGoogleEvents()
@@ -419,8 +445,32 @@ async function snapshot(options = {}) {
       })
       .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
     cache = { at: now, events: filtered, calendars }
-    return { configured: true, connected: true, calendars, events: filtered, error: null }
+    const result = {
+      configured: true,
+      connected: true,
+      calendars,
+      events: filtered,
+      error: null,
+    }
+    await kv.write(CALENDAR_KV_NS, "default", {
+      calendars,
+      events: filtered,
+      error: null,
+    })
+    return result
   } catch (err) {
+    const row = await kv.readWithMeta(CALENDAR_KV_NS, "default").catch(() => null)
+    if (row?.payload?.events) {
+      return {
+        configured: true,
+        connected: true,
+        calendars: row.payload.calendars ?? [],
+        events: row.payload.events,
+        error: err instanceof Error ? err.message : "calendar_error",
+        fromCache: true,
+        cachedAt: row.syncedAt,
+      }
+    }
     return {
       configured: true,
       connected: true,
@@ -515,6 +565,7 @@ function startAuth() {
 
 function disconnect() {
   clearTokens()
+  void kv.remove(CALENDAR_KV_NS, "default")
   return snapshot({ force: true })
 }
 

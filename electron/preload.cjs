@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld("notch", {
     disconnect: () => ipcRenderer.invoke("spotify:disconnect"),
     action: (action, options) => ipcRenderer.invoke("spotify:action", action, options),
     recentlyPlayed: (limit) => ipcRenderer.invoke("spotify:recently-played", limit),
+    listeningHistory: (limit) => ipcRenderer.invoke("spotify:listening-history", limit),
+    libraryStatus: () => ipcRenderer.invoke("spotify:library-status"),
+    insights: (options) => ipcRenderer.invoke("spotify:insights", options),
+    importExtended: (dir) => ipcRenderer.invoke("spotify:import-extended", dir),
     playUri: (uri, options) => ipcRenderer.invoke("spotify:play-uri", uri, options),
     lyrics: (query) => ipcRenderer.invoke("spotify:lyrics", query),
   },
@@ -69,6 +73,11 @@ contextBridge.exposeInMainWorld("notch", {
   github: {
     status: (options) => ipcRenderer.invoke("github:status", options),
     insights: (options) => ipcRenderer.invoke("github:insights", options),
+    weeklyRepoStack: (options) => ipcRenderer.invoke("github:weekly-repo-stack", options),
+    dayBreakdown: (options) => ipcRenderer.invoke("github:day-breakdown", options),
+    notificationsInbox: (options) => ipcRenderer.invoke("github:notifications-inbox", options),
+    markNotificationRead: (threadId) => ipcRenderer.invoke("github:notification-read", threadId),
+    markAllNotificationsRead: () => ipcRenderer.invoke("github:notifications-read-all"),
     openUrl: (url) => ipcRenderer.invoke("github:open-url", url),
   },
   mint: {
@@ -110,6 +119,7 @@ contextBridge.exposeInMainWorld("notch", {
   wallpaper: {
     regenerate: (options) => ipcRenderer.invoke("wallpaper:regenerate", options),
     pickOutputFolder: () => ipcRenderer.invoke("wallpaper:pick-output-folder"),
+    syncMint: () => ipcRenderer.invoke("wallpaper:sync-mint"),
   },
   controls: {
     status: () => ipcRenderer.invoke("controls:status"),

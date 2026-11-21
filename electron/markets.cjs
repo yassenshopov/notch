@@ -1,4 +1,8 @@
 const settingsStore = require("./settings-store.cjs")
+const kv = require("./snapshot-kv.cjs")
+
+const MARKETS_DB_STALE_MS = 10 * 60 * 1000
+const MARKETS_KV_NS = "markets"
 
 const COINGECKO = "https://api.coingecko.com/api/v3"
 const YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart"
@@ -269,6 +273,16 @@ async function snapshot(watchlistOverride) {
     return { quotes: [], configured: true }
   }
 
+  if (!watchlistOverride) {
+    const row = await kv.readWithMeta(MARKETS_KV_NS, "quotes")
+    if (row?.payload?.quotes?.length) {
+      const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+      if (age < MARKETS_DB_STALE_MS) {
+        return { ...row.payload, fromCache: true, cachedAt: row.syncedAt }
+      }
+    }
+  }
+
   const crypto = watchlist.filter((w) => w.type === "crypto")
   const stocks = watchlist.filter((w) => w.type === "stock")
 
@@ -302,8 +316,19 @@ async function snapshot(watchlistOverride) {
         error: marketErrorMessage(reason),
       }
     }
-    return { quotes, configured: true }
+    const result = { quotes, configured: true }
+    await kv.write(MARKETS_KV_NS, "quotes", result)
+    return result
   } catch (err) {
+    const row = await kv.readWithMeta(MARKETS_KV_NS, "quotes").catch(() => null)
+    if (row?.payload?.quotes?.length) {
+      return {
+        ...row.payload,
+        error: marketErrorMessage(err),
+        fromCache: true,
+        cachedAt: row.syncedAt,
+      }
+    }
     return {
       quotes: [],
       configured: true,

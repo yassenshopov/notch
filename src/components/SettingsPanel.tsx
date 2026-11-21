@@ -773,6 +773,10 @@ export function SettingsPanel({
                 }
               />
             </Row>
+            <p className="mt-3 text-[11px] leading-snug text-black/40 dark:text-white/40">
+              Contribution graph colors: use the <span className="font-medium">⋯</span> menu on the
+              heatmap legend.
+            </p>
           </Section>
         </SettingsTile>
 
@@ -782,8 +786,9 @@ export function SettingsPanel({
           <Section title="Mint server">
             <p className="text-[12px] leading-snug text-black/45 dark:text-white/45">
               Polls your home Linux box over SSH. Default host{" "}
-              <span className="font-medium">mint</span> uses Tailscale (falls back to{" "}
-              <span className="font-medium">mint-home</span> on LAN). Laptop needs Tailscale running.
+              Use <span className="font-medium">mint-ts</span> (Tailscale); sync also tries{" "}
+              <span className="font-medium">mint-home</span> / <span className="font-medium">mint-via-pi</span>.
+              Tailscale must be connected on this PC.
             </p>
             <Row label="SSH host">
               <input
@@ -1126,6 +1131,54 @@ export function SettingsPanel({
             className="w-fit rounded-full bg-[#111] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-[#111]"
           >
             {wallpaperBusy ? "Generating…" : `Regenerate ${year} wallpaper`}
+          </motion.button>
+          <motion.button
+            type="button"
+            disabled={wallpaperBusy || !window.notch?.wallpaper?.syncMint}
+            onClick={() => {
+              void (async () => {
+                const syncMint = window.notch?.wallpaper?.syncMint
+                if (!syncMint) {
+                  setWallpaperNote("Restart notch so wallpaper sync loads (quit from tray, then npm run dev).")
+                  return
+                }
+                setWallpaperBusy(true)
+                setWallpaperNote(null)
+                try {
+                  const result = await syncMint()
+                  if (!result.ok) {
+                    setWallpaperNote(result.error)
+                    return
+                  }
+                  const mint = result.mintSync
+                  if (mint?.synced) {
+                    setWallpaperNote(`Mint synced (${mint.host}) · ${mint.remotePath ?? ""}`)
+                    return
+                  }
+                  if (mint?.uploaded && mint.applied === false) {
+                    setWallpaperNote(mint.error ?? "Uploaded but wallpaper did not apply on Mint.")
+                    return
+                  }
+                  setWallpaperNote(
+                    mint?.error ?? "Mint sync failed — check Tailscale and SSH.",
+                  )
+                } catch (err) {
+                  const raw = err instanceof Error ? err.message : "Mint sync failed"
+                  setWallpaperNote(
+                    /no handler registered/i.test(raw)
+                      ? "Restart notch (quit from tray, then npm run dev)."
+                      : raw,
+                  )
+                } finally {
+                  setWallpaperBusy(false)
+                }
+              })()
+            }}
+            whileTap={{ scale: 0.97 }}
+            transition={notchUiFast}
+            className="w-fit rounded-full border border-black/15 px-4 py-2 text-[12px] font-semibold disabled:opacity-50 dark:border-white/20"
+          >
+            {wallpaperBusy ? "Syncing…" : "Sync to Mint only"}
           </motion.button>
           {wallpaperNote ? (
             <p className="text-[11px] leading-snug text-black/45 dark:text-white/45">{wallpaperNote}</p>

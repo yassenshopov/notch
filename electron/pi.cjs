@@ -7,4 +7,5 @@ module.exports = createSshServerStats({
   envHostKey: "NOTCH_PI_SSH_HOST",
   envScriptKey: "NOTCH_PI_STATS_SCRIPT",
   errorTag: "pi_ssh_error",
+  kvNamespace: "server_stats_pi",
 })

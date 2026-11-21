@@ -3,6 +3,8 @@ const fs = require("fs")
 const path = require("path")
 const { shell, app } = require("electron")
 const { createSmartCache } = require("./smart-cache.cjs")
+const stravaStore = require("./strava-persistence.cjs")
+const kv = require("./snapshot-kv.cjs")
 
 const API = "https://www.strava.com/api/v3"
 const SCOPES = "read,activity:read_all"
@@ -15,30 +17,6 @@ const ACTIVITY_DETAIL_TTL_MS = 30 * 60_000
 const ACTIVITY_DETAIL_STALE_MS = 24 * 60 * 60_000
 const ACTIVITIES_PAGE_SIZE = 200
 const ACTIVITIES_MAX_SYNC_PAGES = 50
-
-function activitiesIndexPath() {
-  return path.join(app.getPath("userData"), "strava-activities-index.json")
-}
-
-function heatmapCachePath() {
-  return path.join(app.getPath("userData"), "strava-heatmap-cache.json")
-}
-
-function readActivityIndex() {
-  try {
-    return JSON.parse(fs.readFileSync(activitiesIndexPath(), "utf8"))
-  } catch {
-    return null
-  }
-}
-
-function writeActivityIndex(payload) {
-  fs.writeFileSync(activitiesIndexPath(), JSON.stringify(payload), "utf8")
-}
-
-function writeHeatmapCache(heatmap) {
-  fs.writeFileSync(heatmapCachePath(), JSON.stringify(heatmap), "utf8")
-}
 
 function tokenPath() {
   return path.join(app.getPath("userData"), "strava-tokens.json")
@@ -483,7 +461,18 @@ function buildRouteHeatmap(activities) {
 
 async function syncActivityIndex(athleteId, { force = false } = {}) {
   const athleteKey = athleteId == null ? null : String(athleteId)
-  const existing = readActivityIndex()
+  const existing = await stravaStore.readActivityIndex()
+  if (
+    !force &&
+    existing?.athleteId != null &&
+    String(existing.athleteId) === athleteKey &&
+    Array.isArray(existing.activities) &&
+    existing.activities.length > 0 &&
+    existing.syncedAt &&
+    Date.now() - existing.syncedAt < STATUS_STALE_MS
+  ) {
+    return existing.activities.map(normalizeStoredActivity).filter(Boolean)
+  }
   const merged = new Map()
 
   if (
@@ -525,7 +514,7 @@ async function syncActivityIndex(athleteId, { force = false } = {}) {
     (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),
   )
 
-  writeActivityIndex({
+  await stravaStore.writeActivityIndex({
     athleteId: athleteKey,
     syncedAt: Date.now(),
     activities,
@@ -538,8 +527,34 @@ function buildHeatmapForActivities(activities) {
   return buildRouteHeatmap(activities.filter((a) => a.polyline))
 }
 
+let stravaStatusBackgroundRefresh = null
+
+function scheduleStravaStatusBackgroundRefresh() {
+  if (stravaStatusBackgroundRefresh) return
+  stravaStatusBackgroundRefresh = fetchStatusPayload({ force: true })
+    .catch(() => {})
+    .finally(() => {
+      stravaStatusBackgroundRefresh = null
+    })
+}
+
 async function fetchStatusPayload(options = {}) {
   const force = options.force === true
+
+  if (!force) {
+    const snap = await stravaStore.readStatusSnapshot()
+    if (snap?.payload && snap.syncedAt) {
+      const age = Date.now() - snap.syncedAt
+      if (age < STATUS_STALE_MS) {
+        const payload = { ...snap.payload, fromCache: true, cachedAt: snap.syncedAt }
+        if (age >= STATUS_TTL_MS) {
+          scheduleStravaStatusBackgroundRefresh()
+        }
+        return payload
+      }
+    }
+  }
+
   const athleteRes = await stravaFetch("/athlete")
   if (!athleteRes.ok) throw new Error(`strava_http_${athleteRes.status}`)
   const athlete = await athleteRes.json()
@@ -547,8 +562,8 @@ async function fetchStatusPayload(options = {}) {
   if (!athleteId) throw new Error("strava_missing_athlete_id")
 
   const [activities, statsRes] = await Promise.all([
-    syncActivityIndex(athleteId, { force }).catch((err) => {
-      const cached = readActivityIndex()
+    syncActivityIndex(athleteId, { force }).catch(async (err) => {
+      const cached = await stravaStore.readActivityIndex()
       if (
         cached?.athleteId != null &&
         String(cached.athleteId) === athleteId &&
@@ -577,15 +592,15 @@ async function fetchStatusPayload(options = {}) {
   const streak = computeStreak(activities)
   const calendar = buildMonthCalendar(activities)
   const heatmap = buildHeatmapForActivities(activities)
-  writeHeatmapCache(heatmap)
+  await stravaStore.writeHeatmapCache(athleteId, heatmap)
 
-  const indexMeta = readActivityIndex()
+  const indexMeta = await stravaStore.readActivityIndex()
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const recent30 = activities.filter((a) => new Date(a.startDate) >= monthStart)
 
-  return {
+  const result = {
     login: `${athlete.firstname ?? ""} ${athlete.lastname ?? ""}`.trim() || athlete.username,
     avatarUrl: athlete.profile_medium || athlete.profile || null,
     athleteId,
@@ -604,6 +619,10 @@ async function fetchStatusPayload(options = {}) {
     activities,
     monthDistance: recent30.reduce((sum, a) => sum + (a.distance || 0), 0),
   }
+
+  await stravaStore.writeStatusSnapshot(athleteId, result).catch(() => {})
+
+  return result
 }
 
 async function status(options = {}) {
@@ -772,7 +791,7 @@ function startAuth() {
   })
 }
 
-function disconnect() {
+async function disconnect() {
   clearTokens()
   cache.invalidate?.("strava:status:v4")
   cache.invalidate?.("strava:status:v5")
@@ -780,16 +799,7 @@ function disconnect() {
   cache.invalidate?.("strava:status:v7")
   cache.invalidatePrefix?.("strava:activity:")
   cache.invalidatePrefix?.("strava:activity-streams:")
-  try {
-    fs.unlinkSync(activitiesIndexPath())
-  } catch {
-    // ignore
-  }
-  try {
-    fs.unlinkSync(heatmapCachePath())
-  } catch {
-    // ignore
-  }
+  await stravaStore.clearStravaCache()
   return status()
 }
 
@@ -849,12 +859,36 @@ function normalizeActivityId(activityId) {
   return id
 }
 
-async function getActivity(activityId) {
+async function activityKvKind(athleteId, activityId, suffix) {
+  const athlete = athleteId == null ? await stravaStore.readLatestAthleteId() : String(athleteId)
+  if (!athlete) return null
+  return `${athlete}:${activityId}:${suffix}`
+}
+
+async function readActivityKv(activityId, suffix) {
+  const id = normalizeActivityId(activityId)
+  const kind = await activityKvKind(null, id, suffix)
+  if (!kind) return null
+  const row = await kv.readWithMeta("strava_activity", kind)
+  if (!row?.payload) return null
+  const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+  if (age >= ACTIVITY_DETAIL_STALE_MS) return null
+  return { ...row.payload, fromCache: true, cachedAt: row.syncedAt }
+}
+
+async function getActivity(activityId, options = {}) {
+  const force = options?.force === true
   const id = normalizeActivityId(activityId)
 
-  return cache.get(`strava:activity:v6:${id}`, {
+  if (!force) {
+    const cached = await readActivityKv(id, "detail")
+    if (cached) return cached
+  }
+
+  return cache.get(`strava:activity:v7:${id}`, {
     ttlMs: ACTIVITY_DETAIL_TTL_MS,
     staleMs: ACTIVITY_DETAIL_STALE_MS,
+    force,
     fetcher: async () => {
       const res = await stravaFetch(`/activities/${id}`)
       if (!res.ok) {
@@ -868,18 +902,41 @@ async function getActivity(activityId) {
         activity.startLat,
         activity.startLng,
       )
-      return { ...activity, streams, weatherTempC }
+      const result = { ...activity, streams, weatherTempC }
+      const kind = await activityKvKind(
+        (await stravaStore.readLatestAthleteId()) ?? undefined,
+        id,
+        "detail",
+      )
+      if (kind) await kv.write("strava_activity", kind, result)
+      return result
     },
   })
 }
 
-async function getActivityStreams(activityId) {
+async function getActivityStreams(activityId, options = {}) {
+  const force = options?.force === true
   const id = normalizeActivityId(activityId)
 
-  return cache.get(`strava:activity-streams:v2:${id}`, {
+  if (!force) {
+    const cached = await readActivityKv(id, "streams")
+    if (cached) return cached
+  }
+
+  return cache.get(`strava:activity-streams:v3:${id}`, {
     ttlMs: ACTIVITY_DETAIL_TTL_MS,
     staleMs: ACTIVITY_DETAIL_STALE_MS,
-    fetcher: async () => fetchActivityStreams(id),
+    force,
+    fetcher: async () => {
+      const streams = await fetchActivityStreams(id)
+      const kind = await activityKvKind(
+        (await stravaStore.readLatestAthleteId()) ?? undefined,
+        id,
+        "streams",
+      )
+      if (streams && kind) await kv.write("strava_activity", kind, streams)
+      return streams
+    },
   })
 }
 

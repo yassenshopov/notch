@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_WEATHER_LOCATION } from "./default-location"
+import type { GitHubHeatmapPaletteId } from "../lib/github-heatmap-palettes"
 import { topCenterSlot } from "../lib/notch-placement-grid"
 
 export type TemperatureUnit = "celsius" | "fahrenheit"
@@ -87,7 +88,7 @@ export type AppSettings = {
   }
   mint: {
     pollIntervalMs: number
-    /** SSH config host (e.g. mint via Tailscale) */
+    /** SSH config host (mint-ts = Tailscale; mint-home = LAN) */
     sshHost: string
   }
   pi: {
@@ -132,6 +133,10 @@ export type AppSettings = {
   }
   github: {
     pollIntervalMs: number
+    /** Full-page hero heatmap + island mini graph color ramp */
+    heatmapPalette: GitHubHeatmapPaletteId
+    /** Per-repo colors for donuts and activity charts (`owner/repo` → `#rrggbb`). */
+    repoColors: Record<string, string>
   }
   strava: {
     pollIntervalMs: number
@@ -253,7 +258,7 @@ export const defaultSettings: AppSettings = {
   },
   mint: {
     pollIntervalMs: 30_000,
-    sshHost: "mint",
+    sshHost: "mint-ts",
   },
   pi: {
     pollIntervalMs: 30_000,
@@ -306,6 +311,8 @@ export const defaultSettings: AppSettings = {
   },
   github: {
     pollIntervalMs: 120_000,
+    heatmapPalette: "classic",
+    repoColors: {},
   },
   strava: {
     pollIntervalMs: 180_000,

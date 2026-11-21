@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Car,
   CloudSun,
+  Home,
   Gamepad2,
   Leaf,
   Languages,
@@ -96,6 +97,7 @@ const RAIL_PANELS_RIGHT: Panel[] = [
   "github",
   "strava",
   "car",
+  "home",
   "mint",
   "wifi-sense",
   "pi",
@@ -1309,6 +1311,8 @@ function railTabIcon(panel: Panel) {
       return <Icon icon="simple-icons:strava" className="size-4" aria-hidden />
     case "car":
       return <Car className="size-4" strokeWidth={1.75} />
+    case "home":
+      return <Home className="size-4" strokeWidth={1.75} />
     case "mint":
       return <Icon icon="simple-icons:linuxmint" className="size-4" aria-hidden />
     case "wifi-sense":
@@ -1336,6 +1340,7 @@ const RAIL_TAB_LABELS: Record<Panel, string> = {
   github: "GitHub",
   strava: "Strava",
   car: "Car",
+  home: "Home",
   mint: "Mint server",
   "wifi-sense": "Wi‑Fi Sense",
   pi: "Raspberry Pi",

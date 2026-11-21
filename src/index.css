@@ -113,6 +113,7 @@ body,
   background: transparent;
   overflow: hidden;
   font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;

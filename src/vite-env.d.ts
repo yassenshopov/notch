@@ -141,6 +141,23 @@ interface NotchBridge {
         playedAt: string | null
       }>
     >
+    listeningHistory: (limit?: number) => Promise<
+      Array<{
+        track: SpotifyBridgeStatus["track"] & { uri: string }
+        playedAt: string | null
+      }>
+    >
+    libraryStatus: () => Promise<import("./lib/spotify-insights").SpotifyLibraryStatus>
+    insights: (options?: { year?: number }) => Promise<
+      import("./lib/spotify-insights").SpotifyActivityInsights
+    >
+    importExtended: (dir: string) => Promise<{
+      ok: boolean
+      error?: string
+      rowsInserted?: number
+      rowsRead?: number
+      path?: string
+    }>
     playUri: (uri: string, options?: { targetPi?: boolean }) => Promise<SpotifyBridgeStatus>
     lyrics: (query: {
       trackName: string
@@ -176,7 +193,29 @@ interface NotchBridge {
     insights: (options?: { force?: boolean; year?: number }) => Promise<
       import("./lib/github").GitHubActivityInsights
     >
+    weeklyRepoStack: (options?: { force?: boolean }) => Promise<
+      import("./lib/github").GitHubRepoWeeklyStack
+    >
     openUrl: (url: string) => Promise<void>
+    dayBreakdown: (options: {
+      date: string
+      count?: number
+      force?: boolean
+    }) => Promise<import("./lib/github").GitHubTodayBreakdown>
+    notificationsInbox: (options?: {
+      force?: boolean
+      before?: string
+    }) => Promise<import("./lib/github").GitHubNotificationsInbox>
+    markNotificationRead: (threadId: string) => Promise<{
+      ok: boolean
+      items?: import("./lib/github").GitHubNotification[]
+      error?: string
+    }>
+    markAllNotificationsRead: () => Promise<{
+      ok: boolean
+      items?: import("./lib/github").GitHubNotification[]
+      error?: string
+    }>
   }
   mint: {
     status: (options?: { force?: boolean; host?: string }) => Promise<MintBridgeStatus>
@@ -254,6 +293,24 @@ interface NotchBridge {
     pickOutputFolder: () => Promise<
       { ok: true; path: string } | { ok: false; canceled?: boolean }
     >
+    syncMint: () => Promise<
+      | {
+          ok: true
+          mintSync?: {
+            synced: boolean
+            uploaded?: boolean
+            applied?: boolean
+            host?: string
+            remotePath?: string
+            error?: string
+            skipped?: boolean
+            reason?: string
+            hostsTried?: string[]
+            tailscaleHint?: string
+          }
+        }
+      | { ok: false; error: string }
+    >
     regenerate: (options?: {
       year?: number
       apply?: boolean
@@ -271,12 +328,15 @@ interface NotchBridge {
           applyError?: string
           mintSync?: {
             synced: boolean
+            uploaded?: boolean
+            applied?: boolean
             host?: string
             remotePath?: string
             error?: string
             skipped?: boolean
             reason?: string
             hostsTried?: string[]
+            tailscaleHint?: string
           }
         }
       | { ok: false; error: string }

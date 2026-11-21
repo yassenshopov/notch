@@ -1,6 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 const { app } = require("electron")
+const settingsPersistence = require("./settings-persistence.cjs")
 
 function settingsPath() {
   return path.join(app.getPath("userData"), "settings.json")
@@ -38,6 +39,7 @@ function writeSettings(partial) {
   const prev = readSettings()
   const next = deepMerge(prev, partial)
   fs.writeFileSync(settingsPath(), JSON.stringify(next, null, 2), "utf8")
+  void settingsPersistence.pushToNeon(next).catch(() => {})
   return next
 }
 
@@ -47,6 +49,7 @@ function resetSettings() {
   } catch {
     // ignore
   }
+  void settingsPersistence.clearNeon().catch(() => {})
   return {}
 }
 

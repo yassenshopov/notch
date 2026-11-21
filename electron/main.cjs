@@ -18,7 +18,11 @@ const {
   dialog,
 } = require("electron")
 const settingsStore = require("./settings-store.cjs")
+const db = require("./db.cjs")
+const neonFunctions = require("./neon-functions.cjs")
+const settingsPersistence = require("./settings-persistence.cjs")
 const { createDesktopWindowManager } = require("./desktop-window.cjs")
+const uiBundle = require("./ui-bundle.cjs")
 const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
 const notchPlacement = require("./notch-placement.cjs")
 const windowMotion = require("./notch-window-motion.cjs")
@@ -87,7 +91,7 @@ async function runWallpaperRegenerate(payload = {}) {
     })
 
     let mintSync = undefined
-    if (saved.syncToMint !== false) {
+    if (style.syncToMint !== false) {
       const mintSettings = settingsStore.readSettings()?.mint ?? {}
       mintSync = await syncWallpaperToMint({
         localPath: result.path,
@@ -120,7 +124,29 @@ ipcMain.handle("wallpaper:regenerate", async (_event, payload) => {
   return result
 })
 
+ipcMain.handle("wallpaper:sync-mint", async () => {
+  try {
+    const saved = settingsStore.readSettings()?.yearWallpaper ?? {}
+    const style = saved
+    const year = new Date().getFullYear()
+    const outputPath = resolveWallpaperOutputPath(year, style)
+    if (saved.syncToMint === false) {
+      return { ok: false, error: "sync_disabled" }
+    }
+    const mintSettings = settingsStore.readSettings()?.mint ?? {}
+    const mintSync = await syncWallpaperToMint({
+      localPath: outputPath,
+      year,
+      sshHost: mintSettings.sshHost,
+    })
+    return { ok: Boolean(mintSync.synced), mintSync }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "mint_sync_error" }
+  }
+})
+
 const spotify = require("./spotify.cjs")
+const spotifyLibrary = require("./spotify-library.cjs")
 const cursor = require("./cursor.cjs")
 const {
   computeCursorCyclePace,
@@ -143,12 +169,8 @@ const calendar = require("./calendar.cjs")
 app.commandLine.appendSwitch("hide-scrollbars")
 app.setAppUserModelId("com.yassenshopov.notch")
 
-// Only use the Vite server when `npm run dev` sets ELECTRON_DEV.
-// Login / `npm start` launch Electron unpackaged but must load dist — otherwise
-// ready-to-show never paints (localhost:5173 is down) and the notch looks "missing".
-const isDev =
-  !app.isPackaged &&
-  (process.env.ELECTRON_DEV === "1" || process.env.ELECTRON_DEV === "true")
+/** Resolved in app.whenReady — see ui-bundle.cjs */
+let rendererUsesVite = false
 
 const APP_ICON = path.join(__dirname, "assets", "icon.ico")
 const TRAY_ICON = path.join(__dirname, "assets", "tray.png")
@@ -169,9 +191,11 @@ let wallpaperDailyScheduler = null
 /** @type {(() => void) | null} */
 let stopKeyboardLayoutWatch = null
 const desktopWindows = createDesktopWindowManager({
-  isDev: () => isDev,
+  isDev: () => rendererUsesVite,
   preloadPath: PRELOAD_PATH,
   readSettings: () => settingsStore.readSettings(),
+  distLoadOptions: () => uiBundle.distLoadOptions(),
+  allowDistFallback: () => uiBundle.allowDistFallbackInDev(),
 })
 
 function showNotch() {
@@ -275,15 +299,18 @@ function createWindow() {
   // Collapsed shell is pill-sized — keep it fully clickable (no passthrough)
   mainWindow.setIgnoreMouseEvents(false)
 
-  const distIndex = path.join(__dirname, "../dist/index.html")
+  const distIndex = uiBundle.DIST_INDEX
+  const distOpts = uiBundle.distLoadOptions()
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:5173").catch((err) => {
-      console.error("[notch] Vite load failed, falling back to dist:", err)
-      mainWindow?.loadFile(distIndex)
+  if (rendererUsesVite) {
+    mainWindow.loadURL("http://127.0.0.1:5173/").catch((err) => {
+      console.error("[notch] Vite load failed:", err)
+      if (uiBundle.allowDistFallbackInDev()) {
+        mainWindow?.loadFile(distIndex, distOpts)
+      }
     })
   } else {
-    mainWindow.loadFile(distIndex).catch((err) => {
+    mainWindow.loadFile(distIndex, distOpts).catch((err) => {
       console.error("[notch] Failed to load UI. Run `npm run build` first.", err)
     })
   }
@@ -291,8 +318,12 @@ function createWindow() {
   mainWindow.webContents.on("did-fail-load", (_event, code, desc, url, isMainFrame) => {
     if (!isMainFrame || code === -3) return // -3 = aborted
     console.error("[notch] did-fail-load", { code, desc, url })
-    if (isDev && url.startsWith("http://localhost:5173")) {
-      mainWindow?.loadFile(distIndex)
+    if (rendererUsesVite && String(url).includes("127.0.0.1:5173")) {
+      if (uiBundle.allowDistFallbackInDev()) {
+        mainWindow?.loadFile(distIndex, distOpts)
+      } else {
+        console.error("[notch] Vite unavailable — not loading stale dist (set NOTCH_ALLOW_DIST_FALLBACK=1 to override).")
+      }
       return
     }
     // Still show the shell so a blank transparent window isn't left hanging invisible
@@ -621,9 +652,17 @@ ipcMain.handle("spotify:action", async (_event, action, options) => {
   return spotify.playbackAction(action, options ?? {})
 })
 
-ipcMain.handle("spotify:recently-played", async (_event, limit) => {
+ipcMain.handle("spotify:listening-history", async (_event, limit) => {
   try {
-    return await spotify.getRecentlyPlayed(limit)
+    return await spotify.getListeningHistory(limit)
+  } catch {
+    return []
+  }
+})
+
+ipcMain.handle("spotify:recently-played", async (_event, limit, options) => {
+  try {
+    return await spotify.getRecentlyPlayed(limit, options ?? {})
   } catch {
     return []
   }
@@ -631,6 +670,50 @@ ipcMain.handle("spotify:recently-played", async (_event, limit) => {
 
 ipcMain.handle("spotify:play-uri", async (_event, uri, options) => {
   return spotify.playUri(uri, options ?? {})
+})
+
+ipcMain.handle("spotify:library-status", async () => {
+  try {
+    return await spotifyLibrary.libraryStatus()
+  } catch (err) {
+    return {
+      configured: db.isConfigured(),
+      ready: false,
+      totalStreams: 0,
+      error: err instanceof Error ? err.message : "spotify_library_error",
+    }
+  }
+})
+
+ipcMain.handle("spotify:insights", async (_event, options) => {
+  try {
+    return await spotifyLibrary.activityInsights({
+      year: options?.year,
+    })
+  } catch (err) {
+    return {
+      configured: db.isConfigured(),
+      ready: false,
+      connected: true,
+      years: [],
+      chartYear: new Date().getFullYear(),
+      weeks: [],
+      days: [],
+      totalPlays: 0,
+      totalMs: 0,
+      topArtists: [],
+      topTracks: [],
+      error: err instanceof Error ? err.message : "spotify_insights_error",
+    }
+  }
+})
+
+ipcMain.handle("spotify:import-extended", async (_event, dir) => {
+  try {
+    return await spotifyLibrary.importDirectory(dir)
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "spotify_import_error" }
+  }
 })
 
 ipcMain.handle("spotify:lyrics", async (_event, query) => {
@@ -712,6 +795,7 @@ ipcMain.handle("github:status", async (_event, options) => {
       connected: false,
       login: null,
       avatarUrl: null,
+      profile: null,
       notifications: [],
       pullRequests: [],
       contributions: null,
@@ -734,10 +818,69 @@ ipcMain.handle("github:insights", async (_event, options) => {
       years: [],
       chartYear: new Date().getFullYear(),
       repoTotals: [],
+      repoCatalog: [],
       repoSeries: [],
       monthLabels: [],
       error: err instanceof Error ? err.message : "github_insights_error",
     }
+  }
+})
+
+ipcMain.handle("github:weekly-repo-stack", async (_event, options) => {
+  try {
+    return await github.weeklyRepoStack({ force: options?.force === true })
+  } catch (err) {
+    return {
+      configured: github.configured(),
+      connected: false,
+      topRepos: [],
+      repoUrls: {},
+      weeks: [],
+      days: [],
+      error: err instanceof Error ? err.message : "github_weekly_stack_error",
+    }
+  }
+})
+
+ipcMain.handle("github:day-breakdown", async (_event, options) => {
+  try {
+    return await github.dayBreakdown(options ?? {})
+  } catch (err) {
+    return {
+      date: options?.date ?? "",
+      repos: [],
+      error: err instanceof Error ? err.message : "github_day_error",
+    }
+  }
+})
+
+ipcMain.handle("github:notifications-inbox", async (_event, options) => {
+  try {
+    return await github.notificationsInbox(options ?? {})
+  } catch (err) {
+    return {
+      configured: github.configured(),
+      connected: false,
+      items: [],
+      hasMore: false,
+      error: err instanceof Error ? err.message : "github_notifications_error",
+    }
+  }
+})
+
+ipcMain.handle("github:notification-read", async (_event, threadId) => {
+  try {
+    return await github.markNotificationRead(threadId)
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "github_notification_read_error" }
+  }
+})
+
+ipcMain.handle("github:notifications-read-all", async () => {
+  try {
+    return await github.markAllNotificationsRead()
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "github_notifications_read_all_error" }
   }
 })
 
@@ -1072,12 +1215,34 @@ ipcMain.handle("notch:carto-api-key", () =>
 
 ipcMain.handle("keyboard-layout:current", () => keyboardLayout.getCurrent())
 
+ipcMain.handle("db:status", () => db.status())
+
+ipcMain.handle("neon:functions:status", () => neonFunctions.status())
+ipcMain.handle("neon:hello", () => neonFunctions.fetchHello())
+
 if (gotLock) {
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    const dbInit = await db.init()
+    if (db.isConfigured()) {
+      console.info(
+        `[notch] database=${dbInit.ok ? "ready" : "error"}${dbInit.error ? ` (${dbInit.error})` : ""}`,
+      )
+    }
+    if (dbInit.ok) {
+      const settingsBoot = await settingsPersistence.bootstrap().catch(() => null)
+      if (settingsBoot?.source === "neon") {
+        console.info("[notch] settings loaded from Neon")
+      }
+    }
     syncLaunchAtLogin()
     ensureStartMenuShortcut()
     createTray()
     startCursorTrayPoll()
+    const bundle = await uiBundle.resolveUiBundle(app)
+    rendererUsesVite = bundle.useVite
+    console.info(
+      `[notch] renderer=${bundle.source}${bundle.staleDist ? " (dist stale — rebuild or use npm run dev)" : ""}`,
+    )
     createWindow()
 
     if (process.env.NOTCH_VERIFY_EXPAND === "1") {
