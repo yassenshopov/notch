@@ -41,6 +41,14 @@ async function gh(path) {
   return res.json()
 }
 
+async function ghGet(pathAndQuery) {
+  const res = await fetch(`${API}${pathAndQuery}`, { headers: headers() })
+  if (res.status === 401) throw new Error("github_unauthorized")
+  if (res.status === 403) throw new Error("github_forbidden")
+  if (!res.ok) throw new Error(`github_http_${res.status}`)
+  return res.json()
+}
+
 async function ghRequest(method, path, body) {
   const res = await fetch(`${API}${path}`, {
     method,
@@ -264,7 +272,7 @@ function contributionDateKeyForToday(contributions) {
 }
 
 function dayCacheKey(dateKey) {
-  return `github:day:v6:${dateKey}`
+  return `github:day:v7:${dateKey}`
 }
 
 function sumRepoCounts(repos) {
@@ -363,20 +371,68 @@ function pickTodayBreakdownRange(dateKey, expectedCount, candidates) {
   }, null)
 }
 
+/** Matches github.com “Created N commits in …” — GraphQL windows can mis-attribute across repos. */
+async function fetchCommitCountsByRepoForDate(dateKey, login) {
+  const q = `author:${login} committer-date:${dateKey}`
+  const map = new Map()
+  let page = 1
+  while (page <= 10) {
+    const data = await ghGet(
+      `/search/commits?q=${encodeURIComponent(q)}&sort=committer-date&order=desc&per_page=100&page=${page}`,
+    )
+    const items = data?.items ?? []
+    if (!items.length) break
+    for (const item of items) {
+      const repo = item.repository?.full_name
+      if (!repo) continue
+      map.set(repo, (map.get(repo) ?? 0) + 1)
+    }
+    if (items.length < 100) break
+    page++
+  }
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([repo, count]) => ({
+      repo,
+      url: `https://github.com/${repo}`,
+      count,
+    }))
+}
+
+async function resolveGithubLogin() {
+  const cached = await githubStore.readLatestLogin().catch(() => null)
+  if (cached) return cached
+  const user = await gh("/user").catch(() => null)
+  return user?.login ?? null
+}
+
 async function fetchTodayBreakdownForDate(dateKey, expectedCount) {
-  const rangeFns = [localDayRangeIso, utcDayRangeIso]
-  const candidates = []
-  for (const rangeFn of rangeFns) {
-    const result = await fetchTodayBreakdownForRange(dateKey, rangeFn(dateKey))
-    candidates.push(result)
-    if (expectedCount !== undefined && result.calendarCount === expectedCount) {
-      return {
-        date: dateKey,
-        repos: result.repos,
-        expectedCount: result.calendarCount,
+  const login = await resolveGithubLogin()
+  if (login) {
+    try {
+      const repos = await fetchCommitCountsByRepoForDate(dateKey, login)
+      if (repos.length > 0) {
+        return {
+          date: dateKey,
+          repos,
+          expectedCount: expectedCount,
+        }
       }
+    } catch (err) {
+      console.warn("[github] commit-search day breakdown failed:", err instanceof Error ? err.message : err)
     }
   }
+
+  const local = await fetchTodayBreakdownForRange(dateKey, localDayRangeIso(dateKey))
+  if (expectedCount !== undefined && local.calendarCount === expectedCount) {
+    return {
+      date: dateKey,
+      repos: local.repos,
+      expectedCount: local.calendarCount,
+    }
+  }
+  const utc = await fetchTodayBreakdownForRange(dateKey, utcDayRangeIso(dateKey))
+  const candidates = [local, utc]
   const picked = pickTodayBreakdownRange(dateKey, expectedCount, candidates)
   const calendarCount = picked?.calendarCount ?? expectedCount ?? 0
   return {
@@ -1222,25 +1278,25 @@ async function loadRepoChartsForYear(year, force) {
 }
 
 const WEEKLY_STACK_TOP = 7
-const WEEKLY_STACK_VERSION = 4
+const WEEKLY_STACK_VERSION = 5
 const WEEKLY_STACK_CONCURRENCY = 5
 const DAILY_STACK_DAYS = 45
 
-function rollingWeekRangesUtc(days = 365) {
+function rollingWeekRangesLocal(days = 365) {
   const ranges = []
   const end = new Date()
-  end.setUTCHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
   const windowStart = new Date(end)
-  windowStart.setUTCDate(windowStart.getUTCDate() - days)
+  windowStart.setDate(windowStart.getDate() - days)
   let cursor = new Date(windowStart)
   while (cursor < end) {
-    const from = cursor.toISOString()
+    const from = new Date(cursor)
     const weekEnd = new Date(cursor)
-    weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+    weekEnd.setDate(weekEnd.getDate() + 7)
     const cappedEnd = weekEnd > end ? end : weekEnd
     ranges.push({
-      weekStart: from.slice(0, 10),
-      from,
+      weekStart: localContributionDateKey(from),
+      from: from.toISOString(),
       to: cappedEnd.toISOString(),
     })
     cursor = new Date(cappedEnd)
@@ -1248,20 +1304,20 @@ function rollingWeekRangesUtc(days = 365) {
   return ranges
 }
 
-function rollingDayRangesUtc(dayCount = DAILY_STACK_DAYS) {
+function rollingDayRangesLocal(dayCount = DAILY_STACK_DAYS) {
   const ranges = []
   const end = new Date()
-  end.setUTCHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
   const windowStart = new Date(end)
-  windowStart.setUTCDate(windowStart.getUTCDate() - dayCount)
+  windowStart.setDate(windowStart.getDate() - dayCount)
   let cursor = new Date(windowStart)
   while (cursor < end) {
-    const from = cursor.toISOString()
+    const from = new Date(cursor)
     const dayEnd = new Date(cursor)
-    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+    dayEnd.setDate(dayEnd.getDate() + 1)
     ranges.push({
-      weekStart: from.slice(0, 10),
-      from,
+      weekStart: localContributionDateKey(from),
+      from: from.toISOString(),
       to: dayEnd.toISOString(),
     })
     cursor = dayEnd
@@ -1334,14 +1390,14 @@ async function fetchRepoCommitsForRange(from, to) {
 }
 
 async function loadWeeklyRepoStack(force) {
-  const cacheKey = "github:insights:weekly-stack:v4"
+  const cacheKey = "github:insights:weekly-stack:v5"
   if (force) cache.invalidate(cacheKey)
   return cache.get(cacheKey, {
     ttlMs: INSIGHTS_TTL_MS,
     staleMs: INSIGHTS_STALE_MS,
     force,
     fetcher: async () => {
-      const ranges = rollingWeekRangesUtc(365)
+      const ranges = rollingWeekRangesLocal(365)
       const fetched = await asyncPool(WEEKLY_STACK_CONCURRENCY, ranges, async (range) => {
         try {
           const { target, repos } = await fetchRepoCommitsForRange(range.from, range.to)
@@ -1369,7 +1425,7 @@ async function loadWeeklyRepoStack(force) {
 
       const weeks = packRepoStackBuckets(fetched, topRepos, repoUrls)
 
-      const dayRanges = rollingDayRangesUtc(DAILY_STACK_DAYS)
+      const dayRanges = rollingDayRangesLocal(DAILY_STACK_DAYS)
       const dayFetched = await asyncPool(WEEKLY_STACK_CONCURRENCY, dayRanges, async (range) => {
         try {
           const { target, repos } = await fetchRepoCommitsForRange(range.from, range.to)
