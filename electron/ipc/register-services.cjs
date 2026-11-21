@@ -114,6 +114,24 @@ function registerServicesIpc(ipcMain, deps) {
     }
   })
 
+  ipcMain.handle("spotify:day-detail", async (_event, date) => {
+    try {
+      return await spotifyLibrary.dayDetail(date)
+    } catch (err) {
+      return {
+        configured: db.isConfigured(),
+        ready: false,
+        date: typeof date === "string" ? date : "",
+        plays: 0,
+        ms: 0,
+        minutes: 0,
+        tracks: [],
+        topArtists: [],
+        error: err instanceof Error ? err.message : "spotify_day_detail_error",
+      }
+    }
+  })
+
   ipcMain.handle("spotify:import-extended", async (_event, dir) => {
     try {
       return await spotifyLibrary.importDirectory(dir)

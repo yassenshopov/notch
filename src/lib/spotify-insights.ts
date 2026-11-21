@@ -47,6 +47,18 @@ export type SpotifyProfile = {
   product: string | null
 }
 
+export type SpotifyDayDetail = {
+  configured: boolean
+  ready: boolean
+  date: string
+  plays: number
+  ms: number
+  minutes: number
+  tracks: SpotifyTopTrack[]
+  topArtists: Pick<SpotifyTopArtist, "name" | "plays" | "ms">[]
+  error?: string
+}
+
 export type SpotifyActivityInsights = SpotifyLibraryStatus & {
   connected: boolean
   years: number[]
@@ -94,6 +106,21 @@ export async function fetchSpotifyInsights(options?: {
     }
   }
   return window.notch.spotify.insights(options)
+}
+
+export async function fetchSpotifyDayDetail(date: string): Promise<SpotifyDayDetail> {
+  const empty: SpotifyDayDetail = {
+    configured: false,
+    ready: false,
+    date,
+    plays: 0,
+    ms: 0,
+    minutes: 0,
+    tracks: [],
+    topArtists: [],
+  }
+  if (!window.notch?.spotify?.dayDetail) return empty
+  return window.notch.spotify.dayDetail(date)
 }
 
 export function formatListeningMinutes(ms: number): string {

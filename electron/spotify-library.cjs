@@ -102,6 +102,11 @@ function listeningMinutesFromMs(ms) {
   return Math.max(1, Math.round(n / 60_000))
 }
 
+function isDateInCalendarYear(dateKey, year) {
+  const y = Number(year)
+  return dateKey >= `${y}-01-01` && dateKey <= `${y}-12-31`
+}
+
 function calendarYearGridBounds(year) {
   const y = Number(year)
   const start = new Date(Date.UTC(y, 0, 1))
@@ -160,6 +165,10 @@ function buildWeekColumns(dayRows, highlightsByDate = new Map(), chartYear) {
       const d = new Date(cursor)
       d.setUTCDate(cursor.getUTCDate() + i)
       const key = utcDateKey(d)
+      if (Number.isFinite(yearNum) && !isDateInCalendarYear(key, yearNum)) {
+        column.push({ date: "", count: 0 })
+        continue
+      }
       const hit = byDate.get(key)
       column.push(
         hit
@@ -631,9 +640,110 @@ async function activityInsights(options = {}) {
   }
 }
 
+async function dayDetail(dateKey) {
+  const date = String(dateKey || "").trim()
+  const empty = {
+    configured: false,
+    ready: false,
+    date,
+    plays: 0,
+    ms: 0,
+    minutes: 0,
+    tracks: [],
+    topArtists: [],
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return { ...empty, error: "invalid_date" }
+  }
+  if (!db.isConfigured() || !(await db.ensureReady())) {
+    return { ...empty, error: "database_unavailable" }
+  }
+  const sql = db.getSql()
+  if (!sql) return { ...empty, configured: true, error: "database_unavailable" }
+
+  const from = new Date(`${date}T00:00:00.000Z`)
+  const to = new Date(from)
+  to.setUTCDate(to.getUTCDate() + 1)
+
+  const [totals] = await sql`
+    SELECT
+      COUNT(*)::int AS plays,
+      COALESCE(SUM(ms_played), 0)::bigint AS ms
+    FROM spotify_streams
+    WHERE played_at >= ${from.toISOString()}::timestamptz
+      AND played_at < ${to.toISOString()}::timestamptz
+  `
+
+  const trackRows = await sql`
+    SELECT
+      track_id,
+      track_name AS name,
+      artist_name AS artist,
+      track_uri AS uri,
+      COUNT(*)::int AS plays,
+      COALESCE(SUM(ms_played), 0)::bigint AS ms
+    FROM spotify_streams
+    WHERE played_at >= ${from.toISOString()}::timestamptz
+      AND played_at < ${to.toISOString()}::timestamptz
+      AND track_name IS NOT NULL
+    GROUP BY track_id, track_name, artist_name, track_uri
+    ORDER BY ms DESC, plays DESC
+    LIMIT 24
+  `
+
+  const artistRows = await sql`
+    SELECT
+      artist_name AS name,
+      COUNT(*)::int AS plays,
+      COALESCE(SUM(ms_played), 0)::bigint AS ms
+    FROM spotify_streams
+    WHERE played_at >= ${from.toISOString()}::timestamptz
+      AND played_at < ${to.toISOString()}::timestamptz
+      AND artist_name IS NOT NULL
+      AND artist_name <> ''
+    GROUP BY artist_name
+    ORDER BY ms DESC, plays DESC
+    LIMIT 8
+  `
+
+  const trackIds = (trackRows || []).map((r) => r.track_id).filter(Boolean)
+  let artByTrackId = {}
+  try {
+    artByTrackId = await spotifyApi.fetchTracksAlbumArt([...new Set(trackIds)])
+  } catch {
+    artByTrackId = {}
+  }
+
+  const ms = Number(totals?.ms || 0)
+
+  return {
+    configured: true,
+    ready: true,
+    date,
+    plays: Number(totals?.plays || 0),
+    ms,
+    minutes: listeningMinutesFromMs(ms),
+    tracks: (trackRows || []).map((r) => ({
+      id: r.track_id,
+      name: r.name,
+      artist: r.artist,
+      uri: r.uri,
+      plays: Number(r.plays || 0),
+      ms: Number(r.ms || 0),
+      artUrl: r.track_id ? artByTrackId[r.track_id] || null : null,
+    })),
+    topArtists: (artistRows || []).map((r) => ({
+      name: r.name,
+      plays: Number(r.plays || 0),
+      ms: Number(r.ms || 0),
+    })),
+  }
+}
+
 module.exports = {
   listExportFiles,
   importDirectory,
   libraryStatus,
   activityInsights,
+  dayDetail,
 }

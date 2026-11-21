@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld("notch", {
     listeningHistory: (limit) => ipcRenderer.invoke("spotify:listening-history", limit),
     libraryStatus: () => ipcRenderer.invoke("spotify:library-status"),
     insights: (options) => ipcRenderer.invoke("spotify:insights", options),
+    dayDetail: (date) => ipcRenderer.invoke("spotify:day-detail", date),
     importExtended: (dir) => ipcRenderer.invoke("spotify:import-extended", dir),
     playUri: (uri, options) => ipcRenderer.invoke("spotify:play-uri", uri, options),
     lyrics: (query) => ipcRenderer.invoke("spotify:lyrics", query),

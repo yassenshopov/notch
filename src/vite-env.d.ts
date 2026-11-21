@@ -151,6 +151,7 @@ interface NotchBridge {
     insights: (options?: { year?: number }) => Promise<
       import("./lib/spotify-insights").SpotifyActivityInsights
     >
+    dayDetail: (date: string) => Promise<import("./lib/spotify-insights").SpotifyDayDetail>
     importExtended: (dir: string) => Promise<{
       ok: boolean
       error?: string
