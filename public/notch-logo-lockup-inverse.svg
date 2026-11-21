@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 248 48" fill="none" role="img" aria-label="notch">
+  <rect width="100%" height="100%" fill="#0D1117" />
+  <g fill="#FFFFFF">
+    <rect width="77.25" height="35.25" x="0" y="6.375" rx="17.625" />
+    <rect x="86.25" width="21" height="35.25" y="6.375" rx="10.5" />
+  </g>
+  <text
+    x="124"
+    y="36"
+    fill="#FFFFFF"
+    font-family="Inter, 'Segoe UI', system-ui, sans-serif"
+    font-size="38"
+    font-weight="800"
+    letter-spacing="-0.06em"
+  >
+    notch
+  </text>
+</svg>
