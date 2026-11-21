@@ -51,7 +51,7 @@ export function PiPanel({ spotify, onTvAction, ...statsProps }: Props) {
         {tab === "server" ? (
           <ServerStatsPanel
             title="Raspberry Pi"
-            sshHint="Tries pi-home (LAN), then pi-ts (Tailscale). On Windows use a LAN IP in ~/.ssh/config—not raspberrypi.local. Complete Tailscale SSH check-in if prompted."
+            sshHint="Tries pi-home (LAN), then pi-ts (Tailscale). If every host times out, check the Pi is powered on (192.168.1.18). If the error mentions NoState, run scripts/fix-windows-tailscale.ps1 as Administrator."
             tertiary="temp"
             flavor="pi"
             {...statsProps}

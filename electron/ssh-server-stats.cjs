@@ -2,8 +2,11 @@ const { execFile } = require("child_process")
 const fs = require("fs")
 const path = require("path")
 const { promisify } = require("util")
+const kv = require("./snapshot-kv.cjs")
 
 const execFileAsync = promisify(execFile)
+
+const SERVER_STATS_DB_STALE_MS = 5 * 60 * 1000
 
 function resolveSshExecutable() {
   const fromEnv = process.env.NOTCH_SSH_PATH
@@ -30,6 +33,42 @@ function resolveSshExecutable() {
 const SSH_BIN = resolveSshExecutable()
 
 const SSH_PER_HOST_TIMEOUT_MS = 12_000
+
+function getTailscaleHealthHint() {
+  if (process.platform !== "win32") return null
+  const ts = path.join(process.env.ProgramFiles || "C:\\Program Files", "Tailscale", "tailscale.exe")
+  if (!fs.existsSync(ts)) return null
+  const { execFileSync } = require("child_process")
+  let raw = ""
+  try {
+    raw = execFileSync(ts, ["status"], {
+      encoding: "utf8",
+      timeout: 12_000,
+      windowsHide: true,
+    })
+  } catch (err) {
+    raw = [err.message, err.stderr, err.stdout].filter(Boolean).join("\n")
+  }
+  if (/unexpected state:\s*NoState/i.test(raw)) {
+    return (
+      "Tailscale on this PC is stuck in NoState (common when Mint AdGuard DNS clashes with Tailscale MagicDNS). " +
+      "Run scripts\\fix-windows-tailscale.ps1 as Administrator, then Retry."
+    )
+  }
+  if (/Unable to connect to the Tailscale coordination server/i.test(raw)) {
+    return (
+      "Tailscale cannot sync with its coordination server, so mint-ts / pi-ts will fail until it is healthy. " +
+      "Run scripts\\fix-windows-tailscale.ps1 as Administrator."
+    )
+  }
+  if (/Logged out/i.test(raw)) {
+    return (
+      "Tailscale is logged out on this PC — open Tailscale from the tray and click Connect. " +
+      "Wallpaper sync to Mint needs mint-ts (or home LAN ssh)."
+    )
+  }
+  return null
+}
 
 function sshBaseArgs(host, remoteCommand) {
   return [
@@ -91,6 +130,7 @@ function createSshServerStats({
   envHostKey,
   envScriptKey,
   errorTag,
+  kvNamespace,
 }) {
   const CACHE_MS = 8_000
   let cache = { at: 0, host: null, payload: null }
@@ -166,6 +206,15 @@ function createSshServerStats({
     return hosts
   }
 
+  async function readKvPayload(hostKey) {
+    if (!kvNamespace) return null
+    const row = await kv.readWithMeta(kvNamespace, hostKey)
+    if (!row?.payload) return null
+    const age = row.syncedAt ? Date.now() - row.syncedAt : Number.POSITIVE_INFINITY
+    if (age >= SERVER_STATS_DB_STALE_MS) return null
+    return { ...row.payload, fromCache: true, cachedAt: row.syncedAt }
+  }
+
   async function status(options = {}) {
     const force = options.force === true
     const hosts = resolveHosts(options)
@@ -173,6 +222,14 @@ function createSshServerStats({
     const now = Date.now()
     if (!force && cache.payload && cache.host === hostKey && now - cache.at < CACHE_MS) {
       return cache.payload
+    }
+
+    if (!force) {
+      const cached = await readKvPayload(hostKey)
+      if (cached) {
+        cache = { at: now, host: hostKey, payload: cached }
+        return cached
+      }
     }
 
     let lastErr = errorTag
@@ -190,6 +247,9 @@ function createSshServerStats({
           ...stats,
         }
         cache = { at: now, host: hostKey, payload }
+        if (kvNamespace) {
+          await kv.write(kvNamespace, hostKey, payload).catch(() => {})
+        }
         return payload
       } catch (err) {
         const formatted = formatSshAttemptError(err, host)
@@ -199,11 +259,19 @@ function createSshServerStats({
       }
     }
 
-    const summary =
+    let summary =
       attemptNotes.length > 1
         ? `Tried ${hosts.join(" → ")}. ${lastErr}`
         : lastErr
+    const tailscaleHint = getTailscaleHealthHint()
+    if (tailscaleHint) {
+      summary = `${tailscaleHint} ${summary}`
+    }
     const displayHost = hosts.includes(sshHost()) ? sshHost() : (hosts[0] ?? defaultHost)
+    const cached = await readKvPayload(hostKey).catch(() => null)
+    if (cached?.connected) {
+      return { ...cached, error: summary, sshHelpUrl: helpUrl }
+    }
     const payload = disconnected(displayHost, summary, helpUrl)
     cache = { at: now, host: hostKey, payload }
     return payload
@@ -226,4 +294,11 @@ async function execSshRemote(host, command, execOptions = {}) {
   return stdout
 }
 
-module.exports = { createSshServerStats, execSshRemote }
+module.exports = {
+  createSshServerStats,
+  execSshRemote,
+  SSH_BIN,
+  sshBaseArgs,
+  formatSshAttemptError,
+  getTailscaleHealthHint,
+}

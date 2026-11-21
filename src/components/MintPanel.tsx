@@ -14,7 +14,7 @@ export function MintPanel(props: Props) {
   return (
     <ServerStatsPanel
       title="Mint server"
-      sshHint="Tries mint-home (LAN), then mint-ts (Tailscale). If Tailscale SSH asks for check-in, use the button above, then Retry."
+      sshHint="Tries mint-home, mint-via-pi (Pi relay), then mint-ts (Tailscale). If the error mentions NoState, run scripts/fix-windows-tailscale.ps1 as Administrator."
       tertiary="mirrors"
       flavor="mint"
       {...props}
