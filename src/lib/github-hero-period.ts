@@ -1,4 +1,5 @@
 import type { GitHubContributionWeek, GitHubContributionYear, GitHubContributions } from "./github"
+import { padContributionWeeksToCalendarYear } from "./contribution-calendar-year"
 
 export type GitHubHeroPeriod = number | "all" | "rolling"
 
@@ -51,7 +52,7 @@ export function resolveHeroContributionView(
   const row = years.find((y) => y.year === period)
   if (row) {
     return {
-      weeks: row.weeks,
+      weeks: padContributionWeeksToCalendarYear(row.weeks, period),
       total: row.total,
       heatmapVariant: "desktop",
       weekLimit: Number.POSITIVE_INFINITY,

@@ -1,4 +1,4 @@
-import type { GitHubContributionWeek } from "./github"
+import type { SpotifyListeningWeek } from "./spotify-listening"
 
 export type SpotifyLibraryStatus = {
   configured: boolean
@@ -21,6 +21,7 @@ export type SpotifyTopArtist = {
   name: string
   plays: number
   ms: number
+  artUrl?: string | null
 }
 
 export type SpotifyTopTrack = {
@@ -30,16 +31,34 @@ export type SpotifyTopTrack = {
   uri: string | null
   plays: number
   ms: number
+  artUrl?: string | null
+}
+
+export type SpotifyMonthlyListening = {
+  month: string
+  plays: number
+  ms: number
+}
+
+export type SpotifyProfile = {
+  displayName: string | null
+  imageUrl: string | null
+  id: string | null
+  product: string | null
 }
 
 export type SpotifyActivityInsights = SpotifyLibraryStatus & {
   connected: boolean
   years: number[]
   chartYear: number
-  weeks: GitHubContributionWeek[]
-  days: { date: string; count: number }[]
+  weeks: SpotifyListeningWeek[]
+  days: { date: string; count: number; msPlayed?: number; plays?: number }[]
   totalPlays: number
   totalMs: number
+  /** Minutes in chart year (heatmap intensity). */
+  totalMinutes: number
+  profile?: SpotifyProfile | null
+  monthly?: SpotifyMonthlyListening[]
   topArtists: SpotifyTopArtist[]
   topTracks: SpotifyTopTrack[]
   error?: string
@@ -67,6 +86,9 @@ export async function fetchSpotifyInsights(options?: {
       days: [],
       totalPlays: 0,
       totalMs: 0,
+      totalMinutes: 0,
+      profile: null,
+      monthly: [],
       topArtists: [],
       topTracks: [],
     }

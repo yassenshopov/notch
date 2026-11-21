@@ -3,6 +3,7 @@ const fs = require("fs")
 const path = require("path")
 const { Pool } = require("@neondatabase/serverless")
 const db = require("./db.cjs")
+const spotifyApi = require("./spotify.cjs")
 
 const EXPORT_GLOB_PREFIXES = ["Streaming_History_Audio", "Streaming_History_Video"]
 const INSERT_BATCH = 400
@@ -95,38 +96,106 @@ function utcDateKey(d) {
   return `${y}-${m}-${day}`
 }
 
-function buildWeekColumns(dayRows) {
-  if (!dayRows?.length) return { weeks: [], days: [] }
-  const days = dayRows.map((row) => ({
-    date: row.date,
-    count: Number(row.plays) || 0,
-    msPlayed: Number(row.ms_played) || 0,
-  }))
+function listeningMinutesFromMs(ms) {
+  const n = Number(ms) || 0
+  if (n <= 0) return 0
+  return Math.max(1, Math.round(n / 60_000))
+}
 
-  const byDate = new Map(days.map((d) => [d.date, d]))
-  const sortedDates = [...byDate.keys()].sort()
-  const start = new Date(`${sortedDates[0]}T12:00:00Z`)
-  const end = new Date(`${sortedDates[sortedDates.length - 1]}T12:00:00Z`)
+function calendarYearGridBounds(year) {
+  const y = Number(year)
+  const start = new Date(Date.UTC(y, 0, 1))
+  const end = new Date(Date.UTC(y, 11, 31))
+  const gridStart = new Date(start)
+  gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay())
+  const gridEnd = new Date(end)
+  const endDow = gridEnd.getUTCDay()
+  if (endDow < 6) gridEnd.setUTCDate(gridEnd.getUTCDate() + (6 - endDow))
+  return { gridStart, gridEnd }
+}
+
+function buildWeekColumns(dayRows, highlightsByDate = new Map(), chartYear) {
+  const byDate = new Map()
+  for (const row of dayRows || []) {
+    const msPlayed = Number(row.ms_played) || 0
+    const plays = Number(row.plays) || 0
+    const highlight = highlightsByDate.get(row.date)
+    byDate.set(row.date, {
+      date: row.date,
+      count: listeningMinutesFromMs(msPlayed),
+      msPlayed,
+      plays,
+      artUrl: highlight?.artUrl ?? null,
+      trackName: highlight?.trackName ?? null,
+      trackArtist: highlight?.artist ?? null,
+      trackUri: highlight?.uri ?? null,
+    })
+  }
+
+  const yearNum = Number(chartYear)
+  let gridStart
+  let gridEnd
+  if (!Number.isFinite(yearNum)) {
+    if (!byDate.size) return { weeks: [], days: [] }
+    const sortedDates = [...byDate.keys()].sort()
+    const start = new Date(`${sortedDates[0]}T12:00:00Z`)
+    const end = new Date(`${sortedDates[sortedDates.length - 1]}T12:00:00Z`)
+    gridStart = new Date(start)
+    gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay())
+    gridEnd = new Date(end)
+    const endDow = gridEnd.getUTCDay()
+    if (endDow < 6) gridEnd.setUTCDate(gridEnd.getUTCDate() + (6 - endDow))
+  } else {
+    const bounds = calendarYearGridBounds(yearNum)
+    gridStart = bounds.gridStart
+    gridEnd = bounds.gridEnd
+  }
 
   const weeks = []
-  const cursor = new Date(start)
-  const startDow = cursor.getUTCDay()
-  cursor.setUTCDate(cursor.getUTCDate() - startDow)
+  const cursor = new Date(gridStart)
 
-  while (cursor <= end) {
+  while (cursor <= gridEnd) {
     const column = []
     for (let i = 0; i < 7; i++) {
       const d = new Date(cursor)
       d.setUTCDate(cursor.getUTCDate() + i)
       const key = utcDateKey(d)
       const hit = byDate.get(key)
-      column.push(hit ? { date: hit.date, count: hit.count } : { date: key, count: 0 })
+      column.push(
+        hit
+          ? {
+              date: hit.date,
+              count: hit.count,
+              msPlayed: hit.msPlayed,
+              plays: hit.plays,
+              artUrl: hit.artUrl,
+              trackName: hit.trackName,
+              trackArtist: hit.trackArtist,
+              trackUri: hit.trackUri,
+            }
+          : { date: key, count: 0 },
+      )
     }
     weeks.push(column)
     cursor.setUTCDate(cursor.getUTCDate() + 7)
   }
 
-  return { weeks, days: days.map(({ date, count }) => ({ date, count })) }
+  const days = []
+  for (const week of weeks) {
+    for (const day of week) {
+      if (!day?.date) continue
+      const y = Number(day.date.slice(0, 4))
+      if (Number.isFinite(yearNum) && y !== yearNum) continue
+      days.push({
+        date: day.date,
+        count: day.count,
+        msPlayed: day.msPlayed ?? 0,
+        plays: day.plays ?? 0,
+      })
+    }
+  }
+
+  return { weeks, days }
 }
 
 async function insertBatch(client, rows) {
@@ -327,6 +396,9 @@ async function activityInsights(options = {}) {
       days: [],
       totalPlays: 0,
       totalMs: 0,
+      totalMinutes: 0,
+      profile: null,
+      monthly: [],
       topArtists: [],
       topTracks: [],
     }
@@ -380,7 +452,7 @@ async function activityInsights(options = {}) {
           AND artist_name IS NOT NULL
           AND artist_name <> ''
         GROUP BY artist_name
-        ORDER BY plays DESC
+        ORDER BY ms DESC, plays DESC
         LIMIT 12
       `
     : []
@@ -399,12 +471,124 @@ async function activityInsights(options = {}) {
           AND played_at < ${bounds.to}::timestamptz
           AND track_name IS NOT NULL
         GROUP BY track_id, track_name, artist_name, track_uri
-        ORDER BY plays DESC
+        ORDER BY ms DESC, plays DESC
         LIMIT 12
       `
     : []
 
-  const { weeks, days } = buildWeekColumns(dayRows || [])
+  const dayTopRows = bounds
+    ? await sql`
+        WITH per_day AS (
+          SELECT
+            to_char(played_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+            track_id,
+            track_name,
+            artist_name AS artist,
+            track_uri AS uri,
+            COUNT(*)::int AS plays,
+            COALESCE(SUM(ms_played), 0)::bigint AS ms,
+            ROW_NUMBER() OVER (
+              PARTITION BY to_char(played_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')
+              ORDER BY COUNT(*) DESC, COALESCE(SUM(ms_played), 0) DESC
+            ) AS rn
+          FROM spotify_streams
+          WHERE played_at >= ${bounds.from}::timestamptz
+            AND played_at < ${bounds.to}::timestamptz
+            AND track_id IS NOT NULL
+            AND track_name IS NOT NULL
+          GROUP BY 1, track_id, track_name, artist_name, track_uri
+        )
+        SELECT date, track_id, track_name, artist, uri, plays, ms
+        FROM per_day
+        WHERE rn = 1
+        ORDER BY date
+      `
+    : []
+
+  const monthlyRows = bounds
+    ? await sql`
+        SELECT
+          to_char(played_at AT TIME ZONE 'UTC', 'YYYY-MM') AS month,
+          COUNT(*)::int AS plays,
+          COALESCE(SUM(ms_played), 0)::bigint AS ms
+        FROM spotify_streams
+        WHERE played_at >= ${bounds.from}::timestamptz
+          AND played_at < ${bounds.to}::timestamptz
+        GROUP BY 1
+        ORDER BY 1
+      `
+    : []
+
+  const artistCoverRows = bounds
+    ? await sql`
+        WITH per_artist_track AS (
+          SELECT
+            artist_name,
+            track_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY artist_name
+              ORDER BY COUNT(*) DESC, COALESCE(SUM(ms_played), 0) DESC
+            ) AS rn
+          FROM spotify_streams
+          WHERE played_at >= ${bounds.from}::timestamptz
+            AND played_at < ${bounds.to}::timestamptz
+            AND artist_name IS NOT NULL
+            AND track_id IS NOT NULL
+          GROUP BY artist_name, track_id
+        )
+        SELECT artist_name, track_id
+        FROM per_artist_track
+        WHERE rn = 1
+      `
+    : []
+
+  const artistRepTrackId = new Map(
+    (artistCoverRows || []).map((r) => [r.artist_name, r.track_id]),
+  )
+
+  const trackIds = [
+    ...(dayTopRows || []).map((r) => r.track_id),
+    ...(topTracks || []).map((r) => r.track_id),
+    ...[...(topArtists || []).map((r) => artistRepTrackId.get(r.name))].filter(Boolean),
+  ].filter(Boolean)
+
+  let artByTrackId = {}
+  let artByArtistName = {}
+  try {
+    artByTrackId = await spotifyApi.fetchTracksAlbumArt([...new Set(trackIds)])
+  } catch {
+    artByTrackId = {}
+  }
+  try {
+    artByArtistName = await spotifyApi.fetchArtistsImages((topArtists || []).map((r) => r.name))
+  } catch {
+    artByArtistName = {}
+  }
+
+  const highlightsByDate = new Map()
+  for (const row of dayTopRows || []) {
+    highlightsByDate.set(row.date, {
+      trackId: row.track_id,
+      trackName: row.track_name,
+      artist: row.artist,
+      uri: row.uri,
+      plays: Number(row.plays || 0),
+      ms: Number(row.ms || 0),
+      artUrl: artByTrackId[row.track_id] || null,
+    })
+  }
+
+  const { weeks, days } = buildWeekColumns(dayRows || [], highlightsByDate, chartYear)
+
+  let profile = null
+  try {
+    profile = await spotifyApi.fetchCurrentUserProfile()
+  } catch {
+    profile = null
+  }
+
+  const totalMs = Number(totals?.[0]?.ms || 0)
+  const totalMinutes = listeningMinutesFromMs(totalMs)
 
   return {
     ...status,
@@ -414,12 +598,27 @@ async function activityInsights(options = {}) {
     weeks,
     days,
     totalPlays: Number(totals?.[0]?.plays || 0),
-    totalMs: Number(totals?.[0]?.ms || 0),
-    topArtists: (topArtists || []).map((r) => ({
-      name: r.name,
+    totalMs,
+    totalMinutes,
+    profile,
+    monthly: (monthlyRows || []).map((r) => ({
+      month: r.month,
       plays: Number(r.plays || 0),
       ms: Number(r.ms || 0),
     })),
+    topArtists: (topArtists || []).map((r) => {
+      const repTrack = artistRepTrackId.get(r.name)
+      const artUrl =
+        artByArtistName[r.name] ||
+        (repTrack ? artByTrackId[repTrack] : null) ||
+        null
+      return {
+        name: r.name,
+        plays: Number(r.plays || 0),
+        ms: Number(r.ms || 0),
+        artUrl,
+      }
+    }),
     topTracks: (topTracks || []).map((r) => ({
       id: r.track_id,
       name: r.name,
@@ -427,6 +626,7 @@ async function activityInsights(options = {}) {
       uri: r.uri,
       plays: Number(r.plays || 0),
       ms: Number(r.ms || 0),
+      artUrl: r.track_id ? artByTrackId[r.track_id] || null : null,
     })),
   }
 }

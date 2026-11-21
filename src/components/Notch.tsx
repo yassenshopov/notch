@@ -77,6 +77,7 @@ import { useMediaSession } from "../hooks/useMediaSession"
 import { useCalendar } from "../hooks/useCalendar"
 import { useNotchPlacement } from "../hooks/useNotchPlacement"
 import { useShellSize } from "../hooks/useShellSize"
+import { useNotchOverlayPassthrough } from "../hooks/useNotchOverlayPassthrough"
 import { NotchActivePanel } from "./NotchActivePanel"
 
 type Panel = NotchPanel
@@ -109,6 +110,7 @@ const DRAG_THRESHOLD_PX = 8
 
 export function Notch() {
   const [expanded, setExpanded] = useState(false)
+  useNotchOverlayPassthrough(expanded)
   const [collapseAnimating, setCollapseAnimating] = useState(false)
   const [morphing, setMorphing] = useState<null | "expand" | "collapse">(null)
   const [panelOverride, setPanelOverride] = useState<Panel | null>(null)
@@ -659,7 +661,7 @@ export function Notch() {
       {expanded ? (
         <motion.div
           key="expanded-shell"
-          className="box-border flex h-full w-full min-h-0 items-start overflow-hidden"
+          className="pointer-events-none box-border flex h-full w-full min-h-0 items-start overflow-hidden"
           initial={morphing === "expand" ? false : { opacity: 0 }}
           animate={{ opacity: collapseAnimating ? 0.88 : 1 }}
           transition={
@@ -673,7 +675,8 @@ export function Notch() {
           }}
         >
           <motion.div
-            className="relative z-20 flex shrink-0 items-center justify-center self-start"
+            data-notch-hit-target
+            className="pointer-events-auto relative z-20 flex shrink-0 items-center justify-center self-start"
             style={{ width: EXPANDED_RAIL_GUTTER, height: islandH }}
             initial={false}
             animate={{ opacity: collapseAnimating || morphing === "expand" ? 0 : 1 }}
@@ -690,9 +693,10 @@ export function Notch() {
           </motion.div>
           <motion.div
             data-notch-island
+            data-notch-hit-target
             layout={false}
             className={cn(
-              "notch-fold relative z-10 mx-auto flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden",
+              "pointer-events-auto notch-fold relative z-10 mx-auto flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden",
               `notch-edge-${placement.edge}`,
               `notch-form-${placement.form}`,
               !themedFg && (dark ? "text-white" : "text-[#111111]"),
@@ -770,7 +774,8 @@ export function Notch() {
             </motion.div>
           </motion.div>
           <motion.div
-            className="relative z-20 flex shrink-0 items-center justify-center self-start"
+            data-notch-hit-target
+            className="pointer-events-auto relative z-20 flex shrink-0 items-center justify-center self-start"
             style={{ width: EXPANDED_RAIL_GUTTER, height: islandH }}
             initial={false}
             animate={{ opacity: collapseAnimating || morphing === "expand" ? 0 : 1 }}
@@ -789,7 +794,7 @@ export function Notch() {
       ) : (
       <div
         className={cn(
-          "relative box-border h-full w-full min-h-0",
+          "pointer-events-none relative box-border h-full w-full min-h-0",
           isSide && "notch-side-mount",
           placement.edge === "left" && "notch-side-mount--left",
           placement.edge === "right" && "notch-side-mount--right",
@@ -803,6 +808,7 @@ export function Notch() {
       >
         <div className={cn(isSide && "notch-side-rotate")}>
       <motion.div
+        data-notch-hit-target
         initial={false}
         animate={{
           width: islandSize.width,
@@ -899,7 +905,7 @@ export function Notch() {
           } as CSSProperties
         }
         className={cn(
-          "notch-fold relative overflow-visible",
+          "pointer-events-auto notch-fold relative overflow-visible",
           `notch-edge-${placement.edge}`,
           `notch-form-${placement.form}`,
           !themedFg && (dark ? "text-white" : "text-[#111111]"),

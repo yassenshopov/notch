@@ -12,18 +12,27 @@ type Props = {
 export function SpotifyTopLists({ topArtists, topTracks, onPlayUri, className }: Props) {
   return (
     <div className={cn("grid gap-6 lg:grid-cols-2", className)}>
-      <RankedList title="Top artists" rows={topArtists.map((a) => ({
-        key: a.name,
-        primary: a.name,
-        secondary: `${a.plays.toLocaleString()} plays · ${formatListeningMinutes(a.ms)}`,
-      }))} />
+      <RankedList
+        title="Top artists"
+        artShape="circle"
+        rows={topArtists.map((a) => ({
+          key: a.name,
+          primary: a.name,
+          secondary: `${formatListeningMinutes(a.ms)} · ${a.plays.toLocaleString()} plays`,
+          artUrl: a.artUrl,
+        }))}
+      />
       <RankedList
         title="Top tracks"
+        artShape="square"
         rows={topTracks.map((t) => ({
           key: t.uri || `${t.name}-${t.artist}`,
           primary: t.name,
-          secondary: [t.artist, `${t.plays.toLocaleString()} plays`].filter(Boolean).join(" · "),
+          secondary: [t.artist, formatListeningMinutes(t.ms), `${t.plays.toLocaleString()} plays`]
+            .filter(Boolean)
+            .join(" · "),
           uri: t.uri,
+          artUrl: t.artUrl,
         }))}
         onPlayUri={onPlayUri}
       />
@@ -31,14 +40,24 @@ export function SpotifyTopLists({ topArtists, topTracks, onPlayUri, className }:
   )
 }
 
+type Row = {
+  key: string
+  primary: string
+  secondary: string
+  uri?: string | null
+  artUrl?: string | null
+}
+
 function RankedList({
   title,
   rows,
   onPlayUri,
+  artShape,
 }: {
   title: string
-  rows: { key: string; primary: string; secondary: string; uri?: string | null }[]
+  rows: Row[]
   onPlayUri?: (uri: string) => void
+  artShape: "circle" | "square"
 }) {
   if (!rows.length) {
     return (
@@ -63,6 +82,7 @@ function RankedList({
               <span className="w-6 shrink-0 text-[12px] tabular-nums text-black/35 dark:text-white/35">
                 {index + 1}
               </span>
+              <RankArt url={row.artUrl} shape={artShape} label={row.primary} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] font-medium">{row.primary}</p>
                 <p className="truncate text-[12px] text-black/45 dark:text-white/45">{row.secondary}</p>
@@ -78,7 +98,7 @@ function RankedList({
                     e.stopPropagation()
                     onPlayUri(row.uri!)
                   }}
-                  className="flex w-full items-center gap-2 rounded-xl px-1 py-1.5 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-1 py-1.5 text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                 >
                   {content}
                 </button>
@@ -86,12 +106,45 @@ function RankedList({
             )
           }
           return (
-            <li key={row.key} className="flex items-center gap-2 px-1 py-1.5">
+            <li key={row.key} className="flex items-center gap-2.5 px-1 py-1.5">
               {content}
             </li>
           )
         })}
       </ol>
     </section>
+  )
+}
+
+function RankArt({
+  url,
+  shape,
+  label,
+}: {
+  url?: string | null
+  shape: "circle" | "square"
+  label: string
+}) {
+  const rounded = shape === "circle" ? "rounded-full" : "rounded-md"
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        className={cn("size-10 shrink-0 border border-black/10 object-cover dark:border-white/12", rounded)}
+        draggable={false}
+      />
+    )
+  }
+  return (
+    <span
+      className={cn(
+        "flex size-10 shrink-0 items-center justify-center border border-black/[0.08] bg-black/[0.04] text-[11px] font-semibold text-black/35 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/35",
+        rounded,
+      )}
+      aria-hidden
+    >
+      {label.slice(0, 1).toUpperCase()}
+    </span>
   )
 }

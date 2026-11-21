@@ -646,6 +646,88 @@ async function fetchLyrics({ trackName, artistName, albumName, durationMs }) {
   }
 }
 
+async function fetchCurrentUserProfile() {
+  if (!isConfigured() || !isConnected()) return null
+  try {
+    const res = await spotifyFetch("/me")
+    if (!res.ok) return null
+    const data = await res.json()
+    const images = data.images || []
+    const imageUrl =
+      images.find((i) => i.width >= 80 && i.width <= 320)?.url || images[0]?.url || null
+    return {
+      displayName: data.display_name || null,
+      imageUrl,
+      id: data.id || null,
+      product: data.product || null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** @param {string[]} artistNames */
+async function fetchArtistsImages(artistNames) {
+  if (!isConfigured() || !isConnected() || !artistNames?.length) return {}
+  const unique = [...new Set(artistNames.map((n) => String(n || "").trim()).filter(Boolean))].slice(
+    0,
+    24,
+  )
+  const out = {}
+  await Promise.all(
+    unique.map(async (name) => {
+      try {
+        const res = await spotifyFetch(
+          `/search?q=${encodeURIComponent(name)}&type=artist&limit=1`,
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        const artist = data.artists?.items?.[0]
+        if (!artist) return
+        const images = artist.images || []
+        const artUrl =
+          images.find((img) => img.width >= 64 && img.width <= 320)?.url ||
+          images[0]?.url ||
+          null
+        if (artUrl) out[name] = artUrl
+      } catch {
+        // skip
+      }
+    }),
+  )
+  return out
+}
+
+/** @param {string[]} trackIds */
+async function fetchTracksAlbumArt(trackIds) {
+  if (!isConfigured() || !isConnected() || !trackIds?.length) return {}
+  const unique = [...new Set(trackIds.filter((id) => typeof id === "string" && id.trim()))].slice(
+    0,
+    400,
+  )
+  const out = {}
+  for (let i = 0; i < unique.length; i += 50) {
+    const chunk = unique.slice(i, i + 50)
+    try {
+      const res = await spotifyFetch(`/tracks?ids=${encodeURIComponent(chunk.join(","))}`)
+      if (!res.ok) continue
+      const data = await res.json()
+      for (const track of data.tracks || []) {
+        if (!track?.id) continue
+        const images = track.album?.images || []
+        const artUrl =
+          images.find((img) => img.width >= 64 && img.width <= 300)?.url ||
+          images[0]?.url ||
+          null
+        out[track.id] = artUrl
+      }
+    } catch {
+      // skip failed batch
+    }
+  }
+  return out
+}
+
 module.exports = {
   isConfigured,
   isConnected,
@@ -657,4 +739,7 @@ module.exports = {
   startAuth,
   disconnect,
   fetchLyrics,
+  fetchCurrentUserProfile,
+  fetchTracksAlbumArt,
+  fetchArtistsImages,
 }

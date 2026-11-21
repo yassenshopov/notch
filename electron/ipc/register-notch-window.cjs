@@ -49,7 +49,9 @@ function registerNotchWindowIpc(ipcMain, deps) {
   ipcMain.handle("notch:set-passthrough", (_event, pass) => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return
-    if (!pass) {
+    if (pass) {
+      mainWindow.setIgnoreMouseEvents(true, { forward: true })
+    } else {
       mainWindow.setIgnoreMouseEvents(false)
     }
   })

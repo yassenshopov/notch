@@ -7,6 +7,8 @@ import type {
   GitHubContributionWeek,
   GitHubTodayBreakdown,
 } from "../lib/github"
+import { padContributionWeeksToCalendarYear } from "../lib/contribution-calendar-year"
+import { isSpotifyListeningDay } from "../lib/spotify-listening"
 import {
   dayBreakdownMatchesCalendar,
   fetchGitHubDayBreakdown,
@@ -35,6 +37,12 @@ type Props = {
   dayBreakdownSeed?: GitHubTodayBreakdown | null
   /** Skip per-day GitHub API drilldown (e.g. Spotify listening graph). */
   disableDayBreakdown?: boolean
+  /** Cover-art grid (Spotify hero) vs green intensity cells. */
+  cellPresentation?: "heatmap" | "cover"
+  formatCount?: (count: number) => string
+  ariaDescription?: string
+  /** Pad through Dec 31 (incl. future empty days) before building columns. */
+  calendarYear?: number
 }
 
 const dayBreakdownCache = new Map<string, GitHubTodayBreakdown>()
@@ -96,7 +104,7 @@ function formatDayHeading(date: string) {
 
 const DESKTOP_WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""] as const
 const DESKTOP_GAP_PX = 4
-const DESKTOP_FIT_MAX_WEEKS = 53
+const DESKTOP_FIT_MAX_WEEKS = 54
 const DESKTOP_SCROLL_CELL_PX = 12
 
 function firstDayInColumn(col: GitHubContributionDay[]) {
@@ -177,6 +185,7 @@ function HeatmapTooltip({
   variant,
   dayBreakdownSeed,
   disableDayBreakdown,
+  formatCount,
 }: {
   day: GitHubContributionDay
   anchorX: number
@@ -184,6 +193,7 @@ function HeatmapTooltip({
   variant: "mini" | "panel" | "desktop" | "year"
   dayBreakdownSeed?: GitHubTodayBreakdown | null
   disableDayBreakdown?: boolean
+  formatCount?: (count: number) => string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [style, setStyle] = useState<{ left: number; top: number; transform: string } | null>(null)
@@ -274,8 +284,14 @@ function HeatmapTooltip({
           variant === "mini" ? "text-[9px]" : "text-[11px]",
         )}
       >
-        {formatContributionCount(day.count)}
+        {formatCount ? formatCount(day.count) : formatContributionCount(day.count)}
       </span>
+      {disableDayBreakdown && day.count > 0 && isSpotifyListeningDay(day) && day.trackName ? (
+        <p className="mt-1 text-[10px] leading-snug text-black/55 dark:text-white/55">
+          Top track · {day.trackName}
+          {day.trackArtist ? ` — ${day.trackArtist}` : null}
+        </p>
+      ) : null}
       {showPie && loading ? (
         <p className="mt-1 text-[10px] text-black/40 dark:text-white/40">Loading repos…</p>
       ) : null}
@@ -310,6 +326,10 @@ export function GitHubContributionHeatmap({
   className,
   dayBreakdownSeed,
   disableDayBreakdown,
+  cellPresentation = "heatmap",
+  formatCount,
+  ariaDescription,
+  calendarYear,
 }: Props) {
   const defaultWeekCount =
     variant === "mini" ? 12 : variant === "desktop" || variant === "year" ? 53 : 26
@@ -318,11 +338,21 @@ export function GitHubContributionHeatmap({
   const measureRef = useRef<HTMLDivElement>(null)
   const [fluidCellPx, setFluidCellPx] = useState(12)
 
-  const columns = useMemo(() => {
+  const resolvedWeeks = useMemo(() => {
     const list = weeks ?? []
-    if (!list.length) return []
-    return buildIsoWeekColumns(list, weekCount)
-  }, [weeks, weekCount])
+    if (!Number.isFinite(calendarYear)) return list
+    return padContributionWeeksToCalendarYear(list, calendarYear as number)
+  }, [weeks, calendarYear])
+
+  const columnWeekLimit = useMemo(() => {
+    if (Number.isFinite(calendarYear)) return Number.POSITIVE_INFINITY
+    return weekCount
+  }, [calendarYear, weekCount])
+
+  const columns = useMemo(() => {
+    if (!resolvedWeeks.length) return []
+    return buildIsoWeekColumns(resolvedWeeks, columnWeekLimit)
+  }, [resolvedWeeks, columnWeekLimit])
 
   const desktopScroll = isDesktopHero && columns.length > DESKTOP_FIT_MAX_WEEKS
   const desktopFit = isDesktopHero && !desktopScroll
@@ -359,6 +389,7 @@ export function GitHubContributionHeatmap({
   const settings = useSettings()
   const dark = useTheme()
   const paletteId = resolveGitHubHeatmapPalette(settings.github.heatmapPalette)
+  const coverGrid = cellPresentation === "cover"
 
   const monthLabels = useMemo(
     () => (isDesktopHero ? monthLabelsForColumns(columns) : []),
@@ -431,7 +462,7 @@ export function GitHubContributionHeatmap({
               }
       }
       role="img"
-      aria-label="Contribution activity by day"
+      aria-label={ariaDescription ?? "Contribution activity by day"}
     >
       {columns.flatMap((col, ci) =>
         col.map((day, ri) => {
@@ -439,21 +470,36 @@ export function GitHubContributionHeatmap({
           const active = !isPad && hover?.day.date === day.date
           const interactive =
             !isPad && (variant === "panel" || variant === "year" || variant === "desktop")
-          const fill = isPad
-            ? undefined
-            : heatmapCellFill(day.count, maxCount, paletteId, dark)
+          const spotifyDay = isSpotifyListeningDay(day) ? day : null
+          const coverUrl = coverGrid && day.count > 0 ? spotifyDay?.artUrl : null
+          const fill =
+            isPad || coverGrid
+              ? undefined
+              : heatmapCellFill(day.count, maxCount, paletteId, dark)
           return (
             <span
               key={isPad ? `pad-${ci}-${ri}` : `${ci}-${ri}-${day.date}`}
               style={{
                 ...(desktopFit ? { aspectRatio: "1 / 1", width: "100%" } : cellStyle),
                 ...(fill ? { backgroundColor: fill } : {}),
+                ...(coverUrl
+                  ? {
+                      backgroundImage: `url(${coverUrl})`,
+                      backgroundSize: "cover",
+                      backgroundPosition: "center",
+                    }
+                  : {}),
               }}
               className={cn(
                 "box-border shrink-0 rounded-[2px] transition-[box-shadow,transform]",
                 isPad && "bg-transparent",
-                active && "ring-1 ring-black/35 dark:ring-white/45",
+                coverGrid && !isPad && !coverUrl && day.count > 0 &&
+                  "bg-[#1db954]/35 dark:bg-[#1db954]/30",
+                coverGrid && !isPad && day.count <= 0 && "bg-black/[0.06] dark:bg-white/[0.08]",
+                !coverGrid && active && "ring-1 ring-black/35 dark:ring-white/45",
+                coverGrid && active && "ring-2 ring-[#1db954]/70 ring-offset-1 ring-offset-transparent",
                 interactive && "cursor-crosshair",
+                coverGrid && !isPad && "overflow-hidden",
               )}
               onMouseEnter={(e) => showTip(day, e.currentTarget)}
               onFocus={(e) => showTip(day, e.currentTarget)}
@@ -489,6 +535,7 @@ export function GitHubContributionHeatmap({
                 variant={variant}
                 dayBreakdownSeed={dayBreakdownSeed}
                 disableDayBreakdown={disableDayBreakdown}
+                formatCount={formatCount}
               />,
               document.body,
             )
@@ -520,23 +567,31 @@ export function GitHubContributionHeatmap({
             </div>
           )}
         </div>
-        <div className="mt-4 flex w-full items-center justify-between gap-2 pl-9">
-          <ContributionIntensityLegend cellPx={legendPx} paletteId={paletteId} dark={dark} />
-          <button
-            type="button"
-            aria-label="Heatmap color settings"
-            aria-haspopup="dialog"
-            aria-expanded={paletteOpen}
-            onClick={(e) => {
-              e.stopPropagation()
-              setPaletteOpen(true)
-            }}
-            className="shrink-0 rounded-full p-1.5 text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
-          >
-            <MoreVertical className="size-4" />
-          </button>
-        </div>
-        <GitHubHeatmapPaletteModal open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+        {coverGrid ? (
+          <p className="mt-4 pl-9 text-[11px] text-black/45 dark:text-white/45">
+            Each tile is the album cover for your most-played track that day.
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 flex w-full items-center justify-between gap-2 pl-9">
+              <ContributionIntensityLegend cellPx={legendPx} paletteId={paletteId} dark={dark} />
+              <button
+                type="button"
+                aria-label="Heatmap color settings"
+                aria-haspopup="dialog"
+                aria-expanded={paletteOpen}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setPaletteOpen(true)
+                }}
+                className="shrink-0 rounded-full p-1.5 text-black/40 hover:bg-black/5 dark:text-white/40 dark:hover:bg-white/10"
+              >
+                <MoreVertical className="size-4" />
+              </button>
+            </div>
+            <GitHubHeatmapPaletteModal open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+          </>
+        )}
       </div>
     )
   }

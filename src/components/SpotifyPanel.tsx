@@ -36,17 +36,16 @@ export function SpotifyPanel({
   const [heroYear, setHeroYear] = useState(() => new Date().getFullYear())
   const insightsActive = desktop && status.connected
   const { insights, loading: insightsLoading } = useSpotifyInsights(insightsActive, heroYear)
-  const librarySection =
+  const libraryHero =
     insightsActive ? (
-      <BentoTile col={12} className={bentoPad("mt-2")}>
-        <SpotifyLibraryHero
-          insights={insights}
-          chartYear={heroYear}
-          onChartYearChange={setHeroYear}
-          loading={insightsLoading}
-          onPlayUri={onPlayUri}
-        />
-      </BentoTile>
+      <SpotifyLibraryHero
+        insights={insights}
+        chartYear={heroYear}
+        onChartYearChange={setHeroYear}
+        loading={insightsLoading}
+        onPlayUri={onPlayUri}
+        className="w-full min-w-0"
+      />
     ) : null
   const showLyrics = settings.spotify.showLyrics ?? true
   const track = status.track
@@ -93,11 +92,14 @@ export function SpotifyPanel({
   }
 
   if (!track) {
+    if (desktop) {
+      return <div className="min-w-0">{libraryHero}</div>
+    }
     return (
       <SpotifyIdlePanel
         onAction={onAction}
         onPlayUri={onPlayUri}
-        librarySection={librarySection}
+        libraryHero={libraryHero}
       />
     )
   }
@@ -283,55 +285,27 @@ export function SpotifyPanel({
 
   if (desktop) {
     return (
-      <div className="relative overflow-hidden rounded-3xl">
-        {track.artUrl ? (
-          <div className="pointer-events-none absolute inset-0" aria-hidden>
-            <img
-              src={track.artUrl}
-              alt=""
-              className="size-full scale-110 object-cover opacity-[0.22] blur-3xl dark:opacity-[0.16]"
-              draggable={false}
-            />
-          </div>
-        ) : null}
-        <BentoGrid className="relative">
-          <BentoTile col={5} className={bentoPad()}>{nowPlaying}</BentoTile>
-          <BentoTile col={7} className={bentoPad("min-h-[22rem]")}>
-            {showLyrics ? (
-              <SpotifyLyrics
-                lyrics={lyrics}
-                loading={lyricsLoading}
-                progressMs={progress}
-                themed={themed}
-              />
-            ) : track.artUrl ? (
-              <div className="flex h-full min-h-[20rem] flex-col items-center justify-center">
+      <div className="space-y-8">
+        {libraryHero}
+        {status.isPlaying ? (
+          <div className="relative overflow-hidden rounded-3xl">
+            {track.artUrl ? (
+              <div className="pointer-events-none absolute inset-0" aria-hidden>
                 <img
                   src={track.artUrl}
                   alt=""
-                  className="max-h-[min(28rem,70vh)] w-auto max-w-full rounded-[32px] shadow-2xl"
+                  className="size-full scale-110 object-cover opacity-[0.22] blur-3xl dark:opacity-[0.16]"
                   draggable={false}
                 />
-                <p className="mt-4 text-[12px] text-black/40 dark:text-white/40">
-                  Ambient art — turn on lyrics in Settings for synced text.
-                </p>
               </div>
-            ) : (
-              <p className="text-[13px] text-black/45 dark:text-white/45">
-                Enable lyrics in Settings to see them here.
-              </p>
-            )}
-          </BentoTile>
-          <BentoTile col={12} className={bentoPad("max-h-[min(22rem,40vh)]")} scroll>
-            <SpotifyListenHistory
-              onPlayUri={onPlayUri}
-              recentLimit={8}
-              historyLimit={50}
-              className="h-full min-h-0"
-            />
-          </BentoTile>
-          {librarySection}
-        </BentoGrid>
+            ) : null}
+            <BentoGrid className="relative">
+              <BentoTile col={12} className={bentoPad()}>
+                {nowPlaying}
+              </BentoTile>
+            </BentoGrid>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -358,39 +332,16 @@ export function SpotifyPanel({
 function SpotifyIdlePanel({
   onAction,
   onPlayUri,
-  librarySection,
+  libraryHero,
 }: {
   onAction: (action: "play" | "pause" | "next" | "previous") => void
   onPlayUri: (uri: string) => void
-  librarySection?: ReactNode
+  libraryHero?: ReactNode
 }) {
   const desktop = usePanelLayout() === "desktop"
 
   if (desktop) {
-    return (
-      <BentoGrid>
-        <BentoTile col={5} className={bentoPad()}>
-          <header className="shrink-0">
-            <p className="text-[15px] font-semibold tracking-tight">Spotify</p>
-            <p className="mt-1 text-[12px] text-black/45 dark:text-white/45">Nothing playing right now.</p>
-          </header>
-          <div className="mt-6 flex items-center justify-center gap-5">
-            <Control label="Previous" onClick={() => onAction("previous")} icon={<SkipBack className="size-[18px]" strokeWidth={1.75} />} />
-            <Control
-              label="Play"
-              primary
-              onClick={() => onAction("play")}
-              icon={<Play className="size-5 translate-x-[1px]" strokeWidth={1.75} fill="currentColor" />}
-            />
-            <Control label="Next" onClick={() => onAction("next")} icon={<SkipForward className="size-[18px]" strokeWidth={1.75} />} />
-          </div>
-        </BentoTile>
-        <BentoTile col={7} className={bentoPad()} scroll>
-          <SpotifyListenHistory onPlayUri={onPlayUri} recentLimit={8} historyLimit={50} className="h-full" />
-        </BentoTile>
-        {librarySection}
-      </BentoGrid>
-    )
+    return <div className="min-w-0">{libraryHero}</div>
   }
 
   return (

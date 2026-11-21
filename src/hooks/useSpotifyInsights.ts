@@ -15,6 +15,9 @@ const idle: SpotifyActivityInsights = {
   days: [],
   totalPlays: 0,
   totalMs: 0,
+  totalMinutes: 0,
+  profile: null,
+  monthly: [],
   topArtists: [],
   topTracks: [],
 }

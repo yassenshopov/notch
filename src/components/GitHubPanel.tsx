@@ -227,6 +227,7 @@ export function GitHubPanel({ status, loading, refreshing, onRefresh, expanded }
             {heroView?.weeks.length ? (
               <GitHubContributionHeatmap
                 weeks={heroView.weeks}
+                calendarYear={typeof heroPeriod === "number" ? heroPeriod : undefined}
                 variant={heroView.heatmapVariant}
                 weekLimit={heroView.weekLimit}
                 dayBreakdownSeed={
