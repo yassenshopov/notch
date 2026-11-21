@@ -7,7 +7,6 @@ import type { GLTFLoader } from "three/addons/loaders/GLTFLoader.js"
 import { publicAssetUrl } from "./car-asset-url"
 
 const GUITAR_GLB = () => publicAssetUrl("models/acoustic-guitar.glb")
-const FLOOR_THICKNESS_M = 0.08
 /** Model height ≈ 1.03 m at scale 1 */
 const GUITAR_TARGET_HEIGHT_M = 1.05
 

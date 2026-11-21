@@ -47,5 +47,5 @@ export function useSpotifyInsights(active: boolean, chartYear?: number) {
     void refresh()
   }, [active, refresh])
 
-  return { insights, loading, refresh: () => void refresh(true) }
+  return { insights, loading, refresh: () => void refresh() }
 }

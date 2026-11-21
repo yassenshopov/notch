@@ -123,7 +123,6 @@ export function GitHubDayRepoPieChart({ total, repos, className, size = 64 }: Pr
       (otherRow?.count ?? 0) +
       topRepos.slice(4).reduce((sum, row) => sum + row.count, 0)
     const commitTotal = sumGitHubRepoCounts(positive)
-    const pieTotal = commitTotal > 0 ? commitTotal : total
     const nonCommit = total > commitTotal && commitTotal > 0 ? total - commitTotal : 0
     const slices: Slice[] = top.map((row, i) => ({
       repo: row.repo,

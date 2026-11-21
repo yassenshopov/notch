@@ -714,14 +714,13 @@ function tagLampPickable(obj: THREE.Object3D) {
 function buildLivingCornerSofa(palette: ScenePalette, root: THREE.Group, living: SpaceSpec) {
   const { rect } = living
   const mat = sofaUpholsteryMaterial(palette)
-  const wallGap = propM(0.05)
   const backT = propM(0.24)
   const seatH = propM(0.42)
   const backH = propM(0.4)
   const ySeat = FLOOR_THICKNESS_M + seatH / 2
   const yBack = FLOOR_THICKNESS_M + seatH + backH / 2
 
-  const { cx, cz, seatW, seatD, westSeatD, alongWestD, alongNorthW } = livingSofaLayout(rect)
+  const { cx, cz, seatW, seatD, westSeatD, alongNorthW } = livingSofaLayout(rect)
 
   const seatRound = propM(0.13)
   const backRound = propM(0.1)
@@ -1231,6 +1230,7 @@ export function createApartmentScene(
 
   const animate = () => {
     raf = requestAnimationFrame(animate)
+    if (!sceneAlive) return
     if (doorRig) {
       const ease = 0.14
       doorRig.openCurrent += (doorRig.openTarget - doorRig.openCurrent) * ease
