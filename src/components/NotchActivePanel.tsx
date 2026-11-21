@@ -22,6 +22,7 @@ import { ClockPanel } from "./ClockPanel"
 import { MarketsPanel } from "./MarketsPanel"
 import { GitHubPanel } from "./GitHubPanel"
 import { StravaPanel } from "./StravaPanel"
+import { ApartmentPanel } from "./ApartmentPanel"
 import { CarPanel } from "./CarPanel"
 import { MintPanel } from "./MintPanel"
 import { WifiSensePanel } from "./WifiSensePanel"
@@ -250,6 +251,7 @@ export function NotchActivePanel(props: Props) {
         loading={githubLoading}
         refreshing={githubRefreshing}
         onRefresh={() => void refreshGithub()}
+        expanded={expanded}
       />
     )
   } else if (activePanel === "strava") {
@@ -268,6 +270,14 @@ export function NotchActivePanel(props: Props) {
     )
   } else if (activePanel === "car") {
     body = <CarPanel />
+  } else if (activePanel === "home") {
+    body = (
+      <ApartmentPanel
+        mintStatus={mintStatus}
+        piStatus={piStatus}
+        onNavigatePanel={props.onNavigatePanel}
+      />
+    )
   } else if (activePanel === "mint") {
     body = (
       <MintPanel

@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Leaf,
   Car,
+  Home,
   LineChart,
   Settings,
   Timer,
@@ -46,6 +47,8 @@ export function PanelNavIcon({ panel, className = "size-4" }: Props) {
       return <Icon icon="simple-icons:strava" className={className} aria-hidden />
     case "car":
       return <Car className={className} strokeWidth={1.75} />
+    case "home":
+      return <Home className={className} strokeWidth={1.75} />
     case "mint":
       return <Icon icon="simple-icons:linuxmint" className={className} aria-hidden />
     case "wifi-sense":
