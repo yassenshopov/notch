@@ -151,16 +151,6 @@ async function writeStatusBundle(bundle) {
   })
 }
 
-async function readStatusBundle(login) {
-  const key = login || (await readLatestLogin())
-  if (!key) {
-    const file = readFileStore()
-    if (!file?.snapshots?.status) return null
-    return file.snapshots.status
-  }
-  return readSnapshot(key, "status")
-}
-
 function statusPayloadFromBundle(bundle, meta = {}) {
   if (!bundle?.login) return null
   return {

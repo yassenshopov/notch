@@ -32,9 +32,8 @@ export function AirQualityPanel({ data }: Props) {
   const settings = useSettings()
   const desktop = usePanelLayout() === "desktop"
   const today = data.days.find((d) => d.isToday) ?? data.days[0]
-  if (!today) return null
-
-  const series = today.series.length > 0 ? today.series : today.hourly
+  const series =
+    today && today.series.length > 0 ? today.series : (today?.hourly ?? [])
   const aqiPoints = useMemo(
     () =>
       series
@@ -47,7 +46,12 @@ export function AirQualityPanel({ data }: Props) {
     [series],
   )
 
-  const pollenNow = useMemo(() => pollenBreakdownForDay(today), [today])
+  const pollenNow = useMemo(
+    () => (today ? pollenBreakdownForDay(today) : []),
+    [today],
+  )
+
+  if (!today) return null
 
   const clockFormat = settings.clock.format
   const chartStyle = settings.charts?.style ?? "line"

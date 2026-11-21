@@ -25,7 +25,41 @@
     "sync:strava-neon": "electron scripts/sync-strava-neon.cjs",
     "sync:github-neon": "electron scripts/sync-github-neon.cjs",
     "sync:all-neon": "electron scripts/sync-all-neon.cjs",
-    "import:spotify-history": "node scripts/import-spotify-extended.mjs"
+    "import:spotify-history": "node scripts/import-spotify-extended.mjs",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.yassenshopov.notch",
+    "productName": "Notch",
+    "copyright": "Copyright © Yassen Shopov",
+    "directories": {
+      "output": "release",
+      "buildResources": "electron/assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json",
+      "!electron/**/*.map"
+    ],
+    "asarUnpack": [
+      "electron/native/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "electron/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   },
   "dependencies": {
     "@fontsource-variable/outfit": "^5.3.0",

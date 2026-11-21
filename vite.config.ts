@@ -32,5 +32,17 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined
+          if (id.includes("three")) return "three"
+          if (id.includes("leaflet")) return "leaflet"
+          if (id.includes("motion")) return "motion"
+          if (id.includes("lucide-react")) return "icons"
+          return undefined
+        },
+      },
+    },
   },
 })

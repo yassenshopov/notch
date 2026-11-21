@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { Suspense, lazy, type ReactNode } from "react"
 import type { AppSettings } from "../config/settings"
 import type { WeatherSnapshot } from "../lib/weather"
 import type { PanelLayout } from "../lib/panel-layout"
@@ -16,29 +16,47 @@ import type { PiServerStatus } from "../lib/pi"
 import type { CalendarSnapshot } from "../lib/calendar"
 import type { MediaSessionStatus } from "../lib/media-session"
 import type { AlbumPalette } from "../lib/album-color"
-import { SettingsPanel } from "./SettingsPanel"
-import { CursorPanel } from "./CursorPanel"
-import { ClockPanel } from "./ClockPanel"
-import { MarketsPanel } from "./MarketsPanel"
-import { GitHubPanel } from "./GitHubPanel"
-import { StravaPanel } from "./StravaPanel"
-import { ApartmentPanel } from "./ApartmentPanel"
-import { CarPanel } from "./CarPanel"
-import { MintPanel } from "./MintPanel"
-import { WifiSensePanel } from "./WifiSensePanel"
 import type { WifiSenseLiveState } from "../lib/wifi-sense"
-import { PiPanel } from "./PiPanel"
-import { AirQualityPanel } from "./AirQualityPanel"
-import { CalendarPanel } from "./CalendarPanel"
-import { BrowserMediaPanel } from "./BrowserMediaPanel"
-import { ControlsPanel } from "./ControlsPanel"
-import { SpotifyPanel } from "./SpotifyPanel"
 import { PanelLayoutContext } from "../lib/panel-layout"
 import { OpenFullScaleButton } from "./OpenFullScaleButton"
-import { WeatherPanel } from "./WeatherPanel"
-import { PacmanPanel } from "./PacmanPanel"
 import { PanelPageTransition } from "./PanelPageTransition"
-import { DesktopOverviewPanel } from "./desktop/DesktopOverviewPanel"
+import { PanelLazyFallback } from "./PanelLazyFallback"
+import { ClockPanel } from "./ClockPanel"
+
+const SettingsPanel = lazy(() =>
+  import("./SettingsPanel").then((m) => ({ default: m.SettingsPanel })),
+)
+const CursorPanel = lazy(() => import("./CursorPanel").then((m) => ({ default: m.CursorPanel })))
+const MarketsPanel = lazy(() => import("./MarketsPanel").then((m) => ({ default: m.MarketsPanel })))
+const GitHubPanel = lazy(() => import("./GitHubPanel").then((m) => ({ default: m.GitHubPanel })))
+const StravaPanel = lazy(() => import("./StravaPanel").then((m) => ({ default: m.StravaPanel })))
+const ApartmentPanel = lazy(() =>
+  import("./ApartmentPanel").then((m) => ({ default: m.ApartmentPanel })),
+)
+const CarPanel = lazy(() => import("./CarPanel").then((m) => ({ default: m.CarPanel })))
+const MintPanel = lazy(() => import("./MintPanel").then((m) => ({ default: m.MintPanel })))
+const WifiSensePanel = lazy(() =>
+  import("./WifiSensePanel").then((m) => ({ default: m.WifiSensePanel })),
+)
+const PiPanel = lazy(() => import("./PiPanel").then((m) => ({ default: m.PiPanel })))
+const AirQualityPanel = lazy(() =>
+  import("./AirQualityPanel").then((m) => ({ default: m.AirQualityPanel })),
+)
+const CalendarPanel = lazy(() =>
+  import("./CalendarPanel").then((m) => ({ default: m.CalendarPanel })),
+)
+const BrowserMediaPanel = lazy(() =>
+  import("./BrowserMediaPanel").then((m) => ({ default: m.BrowserMediaPanel })),
+)
+const ControlsPanel = lazy(() =>
+  import("./ControlsPanel").then((m) => ({ default: m.ControlsPanel })),
+)
+const SpotifyPanel = lazy(() => import("./SpotifyPanel").then((m) => ({ default: m.SpotifyPanel })))
+const WeatherPanel = lazy(() => import("./WeatherPanel").then((m) => ({ default: m.WeatherPanel })))
+const PacmanPanel = lazy(() => import("./PacmanPanel").then((m) => ({ default: m.PacmanPanel })))
+const DesktopOverviewPanel = lazy(() =>
+  import("./desktop/DesktopOverviewPanel").then((m) => ({ default: m.DesktopOverviewPanel })),
+)
 
 type Props = {
   activePanel: NotchPanel
@@ -180,20 +198,20 @@ export function NotchActivePanel(props: Props) {
         <div className="text-[13px] text-black/45 dark:text-white/45">Today overview is desktop-only.</div>
       )
     } else {
-    body = (
-      <DesktopOverviewPanel
-        onNavigate={props.onNavigatePanel}
-        weather={data}
-        weatherError={error}
-        spotify={status}
-        github={githubStatus}
-        cursor={cursorStatus}
-        strava={stravaStatus}
-        mint={mintStatus}
-        pi={piStatus}
-        calendar={calendarSnapshot}
-      />
-    )
+      body = (
+        <DesktopOverviewPanel
+          onNavigate={props.onNavigatePanel}
+          weather={data}
+          weatherError={error}
+          spotify={status}
+          github={githubStatus}
+          cursor={cursorStatus}
+          strava={stravaStatus}
+          mint={mintStatus}
+          pi={piStatus}
+          calendar={calendarSnapshot}
+        />
+      )
     }
   } else if (activePanel === "settings") {
     body = (
@@ -362,7 +380,7 @@ export function NotchActivePanel(props: Props) {
           : "min-h-0 w-full shrink-0"
       }
     >
-      {wrap(body)}
+      <Suspense fallback={<PanelLazyFallback />}>{wrap(body)}</Suspense>
     </PanelPageTransition>
   )
 }

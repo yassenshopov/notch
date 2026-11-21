@@ -87,10 +87,13 @@ Connect from **Settings → Spotify**.
 
 ### GitHub (optional)
 
-Classic PAT with **notifications** scope:
+Use a token with **notifications** access (and repo read for PRs/activity). Either:
+
+- **Fine-grained PAT** (recommended): grant this repository (or org repos you care about) **Metadata** read, **Contents** read, **Pull requests** read, and **Notifications** read on your account.
+- **Classic PAT**: `notifications` scope (and `repo` if you want full private activity).
 
 ```env
-GITHUB_TOKEN=ghp_...
+GITHUB_TOKEN=ghp_...   # or github_pat_... for fine-grained
 ```
 
 Restart Notch. Notifications and heatmaps use the GitHub panel / island face.
@@ -128,14 +131,17 @@ npm run dev:web   # renderer only (no IPC / wallpaper / Spotify)
 npm run build     # typecheck + Vite production build
 npm start         # Electron against dist/ (run build first)
 npm run lint
+npm run dist    # Windows NSIS installer → release/
 ```
+
+GitHub Actions runs `npm run lint` and `npm run build` on pushes and pull requests to `main`.
 
 Use **`npm run dev`** or **`npm start`** for wallpaper regen and OAuth — not the browser tab alone.
 
 ## Project layout
 
 ```
-electron/          Main process, preload, OAuth bridges, year wallpaper, settings store
+electron/          Main process, preload, ipc/, OAuth bridges, year wallpaper, settings store
 src/
   components/      Notch shell, panels (weather, Spotify, GitHub, Strava, …)
   hooks/           Data polling and bridge hooks

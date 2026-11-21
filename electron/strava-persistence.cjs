@@ -29,14 +29,6 @@ function writeActivityIndexFile(payload) {
   fs.writeFileSync(activitiesIndexPath(), JSON.stringify(payload), "utf8")
 }
 
-function readHeatmapCacheFile() {
-  try {
-    return JSON.parse(fs.readFileSync(heatmapCachePath(), "utf8"))
-  } catch {
-    return null
-  }
-}
-
 function writeHeatmapCacheFile(heatmap) {
   fs.writeFileSync(heatmapCachePath(), JSON.stringify(heatmap), "utf8")
 }

@@ -331,27 +331,6 @@ function travelRange(edge, display, shellW, shellH) {
   return Math.max(0, db.height - shellH)
 }
 
-function snapPlacementFromDrag(state, screenX, screenY) {
-  const edge = edgeFromPointer(screenX, screenY, state.edge)
-  const form = grid.resolveForm(edge, state.slot)
-  const { width: shellW, height: shellH } = shellSize(
-    state.contentW,
-    state.contentH,
-    edge,
-    form,
-  )
-  const display =
-    edge === "top"
-      ? displayContainingX(screenX, screenY)
-      : displayContainingY(screenX, screenY)
-  const slot = slotFromPointer(edge, display, shellW, shellH, screenX, screenY, state.axisOffset)
-  return grid.placementWithForm({
-    displayId: display.id,
-    edge,
-    slot,
-  })
-}
-
 function displayForPlacement(placement, windowBounds) {
   if (windowBounds) {
     const center = {

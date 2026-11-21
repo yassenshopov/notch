@@ -12,8 +12,6 @@ const mint = require("../electron/mint.cjs")
 const pi = require("../electron/pi.cjs")
 const settingsStore = require("../electron/settings-store.cjs")
 const settingsPersistence = require("../electron/settings-persistence.cjs")
-const kv = require("../electron/snapshot-kv.cjs")
-
 app.whenReady().then(async () => {
   await db.init()
   const results = {}

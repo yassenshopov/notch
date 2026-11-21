@@ -43,6 +43,7 @@ export function useWifiSense(
     lanIp: null,
     tailscaleIp: null,
   })
+  const [state, setState] = useState<WifiSenseLiveState>(() => emptyLiveState())
 
   useEffect(() => {
     if (!active || !(cfg?.enabled ?? true)) return
@@ -79,7 +80,6 @@ export function useWifiSense(
   }, [cfg?.agentUrl, cfg?.port, tailscaleIp, lanIpProp, discoveredHosts])
 
   const token = cfg?.token?.trim() || undefined
-  const [state, setState] = useState<WifiSenseLiveState>(() => emptyLiveState())
   const wsRef = useRef<WebSocket | null>(null)
   const backoffRef = useRef(1000)
   const reconnectTimer = useRef<number | null>(null)
