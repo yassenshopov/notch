@@ -7,16 +7,18 @@ const path = require("path")
  * @param {() => boolean} deps.isDev
  * @param {string} deps.preloadPath
  * @param {() => { window?: { width?: number; height?: number } }} deps.readSettings
+ * @param {() => { query?: Record<string, string> }} [deps.distLoadOptions]
+ * @param {() => boolean} [deps.allowDistFallback]
  */
 function createDesktopWindowManager(deps) {
-  const { isDev, preloadPath, readSettings } = deps
+  const { isDev, preloadPath, readSettings, distLoadOptions, allowDistFallback } = deps
   /** @type {BrowserWindow | null} */
   let desktopWindow = null
 
   function desktopLoadUrl(panel) {
     const id = encodeURIComponent(String(panel || "weather"))
     if (isDev()) {
-      return `http://localhost:5173/#/desktop/${id}`
+      return `http://127.0.0.1:5173/#/desktop/${id}`
     }
     const distIndex = path.join(path.dirname(preloadPath), "../dist/index.html")
     return `file://${distIndex.replace(/\\/g, "/")}#/desktop/${id}`
@@ -72,15 +74,17 @@ function createDesktopWindowManager(deps) {
     })
 
     const url = desktopLoadUrl(panelId)
+    const distIndex = path.join(path.dirname(preloadPath), "../dist/index.html")
+    const distOpts = { hash: `/desktop/${panelId}`, ...(distLoadOptions?.() ?? {}) }
     if (isDev()) {
       desktopWindow.loadURL(url).catch((err) => {
-        console.error("[notch] desktop window load failed", err)
-        const distIndex = path.join(path.dirname(preloadPath), "../dist/index.html")
-        desktopWindow?.loadFile(distIndex, { hash: `/desktop/${panelId}` })
+        console.error("[notch] desktop window Vite load failed", err)
+        if (allowDistFallback?.()) {
+          desktopWindow?.loadFile(distIndex, distOpts)
+        }
       })
     } else {
-      const distIndex = path.join(path.dirname(preloadPath), "../dist/index.html")
-      desktopWindow.loadFile(distIndex, { hash: `/desktop/${panelId}` })
+      desktopWindow.loadFile(distIndex, distOpts)
     }
 
     return { ok: true, reused: false }
