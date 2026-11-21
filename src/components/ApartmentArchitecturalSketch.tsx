@@ -1,14 +1,16 @@
 import {
   APARTMENT_SPACES,
   BALCONY_DOOR_METERS,
-  BALCONY_WINDOW_METERS,
+  BALCONY_FACADE_WINDOWS,
   footprintBounds,
   WALL_THICKNESS_M,
 } from "../lib/apartment-floor-plan"
 import {
   BALCONY_DOOR_WIDTH_SU,
+  BALCONY_FACADE_WINDOW_PAIR_SU,
   BALCONY_WINDOW_GAP_SU,
-  BALCONY_WINDOW_WIDTH_SU,
+  BALCONY_WINDOW_INNER_GAP_SU,
+  BALCONY_WINDOW_WEST_MARGIN_SU,
   D_BALCONY_1,
   D_LIVING,
   SU_W,
@@ -198,10 +200,12 @@ export const ApartmentArchitecturalSketch = forwardRef<ApartmentPlanHandle, Prop
   const br = balcony.rect
 
   const door = BALCONY_DOOR_METERS
-  const win = BALCONY_WINDOW_METERS
+  const [winA, winB] = BALCONY_FACADE_WINDOWS
   const joint = lr.z
-  const wx0 = lr.x + win.offset
-  const wx1 = wx0 + win.width
+  const wx0 = lr.x + winA.offset
+  const wx1 = wx0 + winA.width
+  const wx2 = lr.x + winB.offset
+  const wx3 = wx2 + winB.width
   const dx0 = lr.x + door.offset
   const dx1 = dx0 + door.width
   const ix0 = lr.x
@@ -220,7 +224,7 @@ export const ApartmentArchitecturalSketch = forwardRef<ApartmentPlanHandle, Prop
   const attachNorth = oy + izBalcony0
   const attachWest = ox + ix0
 
-  const roomPickable = !panEnabled
+  const roomPickable = false
 
   return (
     <svg
@@ -286,34 +290,34 @@ export const ApartmentArchitecturalSketch = forwardRef<ApartmentPlanHandle, Prop
 
         {/* Shared partition — solid runs + openings */}
         <WallMass x={ix0} y={joint - WALL / 2} w={wx0 - ix0} h={WALL} />
-        <WallMass x={wx1} y={joint - WALL / 2} w={Math.max(0, dx0 - wx1)} h={WALL} />
+        <WallMass x={wx1} y={joint - WALL / 2} w={Math.max(0, wx2 - wx1)} h={WALL} />
+        <WallMass x={wx3} y={joint - WALL / 2} w={Math.max(0, dx0 - wx3)} h={WALL} />
         <WallMass x={dx1} y={joint - WALL / 2} w={ix1 - dx1} h={WALL} />
 
-        {/* Window (plan): gap + sill line */}
-        <line
-          x1={wx0 + 0.06}
-          y1={joint}
-          x2={wx1 - 0.06}
-          y2={joint}
-          stroke={INK}
-          strokeWidth={0.028}
-        />
-        <line
-          x1={wx0 + win.width * 0.22}
-          y1={joint - WALL * 0.22}
-          x2={wx1 - win.width * 0.22}
-          y2={joint - WALL * 0.22}
-          stroke={INK}
-          strokeWidth={0.018}
-        />
-        <line
-          x1={wx0 + win.width * 0.22}
-          y1={joint + WALL * 0.22}
-          x2={wx1 - win.width * 0.22}
-          y2={joint + WALL * 0.22}
-          stroke={INK}
-          strokeWidth={0.018}
-        />
+        {/* Windows (plan): sill lines */}
+        {([{ a: wx0, b: wx1, w: winA.width }, { a: wx2, b: wx3, w: winB.width }] as const).map(
+          ({ a, b, w }) => (
+            <g key={`${a}-${b}`}>
+              <line x1={a + 0.06} y1={joint} x2={b - 0.06} y2={joint} stroke={INK} strokeWidth={0.028} />
+              <line
+                x1={a + w * 0.22}
+                y1={joint - WALL * 0.22}
+                x2={b - w * 0.22}
+                y2={joint - WALL * 0.22}
+                stroke={INK}
+                strokeWidth={0.018}
+              />
+              <line
+                x1={a + w * 0.22}
+                y1={joint + WALL * 0.22}
+                x2={b - w * 0.22}
+                y2={joint + WALL * 0.22}
+                stroke={INK}
+                strokeWidth={0.018}
+              />
+            </g>
+          ),
+        )}
 
         {/* Door (plan): hinge at east jamb, leaf along opening when closed, 90° into living (+z) */}
         {(() => {
@@ -375,18 +379,32 @@ export const ApartmentArchitecturalSketch = forwardRef<ApartmentPlanHandle, Prop
         label={mm(lr.w)}
       />
       <DimH
+        x1={ox + ix0}
+        x2={ox + wx0}
+        y={oy + joint - WALL / 2 - 0.35}
+        attachY={oy + joint - WALL / 2}
+        label={`${mm(wx0 - ix0)} (${BALCONY_WINDOW_WEST_MARGIN_SU}u)`}
+      />
+      <DimH
         x1={ox + wx0}
-        x2={ox + wx1}
+        x2={ox + wx3}
         y={oy + joint - WALL / 2 - 0.45}
         attachY={oy + joint - WALL / 2}
-        label={`${mm(win.width)} (${BALCONY_WINDOW_WIDTH_SU}u)`}
+        label={`${mm(wx3 - wx0)} (${BALCONY_FACADE_WINDOW_PAIR_SU}u)`}
       />
       <DimH
         x1={ox + wx1}
+        x2={ox + wx2}
+        y={oy + joint - WALL / 2 - 0.55}
+        attachY={oy + joint - WALL / 2}
+        label={`${mm(wx2 - wx1)} (${BALCONY_WINDOW_INNER_GAP_SU}u)`}
+      />
+      <DimH
+        x1={ox + wx3}
         x2={ox + dx0}
         y={oy + joint - WALL / 2 - 0.65}
         attachY={oy + joint - WALL / 2}
-        label={`${mm(dx0 - wx1)} (${BALCONY_WINDOW_GAP_SU}u)`}
+        label={`${mm(dx0 - wx3)} (${BALCONY_WINDOW_GAP_SU}u)`}
       />
       <DimH
         x1={ox + dx0}
@@ -441,7 +459,7 @@ export const ApartmentArchitecturalSketch = forwardRef<ApartmentPlanHandle, Prop
         fill={INK}
         opacity={0.75}
       >
-        Units: mm · plan width {SU_W}u ({mm(lr.w)} mm) · 1u = 84.5 mm
+        Units: mm · plan width {SU_W}u ({mm(lr.w)} mm) · living depth {D_LIVING}u · 1u = 84.5 mm
       </text>
     </svg>
   )

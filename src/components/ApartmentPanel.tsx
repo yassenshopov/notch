@@ -9,6 +9,7 @@ import {
 } from "../lib/apartment-floor-plan"
 import {
   createApartmentScene,
+  deviceById,
   roomById,
   type ApartmentPick,
   type ApartmentSceneHandle,
@@ -33,8 +34,9 @@ type Props = {
 }
 
 function pickLabel(pick: ApartmentPick | null): string | null {
-  if (!pick || pick.kind !== "room") return null
-  return roomById(pick.roomId)?.label ?? pick.roomId
+  if (!pick) return null
+  if (pick.kind === "room") return roomById(pick.roomId)?.label ?? pick.roomId
+  return deviceById(pick.deviceId)?.label ?? pick.deviceId
 }
 
 function pickDetail(pick: ApartmentPick | null): string | null {
@@ -104,6 +106,7 @@ export function ApartmentPanel(_props: Props) {
   const [view, setView] = useState<ApartmentViewMode>("orbit")
   const [pick, setPick] = useState<ApartmentPick | null>(null)
   const [doorOpen, setDoorOpen] = useState(false)
+  const [lampOn, setLampOn] = useState(false)
   const [sceneEpoch, setSceneEpoch] = useState(0)
   const [panEnabled, setPanEnabled] = useState(false)
   const [viewerFs, setViewerFs] = useState(false)
@@ -113,6 +116,7 @@ export function ApartmentPanel(_props: Props) {
   const refreshScene = () => {
     setPick(null)
     setDoorOpen(false)
+    setLampOn(false)
     setSceneEpoch((n) => n + 1)
   }
 
@@ -124,6 +128,7 @@ export function ApartmentPanel(_props: Props) {
       defaultView: view,
       onPick: (next) => setPick(next),
       onBalconyDoorChange: setDoorOpen,
+      onSofaLampChange: setLampOn,
     })
     sceneRef.current = handle
     handle.setPan(panEnabled && view === "orbit")
@@ -131,7 +136,7 @@ export function ApartmentPanel(_props: Props) {
       handle.dispose()
       sceneRef.current = null
     }
-  }, [dark, sceneEpoch])
+  }, [dark, sceneEpoch, APARTMENT_PLAN_REVISION])
 
   useEffect(() => {
     sceneRef.current?.setView(view)
@@ -230,6 +235,22 @@ export function ApartmentPanel(_props: Props) {
             {pickDetail(pick)}
           </p>
         ) : null}
+      </div>
+
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-black/40 dark:text-white/40">
+          Floor lamp
+        </p>
+        <button
+          type="button"
+          className="mt-1.5 w-full rounded-lg bg-black/6 px-2.5 py-2 text-[12px] font-medium hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
+          onClick={() => sceneRef.current?.toggleSofaLamp()}
+        >
+          {lampOn ? "Turn off" : "Turn on"}
+        </button>
+        <p className="mt-1 text-[11px] text-black/45 dark:text-white/45">
+          Click the lamp by the sofa in Orbit (warm light)
+        </p>
       </div>
 
       <div>

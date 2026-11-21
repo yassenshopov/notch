@@ -1,17 +1,37 @@
 import * as THREE from "three"
 import { OrbitControls } from "three/addons/controls/OrbitControls.js"
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js"
+import { loadBalconyBicycle } from "./apartment-bicycle-model"
+import { buildEastDoorTvVignette } from "./apartment-east-vignette"
+import {
+  livingEastWallTvCenterZ,
+  livingSofaLayout,
+  LIVING_TV_STAND_ALONG_WALL_M,
+} from "./apartment-living-layout"
+import {
+  createLivingTvClockMaterial,
+  tickLivingTvClock,
+  type LivingTvClockRig,
+} from "./apartment-tv-clock"
 import {
   APARTMENT_CEILING_M,
   APARTMENT_DEVICES,
   APARTMENT_FURNITURE,
   APARTMENT_SPACES,
   BALCONY_DOOR_METERS,
-  BALCONY_WINDOW_METERS,
+  BALCONY_DOOR_MARGIN_EAST_SU,
+  BALCONY_FACADE_WINDOWS,
+  BALCONY_FACADE_WINDOW_PAIR_SU,
+  BALCONY_WINDOW_WEST_MARGIN_SU,
+  su,
   COLOR_BALCONY_FLOOR,
+  COLOR_BALCONY_RAIL,
   COLOR_GLASS,
   COLOR_GLAZING_PANEL,
   COLOR_LIVING_WALL,
   GLAZING_PANEL_DEPTH_M,
+  LIVING_TV_SCREEN_ALONG_WALL_M,
+  propM,
   WALL_THICKNESS_M,
   deviceWorldPosition,
   footprintBounds,
@@ -28,6 +48,8 @@ export type ApartmentPick =
   | { kind: "room"; roomId: string }
   | { kind: "device"; deviceId: string }
 
+export const SOFA_LAMP_DEVICE_ID = "sofa-lamp"
+
 export type ApartmentSceneHandle = {
   dispose: () => void
   setDark: (dark: boolean) => void
@@ -37,6 +59,8 @@ export type ApartmentSceneHandle = {
   highlight: (pick: ApartmentPick | null) => void
   toggleBalconyDoor: () => void
   balconyDoorOpen: () => boolean
+  toggleSofaLamp: () => void
+  sofaLampOn: () => boolean
   resize: () => void
 }
 
@@ -45,14 +69,25 @@ type CreateOpts = {
   defaultView?: ApartmentViewMode
   onPick?: (pick: ApartmentPick | null) => void
   onBalconyDoorChange?: (open: boolean) => void
+  onSofaLampChange?: (on: boolean) => void
 }
 
 const DOOR_PICK = "apartmentBalconyDoor"
+const LAMP_PICK = "apartmentSofaLamp"
 
 type BalconyDoorRig = {
   pivot: THREE.Group
   openTarget: number
   openCurrent: number
+}
+
+type SofaLampRig = {
+  rigGroup: THREE.Group
+  light: THREE.PointLight
+  shadeMat: THREE.MeshStandardMaterial
+  bulbMat: THREE.MeshStandardMaterial
+  on: boolean
+  onVisual: number
 }
 
 type ScenePalette = {
@@ -96,7 +131,13 @@ const PALETTE: Record<"light" | "dark", ScenePalette> = {
 }
 
 const PICK_USER_DATA = "apartmentPick"
-const EDGE_EPS = 0.04
+const EDGE_EPS = 0.001
+const FLOOR_THICKNESS_M = propM(0.08)
+const WALL_SEAM_EPS = 0.001
+const BALCONY_PARAPET_THICK_M = propM(0.26)
+const BALCONY_PARAPET_H_M = propM(0.58)
+const BALCONY_RAIL_HEIGHT_M = propM(0.95)
+const BALCONY_RAIL_TUBE_R_M = propM(0.028)
 
 function wallLength(rect: PlanRect, wall: DoorSpec["wall"]) {
   return wall === "north" || wall === "south" ? rect.w : rect.d
@@ -175,7 +216,7 @@ function addWallBox(
   root.add(mesh)
 }
 
-/** North wall with sill/lintel above window and above door (not full-height holes). */
+/** North wall with sill/lintel above each window and above door (not full-height holes). */
 function buildLivingNorthWall(
   root: THREE.Group,
   rect: PlanRect,
@@ -186,28 +227,34 @@ function buildLivingNorthWall(
   const t = WALL_THICKNESS_M
   const z = rect.z - t / 2
   const door = BALCONY_DOOR_METERS
-  const win = BALCONY_WINDOW_METERS
+  const windows = [...BALCONY_FACADE_WINDOWS].sort((a, b) => a.offset - b.offset)
 
-  const wx0 = rect.x + win.offset
-  const wx1 = wx0 + win.width
   const dx0 = rect.x + door.offset
   const dx1 = dx0 + door.width
   const xEnd = rect.x + rect.w
 
-  addWallBox(root, rect.x + (wx0 - rect.x) / 2, z, wx0 - rect.x, t, wallH, yBase, mat)
-  addWallBox(root, wx0 + win.width / 2, z, win.width, t, win.sill, yBase, mat)
-  addWallBox(
-    root,
-    wx0 + win.width / 2,
-    z,
-    win.width,
-    t,
-    Math.max(0, wallH - win.sill - win.height),
-    yBase + win.sill + win.height,
-    mat,
-  )
-  if (dx0 > wx1 + 0.02) {
-    addWallBox(root, wx1 + (dx0 - wx1) / 2, z, dx0 - wx1, t, wallH, yBase, mat)
+  let xCursor = rect.x
+  for (const win of windows) {
+    const wx0 = rect.x + win.offset
+    const wx1 = wx0 + win.width
+    if (wx0 > xCursor + WALL_SEAM_EPS) {
+      addWallBox(root, xCursor + (wx0 - xCursor) / 2, z, wx0 - xCursor, t, wallH, yBase, mat)
+    }
+    addWallBox(root, wx0 + win.width / 2, z, win.width, t, win.sill, yBase, mat)
+    addWallBox(
+      root,
+      wx0 + win.width / 2,
+      z,
+      win.width,
+      t,
+      Math.max(0, wallH - win.sill - win.height),
+      yBase + win.sill + win.height,
+      mat,
+    )
+    xCursor = wx1
+  }
+  if (dx0 > xCursor + WALL_SEAM_EPS) {
+    addWallBox(root, xCursor + (dx0 - xCursor) / 2, z, dx0 - xCursor, t, wallH, yBase, mat)
   }
   addWallBox(
     root,
@@ -219,9 +266,33 @@ function buildLivingNorthWall(
     yBase + door.height,
     mat,
   )
-  if (xEnd > dx1 + 0.02) {
+  if (xEnd > dx1 + WALL_SEAM_EPS) {
     addWallBox(root, dx1 + (xEnd - dx1) / 2, z, xEnd - dx1, t, wallH, yBase, mat)
   }
+}
+
+function sealWallCorners(
+  root: THREE.Group,
+  rect: PlanRect,
+  wallH: number,
+  yBase: number,
+  mat: THREE.Material,
+  sides: readonly DoorSpec["wall"][],
+) {
+  const t = WALL_THICKNESS_M
+  const yMid = yBase + wallH / 2
+  const set = new Set(sides)
+  const push = (cx: number, cz: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(t, wallH, t), mat)
+    mesh.position.set(cx, yMid, cz)
+    mesh.castShadow = false
+    mesh.receiveShadow = true
+    root.add(mesh)
+  }
+  if (set.has("north") && set.has("west")) push(rect.x - t / 2, rect.z - t / 2)
+  if (set.has("north") && set.has("east")) push(rect.x + rect.w + t / 2, rect.z - t / 2)
+  if (set.has("south") && set.has("west")) push(rect.x - t / 2, rect.z + rect.d + t / 2)
+  if (set.has("south") && set.has("east")) push(rect.x + rect.w + t / 2, rect.z + rect.d + t / 2)
 }
 
 function spanOverlap(a0: number, a1: number, b0: number, b1: number) {
@@ -258,6 +329,118 @@ function drawsWall(
   return true
 }
 
+function addMetalTube(
+  root: THREE.Group,
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  radius: number,
+  mat: THREE.Material,
+) {
+  const dir = new THREE.Vector3().subVectors(b, a)
+  const len = dir.length()
+  if (len < 1e-4) return
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, len, 14), mat)
+  const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5)
+  mesh.position.copy(mid)
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
+  root.add(mesh)
+}
+
+function buildBalconyParapetAndRail(
+  root: THREE.Group,
+  rect: PlanRect,
+  edges: ("north" | "south" | "east" | "west")[],
+) {
+  const t = BALCONY_PARAPET_THICK_M
+  const h = BALCONY_PARAPET_H_M
+  const yParapet = FLOOR_THICKNESS_M + h / 2
+  const parapetMat = new THREE.MeshStandardMaterial({
+    color: COLOR_BALCONY_FLOOR,
+    roughness: 0.86,
+    metalness: 0.05,
+  })
+  const railMat = new THREE.MeshStandardMaterial({
+    color: COLOR_BALCONY_RAIL,
+    metalness: 0.78,
+    roughness: 0.22,
+  })
+  const tubeR = BALCONY_RAIL_TUBE_R_M
+  const yRail = FLOOR_THICKNESS_M + BALCONY_RAIL_HEIGHT_M
+  const yPostFoot = FLOOR_THICKNESS_M + h
+  const inset = t / 2
+
+  const addParapet = (w: number, d: number, cx: number, cz: number) => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), parapetMat)
+    mesh.position.set(cx, yParapet, cz)
+    mesh.receiveShadow = true
+    root.add(mesh)
+  }
+
+  if (edges.includes("north")) {
+    addParapet(rect.w, t, rect.x + rect.w / 2, rect.z + inset)
+  }
+  if (edges.includes("west")) {
+    addParapet(t, rect.d, rect.x + inset, rect.z + rect.d / 2)
+  }
+  if (edges.includes("east")) {
+    addParapet(t, rect.d, rect.x + rect.w - inset, rect.z + rect.d / 2)
+  }
+
+  const post = (x: number, z: number) => {
+    addMetalTube(
+      root,
+      new THREE.Vector3(x, yPostFoot, z),
+      new THREE.Vector3(x, yRail, z),
+      tubeR * 1.05,
+      railMat,
+    )
+  }
+
+  const northZ = rect.z + inset
+  const westX = rect.x + inset
+  const eastX = rect.x + rect.w - inset
+  const southZ = rect.z + rect.d
+  const hasNorth = edges.includes("north")
+
+  if (hasNorth) {
+    const seg = (rect.w - t) / 4
+    for (let i = 0; i <= 4; i++) post(westX + seg * i, northZ)
+    addMetalTube(
+      root,
+      new THREE.Vector3(westX, yRail, northZ),
+      new THREE.Vector3(eastX, yRail, northZ),
+      tubeR,
+      railMat,
+    )
+  }
+
+  if (edges.includes("west")) {
+    const zTop = hasNorth ? northZ : rect.z
+    post(westX, southZ)
+    if (!hasNorth) post(westX, zTop)
+    addMetalTube(
+      root,
+      new THREE.Vector3(westX, yRail, zTop),
+      new THREE.Vector3(westX, yRail, southZ),
+      tubeR,
+      railMat,
+    )
+  }
+
+  if (edges.includes("east")) {
+    const zTop = hasNorth ? northZ : rect.z
+    post(eastX, southZ)
+    if (!hasNorth) post(eastX, zTop)
+    addMetalTube(
+      root,
+      new THREE.Vector3(eastX, yRail, zTop),
+      new THREE.Vector3(eastX, yRail, southZ),
+      tubeR,
+      railMat,
+    )
+  }
+}
+
 function buildSpace(
   space: SpaceSpec,
   _palette: ScenePalette,
@@ -271,10 +454,10 @@ function buildSpace(
 ) {
   const { rect } = space
   const isOutdoor = space.kind === "outdoor"
-  const floorY = 0
-  const wallH = isOutdoor ? 0.85 : APARTMENT_CEILING_M
+  const wallYBase = FLOOR_THICKNESS_M
+  const wallH = isOutdoor ? propM(0.85) : APARTMENT_CEILING_M
 
-  const floorGeo = new THREE.BoxGeometry(rect.w, 0.08, rect.d)
+  const floorGeo = new THREE.BoxGeometry(rect.w, FLOOR_THICKNESS_M, rect.d)
   const floor = new THREE.Mesh(
     floorGeo,
     new THREE.MeshStandardMaterial({
@@ -283,49 +466,28 @@ function buildSpace(
       metalness: isOutdoor ? 0.04 : 0.02,
     }),
   )
-  floor.position.set(rect.x + rect.w / 2, floorY, rect.z + rect.d / 2)
+  floor.position.set(rect.x + rect.w / 2, FLOOR_THICKNESS_M / 2, rect.z + rect.d / 2)
   floor.receiveShadow = true
-  floor.userData[PICK_USER_DATA] = { kind: "room", roomId: space.pickId } satisfies ApartmentPick
   root.add(floor)
 
   if (isOutdoor) {
-    const railMat = new THREE.MeshStandardMaterial({
-      color: COLOR_BALCONY_FLOOR,
-      metalness: 0.2,
-      roughness: 0.62,
-    })
-    const railH = 0.95
-    const railT = 0.05
-    const edges = space.railEdges ?? ["north", "south", "east", "west"]
-    const rails: { w: number; d: number; x: number; z: number }[] = []
-    if (edges.includes("north")) {
-      rails.push({ w: rect.w, d: railT, x: rect.x + rect.w / 2, z: rect.z + railT / 2 })
-    }
-    if (edges.includes("south")) {
-      rails.push({ w: rect.w, d: railT, x: rect.x + rect.w / 2, z: rect.z + rect.d - railT / 2 })
-    }
-    if (edges.includes("west")) {
-      rails.push({ w: railT, d: rect.d, x: rect.x + railT / 2, z: rect.z + rect.d / 2 })
-    }
-    if (edges.includes("east")) {
-      rails.push({ w: railT, d: rect.d, x: rect.x + rect.w - railT / 2, z: rect.z + rect.d / 2 })
-    }
-    for (const edge of rails) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(edge.w, railH, edge.d), railMat)
-      bar.position.set(edge.x, floorY + railH / 2, edge.z)
-      root.add(bar)
-    }
+    buildBalconyParapetAndRail(root, rect, space.railEdges ?? ["north", "west", "east"])
     return
   }
 
   const doors = space.doors ?? []
+  const drawn: DoorSpec["wall"][] = []
   for (const side of ["north", "south", "east", "west"] as const) {
     if (!drawsWall(space, side, spaces)) continue
+    drawn.push(side)
     if (space.id === "living" && side === "north") {
-      buildLivingNorthWall(root, rect, wallH, floorY, materials.wall)
+      buildLivingNorthWall(root, rect, wallH, wallYBase, materials.wall)
       continue
     }
-    addWallSegments(root, rect, side, doors, wallH, materials.wall, floorY)
+    addWallSegments(root, rect, side, doors, wallH, materials.wall, wallYBase)
+  }
+  if (!isOutdoor && drawn.length >= 2) {
+    sealWallCorners(root, rect, wallH, wallYBase, materials.wall, drawn)
   }
 }
 
@@ -346,7 +508,7 @@ function furnitureMaterial(
     case "counter":
       return new THREE.MeshStandardMaterial({ ...base, color: 0x9a948c, roughness: 0.78 })
     case "sofa":
-      return new THREE.MeshStandardMaterial({ ...base, color: 0x5c534a, roughness: 0.92 })
+      return new THREE.MeshStandardMaterial({ ...base, color: 0x3d2914, roughness: 0.94 })
     case "shelf":
       return new THREE.MeshStandardMaterial({ ...base, color: 0x7a6a55, roughness: 0.82 })
     case "tv":
@@ -420,16 +582,321 @@ function addGlazedPanel(
   parent.add(left, right, top, bottom)
 }
 
-function buildBalconyWindow(root: THREE.Group, living: SpaceSpec) {
+function buildBalconyWindow(root: THREE.Group, living: SpaceSpec, w: (typeof BALCONY_FACADE_WINDOWS)[number]) {
   const { rect } = living
-  const w = BALCONY_WINDOW_METERS
   const cx = rect.x + w.offset + w.width / 2
   const z = rect.z
-  const yMid = w.sill + w.height / 2
+  const yMid = FLOOR_THICKNESS_M + w.sill + w.height / 2
   const panel = new THREE.Group()
   panel.position.set(cx, yMid, z - WALL_THICKNESS_M / 2)
   addGlazedPanel(panel, w.width, w.height, w.frame)
   root.add(panel)
+}
+
+function buildBalconyWindows(root: THREE.Group, living: SpaceSpec) {
+  for (const w of BALCONY_FACADE_WINDOWS) {
+    buildBalconyWindow(root, living, w)
+  }
+}
+
+const SOFA_DARK_BROWN = 0x3d2914
+
+function sofaUpholsteryMaterial(palette: ScenePalette): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: SOFA_DARK_BROWN,
+    roughness: 0.97,
+    metalness: 0.01,
+    emissive: palette.furnitureEmissive,
+  })
+}
+
+function sofaRoundedGeometry(w: number, h: number, d: number, round: number) {
+  const r = Math.min(round, w * 0.22, h * 0.28, d * 0.22)
+  return new RoundedBoxGeometry(w, h, d, 6, r)
+}
+
+function addSofaPart(
+  root: THREE.Group,
+  w: number,
+  h: number,
+  d: number,
+  x: number,
+  y: number,
+  z: number,
+  mat: THREE.Material,
+  round: number,
+) {
+  const mesh = new THREE.Mesh(sofaRoundedGeometry(w, h, d, round), mat)
+  mesh.position.set(x, y, z)
+  root.add(mesh)
+}
+
+function curtainMaterial(tone: "cream" | "white"): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: tone === "white" ? 0xfafafa : 0xf3ead8,
+    roughness: 0.95,
+    metalness: 0,
+    transparent: true,
+    opacity: tone === "white" ? 0.44 : 0.48,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
+}
+
+function addCurtainPanel(
+  root: THREE.Group,
+  xCenter: number,
+  z: number,
+  width: number,
+  yBottom: number,
+  height: number,
+  tone: "cream" | "white" = "cream",
+  depth = 0.018,
+) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), curtainMaterial(tone))
+  mesh.position.set(xCenter, yBottom + height / 2, z)
+  root.add(mesh)
+}
+
+/** Cream curtains on the balcony-facing north wall (windows + east tail). */
+function buildBalconyWallCurtains(root: THREE.Group, living: SpaceSpec) {
+  const { rect } = living
+  const win = BALCONY_FACADE_WINDOWS[0]!
+  const yBottom = FLOOR_THICKNESS_M + win.sill - 0.12
+  const height = Math.min(APARTMENT_CEILING_M, win.sill + win.height + 0.55) - yBottom
+  const z = rect.z + 0.05
+
+  const windowBandW = su(BALCONY_FACADE_WINDOW_PAIR_SU)
+  const windowX0 = rect.x + su(BALCONY_WINDOW_WEST_MARGIN_SU)
+  addCurtainPanel(root, windowX0 + windowBandW / 2, z, windowBandW, yBottom, height)
+
+  const doorEast = rect.x + BALCONY_DOOR_METERS.offset + BALCONY_DOOR_METERS.width
+  const tailW = su(BALCONY_DOOR_MARGIN_EAST_SU)
+  addCurtainPanel(root, doorEast + tailW / 2, z, tailW, yBottom, height * 0.92)
+}
+
+/** White curtain on the balcony side of the glazed door. */
+function buildBalconyDoorCurtain(root: THREE.Group, living: SpaceSpec) {
+  const door = BALCONY_DOOR_METERS
+  const jointZ = living.rect.z
+  const xCenter = living.rect.x + door.offset + door.width / 2
+  const z = jointZ - 0.05
+  const yBottom = FLOOR_THICKNESS_M + 0.02
+  const height = door.height + 0.32
+  addCurtainPanel(root, xCenter, z, door.width, yBottom, height, "white")
+}
+
+const LIVING_FRIDGE_W_M = propM(1.2)
+const LIVING_FRIDGE_D_M = propM(1.2)
+
+/** West wall: sofa → fridge-sized bay (lamp) → fridge. */
+function livingWestWallPropStrip(rect: PlanRect) {
+  const { cz, alongWestD } = livingSofaLayout(rect)
+  const laneX = rect.x + propM(0.3)
+  const sofaSouthZ = cz + alongWestD
+  const gapStartZ = sofaSouthZ + propM(0.1)
+  const gapEndZ = gapStartZ + LIVING_FRIDGE_D_M
+  const lampZ = (gapStartZ + gapEndZ) * 0.5
+  const fridgeZ = gapEndZ + propM(0.12) + LIVING_FRIDGE_D_M / 2
+  const fridgeX = laneX + LIVING_FRIDGE_W_M / 2
+  return { laneX, lampZ, fridgeX, fridgeZ }
+}
+
+function tagLampPickable(obj: THREE.Object3D) {
+  obj.userData[LAMP_PICK] = true
+  obj.userData[PICK_USER_DATA] = {
+    kind: "device",
+    deviceId: SOFA_LAMP_DEVICE_ID,
+  } satisfies ApartmentPick
+}
+
+/** L-sofa in the NW corner — backs against north and west walls; arms do not cross at the corner. */
+function buildLivingCornerSofa(palette: ScenePalette, root: THREE.Group, living: SpaceSpec) {
+  const { rect } = living
+  const mat = sofaUpholsteryMaterial(palette)
+  const wallGap = propM(0.05)
+  const backT = propM(0.24)
+  const seatH = propM(0.42)
+  const backH = propM(0.4)
+  const ySeat = FLOOR_THICKNESS_M + seatH / 2
+  const yBack = FLOOR_THICKNESS_M + seatH + backH / 2
+
+  const { cx, cz, seatW, seatD, westSeatD, alongWestD, alongNorthW } = livingSofaLayout(rect)
+
+  const seatRound = propM(0.13)
+  const backRound = propM(0.1)
+
+  const northSeatW = alongNorthW - seatW
+  addSofaPart(root, northSeatW, seatH, seatD, cx + seatW + northSeatW / 2, ySeat, cz + seatD / 2, mat, seatRound)
+  addSofaPart(root, seatW, seatH, westSeatD, cx + seatW / 2, ySeat, cz + seatD + westSeatD / 2, mat, seatRound)
+  addSofaPart(root, seatW, seatH, seatD, cx + seatW / 2, ySeat, cz + seatD / 2, mat, seatRound + 0.02)
+
+  addSofaPart(root, northSeatW, backH, backT, cx + seatW + northSeatW / 2, yBack, cz + backT / 2, mat, backRound)
+  addSofaPart(root, backT, backH, westSeatD, cx + backT / 2, yBack, cz + seatD + westSeatD / 2, mat, backRound)
+}
+
+function buildLivingCoffeeTable(root: THREE.Group, living: SpaceSpec) {
+  const { rect } = living
+  const { cx, cz, seatW, seatD, alongWestD, alongNorthW } = livingSofaLayout(rect)
+  const northSeatW = alongNorthW - seatW
+
+  const tableW = propM(2.36)
+  const tableD = propM(1.48)
+  const tableH = propM(0.41)
+  const wood = new THREE.MeshStandardMaterial({
+    color: 0x3a2a1e,
+    roughness: 0.8,
+    metalness: 0.04,
+  })
+
+  const tx = cx + seatW + northSeatW * 0.24
+  const tz = cz + seatD + alongWestD * 0.2
+  const table = new THREE.Mesh(new THREE.BoxGeometry(tableW, tableH, tableD), wood)
+  table.position.set(tx, FLOOR_THICKNESS_M + tableH / 2, tz)
+  root.add(table)
+}
+
+function buildFridgeBesideLamp(root: THREE.Group, fridgeX: number, fridgeZ: number) {
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xf7f7f4,
+    roughness: 0.28,
+    metalness: 0.1,
+  })
+  const handleMat = new THREE.MeshStandardMaterial({
+    color: 0xc5c8cc,
+    roughness: 0.35,
+    metalness: 0.55,
+  })
+  const h = propM(3.68)
+  const w = LIVING_FRIDGE_W_M
+  const d = LIVING_FRIDGE_D_M
+  const fx = fridgeX
+  const fz = fridgeZ
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), bodyMat)
+  body.position.set(fx, FLOOR_THICKNESS_M + h / 2, fz)
+  root.add(body)
+
+  const handle = new THREE.Mesh(
+    new THREE.BoxGeometry(propM(0.08), propM(0.84), propM(0.1)),
+    handleMat,
+  )
+  handle.position.set(fx + w / 2 - propM(0.06), FLOOR_THICKNESS_M + h * 0.58, fz + d / 2 + propM(0.01))
+  root.add(handle)
+}
+
+function buildSofaLamp(root: THREE.Group, living: SpaceSpec): SofaLampRig {
+  const { rect } = living
+  const { laneX: lampX, lampZ, fridgeX, fridgeZ } = livingWestWallPropStrip(rect)
+
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.35, metalness: 0.72 })
+  const shadeMat = new THREE.MeshStandardMaterial({
+    color: 0xf0e6d6,
+    roughness: 0.88,
+    metalness: 0.02,
+    emissive: 0x000000,
+    emissiveIntensity: 0,
+  })
+
+  const rigGroup = new THREE.Group()
+  rigGroup.position.set(lampX, FLOOR_THICKNESS_M, lampZ)
+
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(propM(0.16), propM(0.19), propM(0.04), 24), metal)
+  base.position.y = propM(0.02)
+  rigGroup.add(base)
+  tagLampPickable(base)
+
+  const poleH = propM(1.62)
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(propM(0.02), propM(0.025), poleH, 16), metal)
+  pole.position.y = poleH / 2 + propM(0.04)
+  rigGroup.add(pole)
+  tagLampPickable(pole)
+
+  const shade = new THREE.Mesh(
+    new THREE.CylinderGeometry(propM(0.14), propM(0.22), propM(0.26), 24, 1, true),
+    shadeMat,
+  )
+  shade.position.y = poleH + propM(0.1)
+  rigGroup.add(shade)
+  tagLampPickable(shade)
+
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfff1d6,
+    emissive: 0xffb35c,
+    emissiveIntensity: 0,
+    roughness: 0.4,
+  })
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(propM(0.055), 12, 12), bulbMat)
+  bulb.position.y = poleH - propM(0.02)
+  rigGroup.add(bulb)
+
+  const light = new THREE.PointLight(0xffb56a, 0, propM(5.2), 1.65)
+  light.position.set(0, poleH - propM(0.05), 0)
+  rigGroup.add(light)
+
+  root.add(rigGroup)
+  buildFridgeBesideLamp(root, fridgeX, fridgeZ)
+
+  return { rigGroup, light, shadeMat, bulbMat, on: false, onVisual: 0 }
+}
+
+function buildLivingTvStand(root: THREE.Group, living: SpaceSpec): LivingTvClockRig {
+  const { rect } = living
+  const wood = new THREE.MeshStandardMaterial({
+    color: 0x3a2a1e,
+    roughness: 0.78,
+    metalness: 0.04,
+  })
+  const bezel = new THREE.MeshStandardMaterial({
+    color: 0x141418,
+    roughness: 0.4,
+    metalness: 0.12,
+  })
+  const { displayMat, clock } = createLivingTvClockMaterial()
+  const standAlongWall = LIVING_TV_STAND_ALONG_WALL_M
+  const standDepth = propM(0.88)
+  const standH = propM(1.0)
+  const tvSizeScale = 0.72
+  const tvW = LIVING_TV_SCREEN_ALONG_WALL_M * tvSizeScale
+  const tvH = propM(1.36) * tvSizeScale
+  const tvD = propM(0.1)
+
+  const sz = livingEastWallTvCenterZ(rect)
+  const eastLaneX = rect.x + rect.w - propM(0.3)
+  const sx = eastLaneX - LIVING_FRIDGE_W_M / 2
+
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(standDepth, standH, standAlongWall), wood)
+  stand.position.set(sx, FLOOR_THICKNESS_M + standH / 2, sz)
+  root.add(stand)
+
+  const tv = new THREE.Mesh(new THREE.BoxGeometry(tvD, tvH, tvW), [
+    bezel,
+    displayMat,
+    bezel,
+    bezel,
+    bezel,
+    bezel,
+  ])
+  tv.position.set(sx, FLOOR_THICKNESS_M + standH + tvH / 2, sz)
+  const screenLight = new THREE.PointLight(0xf2f6ff, 2.6, propM(9), 1.65)
+  screenLight.position.set(-tvD / 2 - propM(0.12), 0, 0)
+  tv.add(screenLight)
+  root.add(tv)
+  const rig: LivingTvClockRig = {
+    ...clock,
+    light: screenLight,
+    displayMat,
+  }
+  return rig
+}
+
+function applySofaLampVisual(rig: SofaLampRig) {
+  const target = rig.on ? 1 : 0
+  rig.onVisual += (target - rig.onVisual) * 0.16
+  rig.light.intensity = rig.onVisual * 2.8
+  rig.shadeMat.emissive.setHex(0xffc27a)
+  rig.shadeMat.emissiveIntensity = rig.onVisual * 0.85
+  rig.bulbMat.emissiveIntensity = rig.onVisual * 1.35
 }
 
 function buildBalconyDoorRig(root: THREE.Group, living: SpaceSpec): BalconyDoorRig {
@@ -438,7 +905,7 @@ function buildBalconyDoorRig(root: THREE.Group, living: SpaceSpec): BalconyDoorR
   const hingeX = rect.x + d.offset + d.width
   const hingeZ = rect.z
   const pivot = new THREE.Group()
-  pivot.position.set(hingeX, 0, hingeZ)
+  pivot.position.set(hingeX, FLOOR_THICKNESS_M, hingeZ)
   const panel = new THREE.Group()
   panel.position.set(-d.width / 2, d.height / 2, -WALL_THICKNESS_M / 2)
   addGlazedPanel(panel, d.width, d.height, d.frame)
@@ -458,6 +925,7 @@ function buildDevices(
 ) {
   if (APARTMENT_DEVICES.length === 0) return
   for (const d of APARTMENT_DEVICES) {
+    if (d.id === SOFA_LAMP_DEVICE_ID) continue
     const geo = new THREE.CylinderGeometry(0.11, 0.11, 0.32, 20)
     const mat = new THREE.MeshStandardMaterial({
       color: palette.pin,
@@ -551,6 +1019,8 @@ export function createApartmentScene(
   renderer.domElement.style.height = "100%"
   container.appendChild(renderer.domElement)
 
+  let sceneAlive = true
+
   const controls = new OrbitControls(perspCamera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.09
@@ -601,6 +1071,7 @@ export function createApartmentScene(
 
   const buildPalette = palette()
   const livingSpace = APARTMENT_SPACES.find((s) => s.id === "living")
+  const balconySpace = APARTMENT_SPACES.find((s) => s.id === "balcony-1")
   for (const space of APARTMENT_SPACES) {
     buildSpace(
       space,
@@ -611,9 +1082,21 @@ export function createApartmentScene(
     )
   }
   let doorRig: BalconyDoorRig | null = null
+  let sofaLampRig: SofaLampRig | null = null
+  let livingTvClock: LivingTvClockRig | null = null
   if (livingSpace) {
-    buildBalconyWindow(apartmentRoot, livingSpace)
+    buildBalconyWindows(apartmentRoot, livingSpace)
     doorRig = buildBalconyDoorRig(apartmentRoot, livingSpace)
+    buildBalconyWallCurtains(apartmentRoot, livingSpace)
+    buildLivingCornerSofa(buildPalette, apartmentRoot, livingSpace)
+    buildLivingCoffeeTable(apartmentRoot, livingSpace)
+    sofaLampRig = buildSofaLamp(apartmentRoot, livingSpace)
+    livingTvClock = buildLivingTvStand(apartmentRoot, livingSpace)
+    buildEastDoorTvVignette(apartmentRoot, livingSpace)
+  }
+  if (livingSpace && balconySpace) {
+    buildBalconyDoorCurtain(apartmentRoot, livingSpace)
+    void loadBalconyBicycle(apartmentRoot, balconySpace)
   }
   buildFurniture(buildPalette, apartmentRoot)
   buildDevices(buildPalette, apartmentRoot, deviceMeshes)
@@ -696,6 +1179,12 @@ export function createApartmentScene(
     opts.onBalconyDoorChange?.(next > 0.5)
   }
 
+  const toggleSofaLamp = () => {
+    if (!sofaLampRig) return
+    sofaLampRig.on = !sofaLampRig.on
+    opts.onSofaLampChange?.(sofaLampRig.on)
+  }
+
   const onPointerDown = (ev: PointerEvent) => {
     const rect = renderer.domElement.getBoundingClientRect()
     pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1
@@ -714,8 +1203,25 @@ export function createApartmentScene(
       toggleDoor()
       return
     }
+    const lampHit = hits.find((h) => {
+      let node: THREE.Object3D | null = h.object
+      while (node) {
+        if (node.userData[LAMP_PICK]) return true
+        node = node.parent
+      }
+      return false
+    })
+    if (lampHit) {
+      toggleSofaLamp()
+      const lampPick: ApartmentPick = { kind: "device", deviceId: SOFA_LAMP_DEVICE_ID }
+      highlightPick = lampPick
+      applyHighlight()
+      opts.onPick?.(lampPick)
+      return
+    }
     const hit = hits.find((h) => h.object.userData[PICK_USER_DATA])
-    const pick = (hit?.object.userData[PICK_USER_DATA] as ApartmentPick | undefined) ?? null
+    if (!hit) return
+    const pick = hit.object.userData[PICK_USER_DATA] as ApartmentPick
     highlightPick = pick
     applyHighlight()
     opts.onPick?.(pick)
@@ -730,6 +1236,8 @@ export function createApartmentScene(
       doorRig.openCurrent += (doorRig.openTarget - doorRig.openCurrent) * ease
       doorRig.pivot.rotation.y = doorRig.openCurrent * (Math.PI / 2) * 0.94
     }
+    if (sofaLampRig) applySofaLampVisual(sofaLampRig)
+    if (livingTvClock) tickLivingTvClock(livingTvClock)
     if (viewMode !== "orbit") return
     controls.update()
     renderer.render(scene, activeCamera)
@@ -771,8 +1279,12 @@ export function createApartmentScene(
     },
     toggleBalconyDoor: toggleDoor,
     balconyDoorOpen: () => (doorRig?.openTarget ?? 0) > 0.5,
+    toggleSofaLamp,
+    sofaLampOn: () => sofaLampRig?.on ?? false,
     resize,
     dispose() {
+      sceneAlive = false
+      livingTvClock?.texture.dispose()
       cancelAnimationFrame(raf)
       ro.disconnect()
       renderer.domElement.removeEventListener("pointerdown", onPointerDown)

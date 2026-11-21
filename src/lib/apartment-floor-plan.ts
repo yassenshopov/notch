@@ -5,6 +5,7 @@
 import {
   BALCONY_DOOR_OFFSET_SU,
   BALCONY_DOOR_WIDTH_SU,
+  BALCONY_WINDOW_2_OFFSET_SU,
   BALCONY_WINDOW_OFFSET_SU,
   BALCONY_WINDOW_WIDTH_SU,
   D_BALCONY_1,
@@ -17,24 +18,44 @@ import {
   su,
 } from "./apartment-plan-units"
 
-export const APARTMENT_PLAN_REVISION = "living-balcony-v10"
+export const APARTMENT_PLAN_REVISION = "living-balcony-v34"
 
-export { D_LIVING, SU_TO_M, SU_W, Z_LIVING, su } from "./apartment-plan-units"
+/** Interior furniture / fixture scale (matches halved plan footprint). */
+export const APARTMENT_PROP_SCALE = 0.5
+export function propM(n: number): number {
+  return n * APARTMENT_PROP_SCALE
+}
 
-export const APARTMENT_CEILING_M = 2.6
-export const WALL_THICKNESS_M = 0.14
+/** TV screen span along the east wall (m). */
+export const LIVING_TV_SCREEN_ALONG_WALL_M = propM(2.36)
+
+export {
+  BALCONY_DOOR_MARGIN_EAST_SU,
+  BALCONY_FACADE_WINDOW_PAIR_SU,
+  BALCONY_WINDOW_WEST_MARGIN_SU,
+  D_LIVING,
+  SU_TO_M,
+  SU_W,
+  Z_LIVING,
+  su,
+} from "./apartment-plan-units"
+
+export const APARTMENT_CEILING_M = propM(5.2)
+export const WALL_THICKNESS_M = propM(0.14)
 
 /** Materials */
 export const COLOR_BALCONY_FLOOR = 0xff7518
 export const COLOR_BALCONY_CSS = "#ff7518"
+export const COLOR_BALCONY_RAIL = 0xb8bcc4
+export const COLOR_BALCONY_RAIL_CSS = "#b8bcc4"
 export const COLOR_LIVING_FLOOR = 0xd9c7a3
 export const COLOR_LIVING_FLOOR_CSS = "#d9c7a3"
 export const COLOR_LIVING_WALL = 0xf7f5f0
 export const COLOR_GLASS = 0xf4f6f8
 export const COLOR_GLAZING_PANEL = 0xffffff
 /** Thick white surround on door + fixed window */
-export const GLAZING_PANEL_FRAME_M = 0.12
-export const GLAZING_PANEL_DEPTH_M = 0.095
+export const GLAZING_PANEL_FRAME_M = propM(0.12)
+export const GLAZING_PANEL_DEPTH_M = propM(0.095)
 
 export type RoomKind = "living" | "outdoor"
 
@@ -107,17 +128,39 @@ export const APARTMENT_SPACES: SpaceSpec[] = [
 export const BALCONY_DOOR_METERS = {
   offset: doorOffM,
   width: doorWM,
-  height: 2.15,
+  height: propM(2.15),
   frame: GLAZING_PANEL_FRAME_M,
 }
 
-export const BALCONY_WINDOW_METERS = {
-  offset: su(BALCONY_WINDOW_OFFSET_SU),
-  width: su(BALCONY_WINDOW_WIDTH_SU),
-  height: 1.35,
-  sill: 0.95,
+export type BalconyWindowMeters = {
+  offset: number
+  width: number
+  height: number
+  sill: number
+  frame: number
+}
+
+const BALCONY_WINDOW_SHARED: Omit<BalconyWindowMeters, "offset" | "width"> = {
+  height: propM(1.35),
+  sill: propM(0.95),
   frame: GLAZING_PANEL_FRAME_M,
 }
+
+export const BALCONY_FACADE_WINDOWS: BalconyWindowMeters[] = [
+  {
+    offset: su(BALCONY_WINDOW_OFFSET_SU),
+    width: su(BALCONY_WINDOW_WIDTH_SU),
+    ...BALCONY_WINDOW_SHARED,
+  },
+  {
+    offset: su(BALCONY_WINDOW_2_OFFSET_SU),
+    width: su(BALCONY_WINDOW_WIDTH_SU),
+    ...BALCONY_WINDOW_SHARED,
+  },
+]
+
+/** First (west) balcony window — plan sketch + legacy imports */
+export const BALCONY_WINDOW_METERS = BALCONY_FACADE_WINDOWS[0]!
 
 export const APARTMENT_ROOM_CARDS: {
   pickId: string
@@ -129,7 +172,14 @@ export const APARTMENT_ROOM_CARDS: {
 ]
 
 export const APARTMENT_FURNITURE: FurnitureSpec[] = []
-export const APARTMENT_DEVICES: DeviceSpec[] = []
+export const APARTMENT_DEVICES: DeviceSpec[] = [
+  {
+    id: "sofa-lamp",
+    label: "Floor lamp",
+    roomId: "living",
+    role: "light",
+  },
+]
 
 export function roomFootprintM2(pickId: string): number {
   return APARTMENT_SPACES.filter((s) => s.pickId === pickId).reduce(
