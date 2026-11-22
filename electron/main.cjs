@@ -2,7 +2,7 @@ const fs = require("fs")
 const path = require("path")
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
 const lifeAppEnv = path.resolve(__dirname, "../../life-app/.env")
-if (fs.existsSync(lifeAppEnv)) {
+if (process.env.NOTCH_LOAD_LIFE_APP_ENV === "1" && fs.existsSync(lifeAppEnv)) {
   require("dotenv").config({ path: lifeAppEnv, override: false })
 }
 

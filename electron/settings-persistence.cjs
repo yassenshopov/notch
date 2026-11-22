@@ -2,6 +2,7 @@ const fs = require("fs")
 const path = require("path")
 const { app } = require("electron")
 const kv = require("./snapshot-kv.cjs")
+const { sanitizeSettingsForNeon } = require("./settings-neon-sanitize.cjs")
 
 const NS = "settings"
 const KIND = "default"
@@ -30,7 +31,7 @@ async function pullFromNeonIfNewer() {
 
 async function pushToNeon(settings) {
   if (!settings || typeof settings !== "object") return
-  await kv.write(NS, KIND, settings)
+  await kv.write(NS, KIND, sanitizeSettingsForNeon(settings))
 }
 
 async function bootstrap() {
