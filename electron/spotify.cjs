@@ -12,6 +12,15 @@ const LISTENING_HISTORY_MAX = 200
 
 let spotifyNowBackgroundRefresh = null
 
+function notifyPlaybackIngest(status) {
+  if (!status) return
+  try {
+    require("./spotify-live-ingest.cjs").onPlaybackStatus(status)
+  } catch {
+    // live ingest optional when DB unset
+  }
+}
+
 const SCOPES = [
   "user-read-currently-playing",
   "user-read-playback-state",
@@ -255,6 +264,7 @@ async function refreshSpotifyNowPlaying() {
       if (smtc) result = smtc
     }
     await kv.write(SPOTIFY_KV_NS, "now_playing", result)
+    notifyPlaybackIngest(result)
     return result
   } catch {
     return null
@@ -298,6 +308,7 @@ async function getCurrentlyPlayingInner() {
       if (smtc) result = smtc
     }
     await kv.write(SPOTIFY_KV_NS, "now_playing", result)
+    notifyPlaybackIngest(result)
     return result
   } catch (err) {
     const stale = await readCachedNowPlaying()
@@ -404,6 +415,9 @@ async function getRecentlyPlayed(limit = 6, options = {}) {
     const historyRow = await kv.read(SPOTIFY_KV_NS, "listening_history")
     const merged = mergeListeningHistory(historyRow?.items, out)
     await kv.write(SPOTIFY_KV_NS, "listening_history", { items: merged })
+    void require("./spotify-live-ingest.cjs")
+      .ingestRecentItems(out)
+      .catch(() => {})
     return out
   } catch (err) {
     if (err.code === "not_connected") {
@@ -416,6 +430,13 @@ async function getRecentlyPlayed(limit = 6, options = {}) {
 
 async function getListeningHistory(limit = 50) {
   const capped = Math.min(Math.max(1, limit), LISTENING_HISTORY_MAX)
+  try {
+    const { recentListenHistory } = require("./spotify-library.cjs")
+    const fromDb = await recentListenHistory(capped)
+    if (fromDb.length) return fromDb
+  } catch {
+    // fall back to KV
+  }
   const history = await kv.read(SPOTIFY_KV_NS, "listening_history")
   const items = history?.items ?? []
   return items.slice(0, capped)

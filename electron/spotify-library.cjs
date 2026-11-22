@@ -75,6 +75,7 @@ function mapExportRow(entry, sourceFile, contentKind) {
     reason_start: entry.reason_start || null,
     reason_end: entry.reason_end || null,
     source_file: sourceFile,
+    source_type: "export",
     row_hash: rowHash(entry),
   }
 }
@@ -207,14 +208,14 @@ function buildWeekColumns(dayRows, highlightsByDate = new Map(), chartYear) {
   return { weeks, days }
 }
 
-async function insertBatch(client, rows) {
+async function insertStreamRows(client, rows) {
   if (!rows.length) return 0
   const values = []
   const params = []
   let i = 1
   for (const row of rows) {
     values.push(
-      `($${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++})`,
+      `($${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++},$${i++})`,
     )
     params.push(
       row.played_at,
@@ -235,6 +236,7 @@ async function insertBatch(client, rows) {
       row.reason_start,
       row.reason_end,
       row.source_file,
+      row.source_type || "export",
       row.row_hash,
     )
   }
@@ -243,12 +245,31 @@ async function insertBatch(client, rows) {
       played_at, ms_played, platform, conn_country, track_uri, track_id,
       track_name, artist_name, album_name, content_kind, episode_uri,
       episode_name, show_name, skipped, shuffle, reason_start, reason_end,
-      source_file, row_hash
+      source_file, source_type, row_hash
     )
     VALUES ${values.join(",")}
     ON CONFLICT (row_hash) DO NOTHING
   `
   const res = await client.query(sql, params)
+  return res.rowCount ?? 0
+}
+
+/** @deprecated use insertStreamRows */
+async function insertBatch(client, rows) {
+  return insertStreamRows(client, rows)
+}
+
+async function dedupeLiveAgainstExport(client) {
+  const res = await client.query(`
+    DELETE FROM spotify_streams live
+    USING spotify_streams exp
+    WHERE live.source_type IN ('api_recent', 'playback_watch')
+      AND exp.source_type = 'export'
+      AND live.track_id IS NOT NULL
+      AND live.track_id = exp.track_id
+      AND live.played_at >= exp.played_at - interval '3 minutes'
+      AND live.played_at <= exp.played_at + interval '3 minutes'
+  `)
   return res.rowCount ?? 0
 }
 
@@ -310,6 +331,7 @@ async function importDirectory(dir, options = {}) {
     }
 
     const rowsSkipped = Math.max(0, rowsRead - rowsInserted)
+    const livePruned = await dedupeLiveAgainstExport(client)
     await client.query(
       `UPDATE spotify_import_runs
        SET finished_at = now(),
@@ -329,6 +351,7 @@ async function importDirectory(dir, options = {}) {
       rowsRead,
       rowsInserted,
       rowsSkipped,
+      livePruned,
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -365,10 +388,25 @@ async function libraryStatus() {
   ORDER BY finished_at DESC NULLS LAST, id DESC
     LIMIT 1
   `
+  const sourceRows = await sql`
+    SELECT source_type, COUNT(*)::bigint AS count
+    FROM spotify_streams
+    GROUP BY source_type
+  `
+  /** @type {Record<string, number>} */
+  const streamsBySource = {}
+  for (const row of sourceRows || []) {
+    streamsBySource[String(row.source_type || "export")] = Number(row.count || 0)
+  }
+  const liveStreams =
+    (streamsBySource.api_recent || 0) + (streamsBySource.playback_watch || 0)
   return {
     configured: true,
     ready: true,
     totalStreams: Number(countRow?.total || 0),
+    exportStreams: streamsBySource.export || 0,
+    liveStreams,
+    streamsBySource,
     firstPlayed: countRow?.first_played ?? null,
     lastPlayed: countRow?.last_played ?? null,
     lastImport: importRow
@@ -740,10 +778,58 @@ async function dayDetail(dateKey) {
   }
 }
 
+async function recentListenHistory(limit = 50) {
+  const capped = Math.min(Math.max(1, limit), 200)
+  if (!db.isConfigured() || !(await db.ensureReady())) return []
+  const sql = db.getSql()
+  if (!sql) return []
+
+  const rows = await sql`
+    SELECT
+      played_at,
+      track_id,
+      track_name,
+      artist_name,
+      album_name,
+      track_uri,
+      source_type
+    FROM spotify_streams
+    WHERE track_name IS NOT NULL
+    ORDER BY played_at DESC
+    LIMIT ${capped}
+  `
+
+  const seen = new Set()
+  const out = []
+  for (const row of rows || []) {
+    const id = row.track_id || `unknown:${row.track_name}`
+    const playedAt = row.played_at ? new Date(row.played_at).toISOString() : null
+    const key = `${id}:${playedAt ?? ""}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({
+      track: {
+        id,
+        name: row.track_name,
+        artists: row.artist_name || "Unknown artist",
+        album: row.album_name || "",
+        artUrl: null,
+        uri: row.track_uri || "",
+      },
+      playedAt,
+      sourceType: row.source_type || "export",
+    })
+  }
+  return out
+}
+
 module.exports = {
   listExportFiles,
   importDirectory,
   libraryStatus,
   activityInsights,
   dayDetail,
+  recentListenHistory,
+  insertStreamRows,
+  dedupeLiveAgainstExport,
 }

@@ -25,6 +25,8 @@
     "sync:strava-neon": "electron scripts/sync-strava-neon.cjs",
     "sync:github-neon": "electron scripts/sync-github-neon.cjs",
     "sync:all-neon": "electron scripts/sync-all-neon.cjs",
+    "sync:spotify-neon": "electron scripts/sync-spotify-neon.cjs",
+    "register:spotify-backfill-task": "powershell -ExecutionPolicy Bypass -File scripts/register-spotify-listen-backfill-task.ps1",
     "import:spotify-history": "node scripts/import-spotify-extended.mjs",
     "dist": "npm run build && electron-builder --win"
   },

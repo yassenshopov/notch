@@ -44,8 +44,23 @@ export function SpotifyProfileHeader({ insights, actions, className }: Props) {
                   format={(n) => n.toLocaleString()}
                   className="text-[12px] font-semibold"
                 />{" "}
-                imported streams
+                streams
               </span>
+              {(insights.liveStreams ?? 0) > 0 ? (
+                <>
+                  <span className="text-black/25 dark:text-white/25" aria-hidden>
+                    ·
+                  </span>
+                  <span>
+                    <AnimatedNumber
+                      value={insights.liveStreams ?? 0}
+                      format={(n) => n.toLocaleString()}
+                      className="text-[12px] font-semibold"
+                    />{" "}
+                    live (API / notch)
+                  </span>
+                </>
+              ) : null}
               {insights.firstPlayed && insights.lastPlayed ? (
                 <>
                   <span className="text-black/25 dark:text-white/25" aria-hidden>

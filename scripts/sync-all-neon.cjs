@@ -8,6 +8,7 @@ const strava = require("../electron/strava.cjs")
 const calendar = require("../electron/calendar.cjs")
 const markets = require("../electron/markets.cjs")
 const spotify = require("../electron/spotify.cjs")
+const liveIngest = require("../electron/spotify-live-ingest.cjs")
 const mint = require("../electron/mint.cjs")
 const pi = require("../electron/pi.cjs")
 const settingsStore = require("../electron/settings-store.cjs")
@@ -38,6 +39,7 @@ app.whenReady().then(async () => {
       now: await spotify.getCurrentlyPlaying(),
       recent: await spotify.getRecentlyPlayed(20, { force: true }),
       history: (await spotify.getListeningHistory(20)).length,
+      liveIngest: await liveIngest.ingestRecentlyPlayed(50),
     }
   }
 

@@ -1,5 +1,5 @@
 import { Play } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   fetchSpotifyListeningHistory,
   fetchSpotifyRecentlyPlayed,
@@ -27,31 +27,35 @@ export function SpotifyListenHistory({
   const [history, setHistory] = useState<SpotifyRecentItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    void Promise.all([
+  const load = useCallback(() => {
+    return Promise.all([
       fetchSpotifyRecentlyPlayed(recentLimit),
       fetchSpotifyListeningHistory(historyLimit),
     ])
       .then(([recentItems, historyItems]) => {
-        if (cancelled) return
         setRecent(recentItems)
         setHistory(historyItems)
       })
       .catch(() => {
-        if (!cancelled) {
-          setRecent([])
-          setHistory([])
-        }
+        setRecent([])
+        setHistory([])
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+  }, [recentLimit, historyLimit])
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void load().finally(() => {
+      if (!cancelled) setLoading(false)
+    })
+    const id = window.setInterval(() => {
+      void load()
+    }, 60_000)
     return () => {
       cancelled = true
+      window.clearInterval(id)
     }
-  }, [recentLimit, historyLimit])
+  }, [load])
 
   const fromNeon = history.length > 0
   const items = fromNeon ? history : recent
@@ -73,7 +77,7 @@ export function SpotifyListenHistory({
         loading={loading}
         onPlayUri={onPlayUri}
         showPlayedAt={fromNeon}
-        emptyMessage="Open Spotify and hit Play — plays accumulate here over time."
+        emptyMessage="Play something with Notch running — listens save to your library automatically."
         className={scrollClassName}
       />
     </div>

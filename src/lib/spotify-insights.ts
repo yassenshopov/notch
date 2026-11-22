@@ -4,6 +4,9 @@ export type SpotifyLibraryStatus = {
   configured: boolean
   ready: boolean
   totalStreams: number
+  exportStreams?: number
+  liveStreams?: number
+  streamsBySource?: Record<string, number>
   firstPlayed?: string | null
   lastPlayed?: string | null
   lastImport?: {

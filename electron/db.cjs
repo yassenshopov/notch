@@ -123,6 +123,15 @@ const MIGRATIONS = [
         ON spotify_streams (artist_name)`,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      `ALTER TABLE spotify_streams
+        ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'export'`,
+      `CREATE INDEX IF NOT EXISTS idx_spotify_streams_source_type
+        ON spotify_streams (source_type)`,
+    ],
+  },
 ]
 
 let sql = null
