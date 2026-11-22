@@ -1,33 +1,16 @@
 import { useMemo, useState } from "react"
 import { useSettings } from "../config/settings-store"
 import type { NotchPanel } from "../lib/panel-routing"
+import { notchIntegrationPolls } from "../lib/notch-poll"
 import { useAlbumPalette } from "./useAlbumPalette"
-import { useCalendar } from "./useCalendar"
-import { useCursor } from "./useCursor"
-import { useGithub } from "./useGithub"
-import { useMarkets } from "./useMarkets"
 import { useMediaSession } from "./useMediaSession"
-import { useMint } from "./useMint"
-import { usePi } from "./usePi"
+import { useNotchIntegrations } from "./useNotchIntegrations"
 import { useSpotify } from "./useSpotify"
-import { useStrava } from "./useStrava"
 import { useWeather } from "./useWeather"
-import { useWifiSense } from "./useWifiSense"
 import type { ComponentProps } from "react"
 import type { NotchActivePanel } from "../components/NotchActivePanel"
 
 type PanelProps = ComponentProps<typeof NotchActivePanel>
-
-function pollPanel(
-  panel: NotchPanel,
-  active: NotchPanel,
-  mode: "desktop" | "expanded" | "collapsed",
-  islandOn: boolean,
-): boolean {
-  if (mode === "desktop") return active === panel
-  if (mode === "expanded") return active === panel
-  return islandOn
-}
 
 export function useNotchActivePanelProps(
   activePanel: NotchPanel,
@@ -42,87 +25,63 @@ export function useNotchActivePanelProps(
   const mediaPoll = settings.media.enabled && !playing
   const { status: mediaStatus, action: mediaAction } = useMediaSession(mediaPoll)
 
-  const overviewPoll = mode === "desktop" && activePanel === "overview"
-
-  const calendarPoll =
-    mode === "desktop"
-      ? activePanel === "calendar" || overviewPoll
-      : mode === "expanded"
-        ? activePanel === "calendar"
-        : (settings.island.faces.calendar ?? true)
-
+  const polls = notchIntegrationPolls(mode, activePanel, settings)
   const {
-    snapshot: calendarSnapshot,
-    loading: calendarLoading,
-    refreshing: calendarRefreshing,
-    refresh: refreshCalendar,
-    connect: connectCalendar,
-    disconnect: disconnectCalendar,
-  } = useCalendar(calendarPoll)
-
-  const faces = settings.island.faces
-  const marketsPoll = pollPanel("markets", activePanel, mode, faces.markets) || overviewPoll
-  const githubPoll = pollPanel("github", activePanel, mode, faces.github) || overviewPoll
-  const stravaPoll = pollPanel("strava", activePanel, mode, faces.strava ?? true) || overviewPoll
-  const wifiSensePoll =
-    (settings.wifiSense?.enabled ?? true) && pollPanel("wifi-sense", activePanel, mode, false)
-  const mintPoll =
-    pollPanel("mint", activePanel, mode, faces.mint ?? true) ||
-    overviewPoll ||
-    (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim())
-  const piPoll = pollPanel("pi", activePanel, mode, faces.pi ?? true) || overviewPoll
-
-  const {
-    snapshot: marketsSnapshot,
-    loading: marketsLoading,
-    refreshing: marketsRefreshing,
-    refresh: refreshMarkets,
-  } = useMarkets(marketsPoll)
-  const {
-    status: githubStatus,
-    loading: githubLoading,
-    refreshing: githubRefreshing,
-    refresh: refreshGithub,
-  } = useGithub(githubPoll)
-  const {
-    status: stravaStatus,
-    loading: stravaLoading,
-    refreshing: stravaRefreshing,
-    refresh: refreshStrava,
-    connect: connectStrava,
-    disconnect: disconnectStrava,
-  } = useStrava(stravaPoll)
-  const {
-    status: mintStatus,
-    history: mintHistory,
-    loading: mintLoading,
-    refreshing: mintRefreshing,
-    refresh: refreshMint,
-  } = useMint(mintPoll)
-  const {
-    agentUrl: wifiSenseAgentUrl,
-    state: wifiSenseState,
-    refreshStatus: refreshWifiSense,
-  } = useWifiSense(wifiSensePoll, {
-    tailscaleIp: mintStatus.tailscaleIp,
-    lanIp: mintStatus.lanIp,
-  })
-  const {
-    status: piStatus,
-    history: piHistory,
-    loading: piLoading,
-    refreshing: piRefreshing,
-    refresh: refreshPi,
-  } = usePi(piPoll)
-
-  const cursorPoll = pollPanel("cursor", activePanel, mode, true) || overviewPoll
-  const {
-    status: cursorStatus,
-    loading: cursorLoading,
-    analyticsLoading: cursorAnalyticsLoading,
-    refreshing: cursorRefreshing,
-    refresh: refreshCursor,
-  } = useCursor(cursorPoll)
+    calendar: {
+      snapshot: calendarSnapshot,
+      loading: calendarLoading,
+      refreshing: calendarRefreshing,
+      refresh: refreshCalendar,
+      connect: connectCalendar,
+      disconnect: disconnectCalendar,
+    },
+    markets: {
+      snapshot: marketsSnapshot,
+      loading: marketsLoading,
+      refreshing: marketsRefreshing,
+      refresh: refreshMarkets,
+    },
+    github: {
+      status: githubStatus,
+      loading: githubLoading,
+      refreshing: githubRefreshing,
+      refresh: refreshGithub,
+    },
+    strava: {
+      status: stravaStatus,
+      loading: stravaLoading,
+      refreshing: stravaRefreshing,
+      refresh: refreshStrava,
+      connect: connectStrava,
+      disconnect: disconnectStrava,
+    },
+    mint: {
+      status: mintStatus,
+      history: mintHistory,
+      loading: mintLoading,
+      refreshing: mintRefreshing,
+      refresh: refreshMint,
+    },
+    pi: {
+      status: piStatus,
+      history: piHistory,
+      loading: piLoading,
+      refreshing: piRefreshing,
+      refresh: refreshPi,
+    },
+    cursor: {
+      status: cursorStatus,
+      loading: cursorLoading,
+      analyticsLoading: cursorAnalyticsLoading,
+      refreshing: cursorRefreshing,
+      refresh: refreshCursor,
+    },
+    wifiSense: {
+      agentUrl: wifiSenseAgentUrl,
+      state: wifiSenseState,
+      refreshStatus: refreshWifiSense,
+    },
+  } = useNotchIntegrations(polls)
 
   const spotifyPanelThemed = (mode === "expanded" || mode === "desktop") && activePanel === "spotify"
   const albumPalette = useAlbumPalette(

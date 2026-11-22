@@ -49,7 +49,6 @@ import type { IslandFace } from "../config/settings"
 import { useAlbumPalette } from "../hooks/useAlbumPalette"
 import { useBattery } from "../hooks/useBattery"
 import { formatIslandTime, useClock } from "../hooks/useClock"
-import { useCursor } from "../hooks/useCursor"
 import { useIslandRotation } from "../hooks/useIslandRotation"
 import { useLiveActivities } from "../hooks/useLiveActivities"
 import { useOccasionalSmile } from "../hooks/useOccasionalSmile"
@@ -63,18 +62,13 @@ import { LiveActivityContent } from "./LiveActivityContent"
 import { GitHubContributionHeatmap } from "./GitHubContributionHeatmap"
 import { StravaActivityCalendar } from "./StravaActivityCalendar"
 import { useTimerEngine } from "../hooks/useTimerEngine"
-import { useMarkets } from "../hooks/useMarkets"
-import { useGithub } from "../hooks/useGithub"
-import { useStrava } from "../hooks/useStrava"
-import { useMint } from "../hooks/useMint"
-import { useWifiSense } from "../hooks/useWifiSense"
-import { usePi } from "../hooks/usePi"
+import { useNotchIntegrations } from "../hooks/useNotchIntegrations"
 import { todayContributionCount } from "../lib/github"
 import { formatQuoteChange } from "../lib/markets"
 import { nextEvent } from "../lib/calendar"
 import { panelForCollapsedTap, type NotchPanel } from "../lib/panel-routing"
 import { useMediaSession } from "../hooks/useMediaSession"
-import { useCalendar } from "../hooks/useCalendar"
+import { notchIntegrationPolls } from "../lib/notch-poll"
 import { useNotchPlacement } from "../hooks/useNotchPlacement"
 import { useShellSize } from "../hooks/useShellSize"
 import { useNotchOverlayPassthrough } from "../hooks/useNotchOverlayPassthrough"
@@ -134,18 +128,75 @@ export function Notch() {
   const dark = useTheme()
   const timer = useTimerEngine()
 
-  const calendarPoll =
-    (!expanded && (settings.island.faces.calendar ?? true)) ||
-    (expanded && panelOverride === "calendar")
+  const activePanel: Panel = useMemo(() => {
+    if (panelOverride) return panelOverride
+    if (playing) return "spotify"
+    if (browserMediaShowing) return "media"
+    return "weather"
+  }, [panelOverride, playing, browserMediaShowing])
+
+  const integrationPolls = notchIntegrationPolls(
+    expanded ? "expanded" : "collapsed",
+    activePanel,
+    settings,
+  )
   const {
-    snapshot: calendarSnapshot,
-    ready: calendarReady,
-    loading: calendarLoading,
-    refreshing: calendarRefreshing,
-    refresh: refreshCalendar,
-    connect: connectCalendar,
-    disconnect: disconnectCalendar,
-  } = useCalendar(calendarPoll)
+    calendar: {
+      snapshot: calendarSnapshot,
+      ready: calendarReady,
+      loading: calendarLoading,
+      refreshing: calendarRefreshing,
+      refresh: refreshCalendar,
+      connect: connectCalendar,
+      disconnect: disconnectCalendar,
+    },
+    markets: {
+      snapshot: marketsSnapshot,
+      loading: marketsLoading,
+      refreshing: marketsRefreshing,
+      refresh: refreshMarkets,
+    },
+    github: {
+      status: githubStatus,
+      loading: githubLoading,
+      refreshing: githubRefreshing,
+      refresh: refreshGithub,
+    },
+    strava: {
+      status: stravaStatus,
+      loading: stravaLoading,
+      refreshing: stravaRefreshing,
+      refresh: refreshStrava,
+      connect: connectStrava,
+      disconnect: disconnectStrava,
+    },
+    mint: {
+      status: mintStatus,
+      history: mintHistory,
+      loading: mintLoading,
+      refreshing: mintRefreshing,
+      refresh: refreshMint,
+    },
+    wifiSense: {
+      agentUrl: wifiSenseAgentUrl,
+      state: wifiSenseState,
+      refreshStatus: refreshWifiSense,
+    },
+    pi: {
+      status: piStatus,
+      history: piHistory,
+      loading: piLoading,
+      refreshing: piRefreshing,
+      refresh: refreshPi,
+    },
+    cursor: {
+      status: cursorStatus,
+      loading: cursorLoading,
+      analyticsLoading: cursorAnalyticsLoading,
+      refreshing: cursorRefreshing,
+      refresh: refreshCursor,
+    },
+  } = useNotchIntegrations(integrationPolls)
 
   const liveActivitiesEnabled =
     !expanded && !playing && !browserMediaShowing && settings.liveActivities.enabled
@@ -186,72 +237,6 @@ export function Notch() {
   const keyboardLayoutShowing = Boolean(keyboardLayoutFlash)
 
   const batteryAvailable = battery.supported && battery.ready
-
-  const activePanel: Panel = useMemo(() => {
-    if (panelOverride) return panelOverride
-    if (playing) return "spotify"
-    if (browserMediaShowing) return "media"
-    return "weather"
-  }, [panelOverride, playing, browserMediaShowing])
-
-  const marketsPoll =
-    (!expanded && settings.island.faces.markets) || (expanded && activePanel === "markets")
-  const githubPoll =
-    (!expanded && settings.island.faces.github) || (expanded && activePanel === "github")
-  const stravaPoll =
-    (!expanded && (settings.island.faces.strava ?? true)) ||
-    (expanded && activePanel === "strava")
-  const wifiSensePoll =
-    (settings.wifiSense?.enabled ?? true) && expanded && activePanel === "wifi-sense"
-  const mintPoll =
-    (!expanded && (settings.island.faces.mint ?? true)) ||
-    (expanded && activePanel === "mint") ||
-    (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim())
-  const piPoll =
-    (!expanded && (settings.island.faces.pi ?? true)) || (expanded && activePanel === "pi")
-
-  const {
-    snapshot: marketsSnapshot,
-    loading: marketsLoading,
-    refreshing: marketsRefreshing,
-    refresh: refreshMarkets,
-  } = useMarkets(Boolean(marketsPoll))
-  const {
-    status: githubStatus,
-    loading: githubLoading,
-    refreshing: githubRefreshing,
-    refresh: refreshGithub,
-  } = useGithub(Boolean(githubPoll))
-  const {
-    status: stravaStatus,
-    loading: stravaLoading,
-    refreshing: stravaRefreshing,
-    refresh: refreshStrava,
-    connect: connectStrava,
-    disconnect: disconnectStrava,
-  } = useStrava(Boolean(stravaPoll))
-  const {
-    status: mintStatus,
-    history: mintHistory,
-    loading: mintLoading,
-    refreshing: mintRefreshing,
-    refresh: refreshMint,
-  } = useMint(Boolean(mintPoll))
-  const {
-    agentUrl: wifiSenseAgentUrl,
-    state: wifiSenseState,
-    refreshStatus: refreshWifiSense,
-  } = useWifiSense(Boolean(wifiSensePoll), {
-    tailscaleIp: mintStatus.tailscaleIp,
-    lanIp: mintStatus.lanIp,
-  })
-  const {
-    status: piStatus,
-    history: piHistory,
-    loading: piLoading,
-    refreshing: piRefreshing,
-    refresh: refreshPi,
-  } = usePi(Boolean(piPoll))
 
   const islandFaces = useMemo(() => {
     const faces: IslandFace[] = []
@@ -334,14 +319,6 @@ export function Notch() {
     () => collapsedContentDimensions(placement.form, collapsedWidth, collapsedH),
     [placement.form, collapsedWidth, collapsedH],
   )
-
-  const {
-    status: cursorStatus,
-    loading: cursorLoading,
-    analyticsLoading: cursorAnalyticsLoading,
-    refreshing: cursorRefreshing,
-    refresh: refreshCursor,
-  } = useCursor(expanded && activePanel === "cursor")
 
   const spotifyPanelThemed = expanded && activePanel === "spotify"
   // Prefetch while playing so collapsed + Spotify panel can tint immediately
