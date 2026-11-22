@@ -131,10 +131,12 @@ npm run dev:web   # renderer only (no IPC / wallpaper / Spotify)
 npm run build     # typecheck + Vite production build
 npm start         # Electron against dist/ (run build first)
 npm run lint
+npm test
+npm run test:coverage
 npm run dist    # Windows NSIS installer → release/
 ```
 
-GitHub Actions runs `npm run lint` and `npm run build` on pushes and pull requests to `main`.
+GitHub Actions runs `npm run lint`, `npm test`, `npm run test:coverage`, and `npm run build` on pushes and pull requests to `main`.
 
 Use **`npm run dev`** or **`npm start`** for wallpaper regen and OAuth — not the browser tab alone.
 

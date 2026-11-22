@@ -1,9 +1,10 @@
 const { shell } = require("electron")
+const { isHttpUrl } = require("../http-url.cjs")
 
 /** @param {unknown} url */
 async function openExternalHttpUrl(url) {
-  if (typeof url === "string" && /^https?:\/\//i.test(url)) {
-    await shell.openExternal(url)
+  if (isHttpUrl(url)) {
+    await shell.openExternal(url.trim())
   }
 }
 
