@@ -3,9 +3,15 @@ const { isHttpUrl } = require("../http-url.cjs")
 
 /** @param {unknown} url */
 async function openExternalHttpUrl(url) {
-  if (isHttpUrl(url)) {
-    await shell.openExternal(url.trim())
+  if (typeof url !== "string" || !url.trim()) {
+    return { ok: false, reason: "missing_url" }
   }
+  const trimmed = url.trim()
+  if (!isHttpUrl(trimmed)) {
+    return { ok: false, reason: "invalid_scheme" }
+  }
+  await shell.openExternal(trimmed)
+  return { ok: true }
 }
 
 module.exports = { openExternalHttpUrl }
