@@ -1,9 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron")
 
-// Sandboxed preload cannot require dotenv; key is resolved in main (see notch:carto-api-key).
-const cartoApiKey =
-  process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
-
 contextBridge.exposeInMainWorld("notch", {
   desktop: {
     open: (panel) => ipcRenderer.invoke("desktop:open", panel),
@@ -222,7 +218,6 @@ contextBridge.exposeInMainWorld("notch", {
       ipcRenderer.invoke("controls:set-bluetooth", { id, connected }),
   },
   mapTiles: {
-    cartoApiKey,
     fetchCartoApiKey: () => ipcRenderer.invoke("notch:carto-api-key"),
   },
   keyboardLayout: {

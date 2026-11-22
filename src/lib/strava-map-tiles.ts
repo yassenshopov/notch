@@ -8,11 +8,7 @@ export type StravaMapTileLayerProps = {
 }
 
 function cartoApiKey(): string {
-  const fromVite = import.meta.env.VITE_CARTO_API_KEY?.trim()
-  if (fromVite) return fromVite
-  const fromBridge = window.notch?.mapTiles?.cartoApiKey?.trim()
-  if (fromBridge) return fromBridge
-  return ""
+  return import.meta.env.VITE_CARTO_API_KEY?.trim() ?? ""
 }
 
 export function stravaLeafletInteraction(interactive = false) {
