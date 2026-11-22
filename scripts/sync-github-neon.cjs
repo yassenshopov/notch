@@ -2,6 +2,9 @@ const path = require("path")
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
 
 const { app } = require("electron")
+const { alignNotchUserData } = require("../electron/notch-user-data.cjs")
+alignNotchUserData()
+
 const db = require("../electron/db.cjs")
 const github = require("../electron/github.cjs")
 
