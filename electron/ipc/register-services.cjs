@@ -17,6 +17,7 @@ const mediaSession = require("../media-session.cjs")
 const calendar = require("../calendar.cjs")
 const neonFunctions = require("../neon-functions.cjs")
 const { openExternalHttpUrl } = require("./open-external-url.cjs")
+const { parseAgentRequest } = require("../agent-request-guard.cjs")
 
 /**
  * @param {import("electron").IpcMain} ipcMain
@@ -438,11 +439,27 @@ function registerServicesIpc(ipcMain, deps) {
   })
 
   ipcMain.handle("wifi-sense:post", async (_event, options) => {
-    const agentUrl = typeof options?.agentUrl === "string" ? options.agentUrl : ""
-    const routePath = typeof options?.path === "string" ? options.path : ""
-    const token = typeof options?.token === "string" ? options.token : undefined
-    const body = options?.body
-    return wifiSenseAgentPost(agentUrl, routePath, token, body)
+    try {
+      const settings = settingsStore.readSettings()
+      const allowed = settings?.wifiSense?.agentUrl
+      const tokenFromSettings = settings?.wifiSense?.token
+      const { base, path: routePath } = parseAgentRequest(
+        options?.agentUrl,
+        options?.path,
+        allowed,
+      )
+      const token =
+        typeof options?.token === "string" && options.token.trim()
+          ? options.token
+          : tokenFromSettings
+      return wifiSenseAgentPost(base, routePath, token, options?.body)
+    } catch (err) {
+      return {
+        ok: false,
+        status: 0,
+        error: err instanceof Error ? err.message : "wifi_sense_post_failed",
+      }
+    }
   })
 
   ipcMain.handle("pi-display:mode", async (_event, options) => {
