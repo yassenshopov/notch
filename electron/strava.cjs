@@ -5,6 +5,7 @@ const { shell, app } = require("electron")
 const { createSmartCache } = require("./smart-cache.cjs")
 const stravaStore = require("./strava-persistence.cjs")
 const kv = require("./snapshot-kv.cjs")
+const { readTokenFile, writeTokenFile, clearTokenFile } = require("./secure-token-file.cjs")
 
 const API = "https://www.strava.com/api/v3"
 const SCOPES = "read,activity:read_all"
@@ -23,23 +24,15 @@ function tokenPath() {
 }
 
 function readTokens() {
-  try {
-    return JSON.parse(fs.readFileSync(tokenPath(), "utf8"))
-  } catch {
-    return null
-  }
+  return readTokenFile(tokenPath())
 }
 
 function writeTokens(tokens) {
-  fs.writeFileSync(tokenPath(), JSON.stringify(tokens, null, 2), "utf8")
+  writeTokenFile(tokenPath(), tokens)
 }
 
 function clearTokens() {
-  try {
-    fs.unlinkSync(tokenPath())
-  } catch {
-    // ignore
-  }
+  clearTokenFile(tokenPath())
 }
 
 function getConfig() {
