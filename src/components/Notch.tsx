@@ -814,6 +814,10 @@ export function Notch() {
         <div className={cn(isSide && "notch-side-rotate")}>
       <motion.div
         data-notch-hit-target
+        role="button"
+        tabIndex={expanded ? -1 : 0}
+        aria-label="Open Notch"
+        aria-expanded={expanded}
         initial={false}
         animate={{
           width: islandSize.width,
@@ -822,6 +826,20 @@ export function Notch() {
           ...shellRadii,
         }}
         transition={motionFeel.pill}
+        onKeyDown={(e) => {
+          if (expanded) return
+          if (e.key !== "Enter" && e.key !== " ") return
+          e.preventDefault()
+          const panel = panelForCollapsedTap({
+            spotifyPlaying: playing,
+            browserMediaActive: browserMediaShowing,
+            liveActivity,
+            timerShowing,
+            islandFace,
+          })
+          setPanelOverride(panel)
+          void expand()
+        }}
         onPointerDown={(e) => {
           e.stopPropagation()
           if (
@@ -1403,11 +1421,45 @@ function PanelRail({
     y.set(indicatorY)
   }, [indicatorY, y])
 
+  const focusPanelAt = useCallback(
+    (index: number) => {
+      const panel = panels[index]
+      if (!panel) return
+      onSelect(panel)
+      tabRefs.current[panel]?.focus()
+    },
+    [onSelect, panels],
+  )
+
+  const onRailKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const idx = panels.indexOf(active)
+      if (idx < 0) return
+      if (e.key === "ArrowDown") {
+        e.preventDefault()
+        focusPanelAt((idx + 1) % panels.length)
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault()
+        focusPanelAt((idx - 1 + panels.length) % panels.length)
+      } else if (e.key === "Home") {
+        e.preventDefault()
+        focusPanelAt(0)
+      } else if (e.key === "End") {
+        e.preventDefault()
+        focusPanelAt(panels.length - 1)
+      }
+    },
+    [active, focusPanelAt, panels],
+  )
+
   return (
     <nav
       ref={navRef}
       className="relative flex flex-col items-center gap-1.5"
       aria-label="Panels"
+      role="toolbar"
+      aria-orientation="vertical"
+      onKeyDown={onRailKeyDown}
     >
       {indicatorVisible ? (
         <motion.span
@@ -1460,6 +1512,7 @@ function IconTab({
       type="button"
       aria-label={label}
       aria-current={active ? "page" : undefined}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
       whileTap={{ scale: 0.92 }}
       transition={tapSpring}
