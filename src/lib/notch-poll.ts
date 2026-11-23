@@ -22,21 +22,30 @@ export function notchIntegrationPolls(
 ) {
   const overviewPoll = mode === "desktop" && activePanel === "overview"
   const faces = settings.island.faces
+
+  const calendarPoll =
+    pollPanel("calendar", activePanel, mode, faces.calendar ?? true) || overviewPoll
+  const marketsPoll = pollPanel("markets", activePanel, mode, faces.markets) || overviewPoll
+  const githubPoll = pollPanel("github", activePanel, mode, faces.github) || overviewPoll
+  const stravaPoll = pollPanel("strava", activePanel, mode, faces.strava ?? true) || overviewPoll
   const wifiSensePoll =
     (settings.wifiSense?.enabled ?? true) && pollPanel("wifi-sense", activePanel, mode, false)
+  const mintPoll =
+    pollPanel("mint", activePanel, mode, faces.mint ?? true) ||
+    overviewPoll ||
+    (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim())
+  const piPoll = pollPanel("pi", activePanel, mode, faces.pi ?? true) || overviewPoll
+  const cursorPoll = pollPanel("cursor", activePanel, mode, false) || overviewPoll
 
   return {
     overviewPoll,
-    calendarPoll: pollPanel("calendar", activePanel, mode, faces.calendar ?? true) || overviewPoll,
-    marketsPoll: pollPanel("markets", activePanel, mode, faces.markets) || overviewPoll,
-    githubPoll: pollPanel("github", activePanel, mode, faces.github) || overviewPoll,
-    stravaPoll: pollPanel("strava", activePanel, mode, faces.strava ?? true) || overviewPoll,
+    calendarPoll,
+    marketsPoll,
+    githubPoll,
+    stravaPoll,
     wifiSensePoll,
-    mintPoll:
-      pollPanel("mint", activePanel, mode, faces.mint ?? true) ||
-      overviewPoll ||
-      (wifiSensePoll && !settings.wifiSense?.agentUrl?.trim()),
-    piPoll: pollPanel("pi", activePanel, mode, faces.pi ?? true) || overviewPoll,
-    cursorPoll: pollPanel("cursor", activePanel, mode, false) || overviewPoll,
+    mintPoll,
+    piPoll,
+    cursorPoll,
   }
 }
