@@ -118,7 +118,6 @@ interface NotchBridge {
   onTestExpand?: (cb: () => void) => () => void
   platform: string
   mapTiles: {
-    cartoApiKey: string
     fetchCartoApiKey: () => Promise<string>
   }
   cursor: {
