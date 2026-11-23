@@ -19,6 +19,8 @@
     "start": "npm run build && cross-env NOTCH_FORCE_DIST=1 electron .",
     "start:dev": "npm run build && electron .",
     "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "check:bundle": "node scripts/check-bundle-size.mjs",
     "preview": "vite preview",
     "verify:expand": "npm run build && cross-env NOTCH_VERIFY_EXPAND=1 electron .",
@@ -52,7 +54,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "electron/assets/icon.ico"
@@ -104,6 +108,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
+    "vitest": "^3.2.4",
     "wait-on": "^9.5.1"
   }
 }
