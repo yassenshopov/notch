@@ -389,18 +389,16 @@ function resolveLaunchAtLogin(saved) {
 
 function syncLaunchAtLogin(enabled = resolveLaunchAtLogin(settingsStore.readSettings())) {
   const openAtLogin = Boolean(enabled)
-  // Packaged: register the built app. Unpackaged: register Electron pointing at the
-  // project root (loads dist via main.cjs — do not pass ELECTRON_DEV here).
-  if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin })
-  } else {
-    const appPath = app.getAppPath()
-    app.setLoginItemSettings({
-      openAtLogin,
-      path: process.execPath,
-      args: [appPath],
-    })
+  if (!app.isPackaged) {
+    if (openAtLogin) {
+      console.warn(
+        "[notch] Launch at login requires a packaged install (npm run dist). Ignoring while running from source.",
+      )
+    }
+    app.setLoginItemSettings({ openAtLogin: false })
+    return
   }
+  app.setLoginItemSettings({ openAtLogin })
 }
 
 registerServicesIpc(ipcMain, {
