@@ -11,7 +11,7 @@ type Options = {
 /** Cycles a single collapsed face — weather → battery → clock → … */
 export function useIslandRotation({ enabled, intervalMs, available }: Options) {
   const facesKey = available.join("|")
-  const faces = useMemo(() => available, [facesKey])
+  const faces = useMemo(() => available, [facesKey, available])
 
   const [index, setIndex] = useState(0)
 
@@ -25,7 +25,7 @@ export function useIslandRotation({ enabled, intervalMs, available }: Options) {
       setIndex((i) => (i + 1) % faces.length)
     }, Math.max(2_000, intervalMs))
     return () => window.clearInterval(id)
-  }, [enabled, faces, intervalMs])
+  }, [enabled, faces, intervalMs, facesKey])
 
   if (faces.length === 0) return null
   return faces[index % faces.length] ?? faces[0]
