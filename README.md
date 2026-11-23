@@ -131,10 +131,12 @@ npm run dev:web   # renderer only (no IPC / wallpaper / Spotify)
 npm run build     # typecheck + Vite production build
 npm start         # Electron against dist/ (run build first)
 npm run lint
+npm test
+npm run test:coverage
 npm run dist    # Windows NSIS installer → release/
 ```
 
-GitHub Actions runs `npm run lint` and `npm run build` on pushes and pull requests to `main`. It does not run `npm run verify:neon`, `npm run verify:expand`, or `npm run dist` — run those locally (or add repo secrets for Neon in CI).
+GitHub Actions runs `npm run lint`, `npm run test:coverage`, `npm run build`, and `npm run check:bundle` on pushes and pull requests to `main`. It does not run `npm run verify:neon`, `npm run verify:expand`, or `npm run dist` — run those locally (or add repo secrets for Neon in CI).
 
 Use **`npm run dev`** or **`npm start`** for wallpaper regen and OAuth — not the browser tab alone.
 

@@ -3,6 +3,7 @@ import type { NotchPanel } from "./panel-routing"
 
 export type NotchUiMode = "desktop" | "expanded" | "collapsed"
 
+/** When the island or a panel should poll its backing service. */
 export function pollPanel(
   panel: NotchPanel,
   active: NotchPanel,
