@@ -3,6 +3,7 @@ const path = require("path")
 const { app } = require("electron")
 const { runLoopbackOAuth } = require("./oauth-loopback.cjs")
 const kv = require("./snapshot-kv.cjs")
+const { readTokenFile, writeTokenFile, clearTokenFile } = require("./secure-token-file.cjs")
 
 const SPOTIFY_NOW_STALE_MS = 3 * 60 * 1000
 const SPOTIFY_NOW_REFRESH_MS = 15_000
@@ -36,23 +37,15 @@ function tokenPath() {
 }
 
 function readTokens() {
-  try {
-    return JSON.parse(fs.readFileSync(tokenPath(), "utf8"))
-  } catch {
-    return null
-  }
+  return readTokenFile(tokenPath())
 }
 
 function writeTokens(tokens) {
-  fs.writeFileSync(tokenPath(), JSON.stringify(tokens, null, 2), "utf8")
+  writeTokenFile(tokenPath(), tokens)
 }
 
 function clearTokens() {
-  try {
-    fs.unlinkSync(tokenPath())
-  } catch {
-    // ignore
-  }
+  clearTokenFile(tokenPath())
 }
 
 function getConfig() {

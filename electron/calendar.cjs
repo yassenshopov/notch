@@ -12,6 +12,7 @@ let calendarAuthInFlight = false
 const CACHE_MS = 5 * 60 * 1000
 const CALENDAR_DB_STALE_MS = 30 * 60 * 1000
 const kv = require("./snapshot-kv.cjs")
+const { readTokenFile, writeTokenFile, clearTokenFile } = require("./secure-token-file.cjs")
 const CALENDAR_KV_NS = "calendar"
 
 let cache = { at: 0, events: [], calendars: [] }
@@ -21,23 +22,15 @@ function tokenPath() {
 }
 
 function readTokens() {
-  try {
-    return JSON.parse(fs.readFileSync(tokenPath(), "utf8"))
-  } catch {
-    return null
-  }
+  return readTokenFile(tokenPath())
 }
 
 function writeTokens(tokens) {
-  fs.writeFileSync(tokenPath(), JSON.stringify(tokens, null, 2), "utf8")
+  writeTokenFile(tokenPath(), tokens)
 }
 
 function clearTokens() {
-  try {
-    fs.unlinkSync(tokenPath())
-  } catch {
-    // ignore
-  }
+  clearTokenFile(tokenPath())
   cache = { at: 0, events: [], calendars: [] }
 }
 
