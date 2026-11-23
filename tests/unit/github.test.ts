@@ -117,6 +117,8 @@ describe("shortRepoName", () => {
 describe("formatGitHubRepoAge", () => {
   it("formats relative age", () => {
     const recent = new Date(Date.now() - 3 * 86_400_000).toISOString()
-    expect(formatGitHubRepoAge(recent)).toMatch(/day/)
+    expect(formatGitHubRepoAge(recent)).toBe(
+      new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-3, "day"),
+    )
   })
 })

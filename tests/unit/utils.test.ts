@@ -38,22 +38,38 @@ describe("normalizeWindDegrees", () => {
 })
 
 describe("formatDateLong", () => {
-  it("returns a non-empty label", () => {
-    expect(formatDateLong(new Date(2026, 2, 5))).toMatch(/2026|5|March/i)
+  it("matches host locale long date formatting", () => {
+    const d = new Date(2026, 2, 5)
+    expect(formatDateLong(d)).toBe(
+      d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }),
+    )
   })
 })
 
 describe("formatShortDate", () => {
   it("formats date-only keys", () => {
-    expect(formatShortDate("2026-03-05")).toMatch(/Mar/)
+    const iso = "2026-03-05"
+    const d = new Date(`${iso}T12:00:00`)
+    expect(formatShortDate(iso)).toBe(
+      d.toLocaleDateString(undefined, { day: "numeric", month: "short" }),
+    )
   })
 })
 
 describe("formatHour and formatClock", () => {
   it("formats clock strings", () => {
     const iso = "2026-03-05T14:30:00"
-    expect(formatHour(iso, "24h").length).toBeGreaterThan(0)
-    expect(formatClock(iso, "12h")).toMatch(/\d/)
+    const d = new Date(iso)
+    expect(formatHour(iso, "24h")).toBe(
+      d.toLocaleTimeString(undefined, { hour: "numeric", hour12: false }).replace(" ", ""),
+    )
+    expect(formatClock(iso, "12h")).toBe(
+      d.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }),
+    )
   })
 })
 

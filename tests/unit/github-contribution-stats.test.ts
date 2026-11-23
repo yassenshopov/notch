@@ -77,15 +77,27 @@ describe("bestContributionDay", () => {
   })
 })
 
+function sequentialDayWeeks(
+  dayCount: number,
+  startIso: string,
+  countForIndex: (index: number) => number,
+) {
+  const startMs = Date.parse(`${startIso}T12:00:00Z`)
+  return Array.from({ length: dayCount }, (_, i) => {
+    const date = new Date(startMs + i * 86_400_000).toISOString().slice(0, 10)
+    return [{ date, count: countForIndex(i) }]
+  })
+}
+
 describe("trailingYearComparison", () => {
   it("compares halves when enough data", () => {
-    const long = iterContributionDays(weeks)
-    const padded = long.flatMap((d) => [[d]])
-    while (padded.length < 400) {
-      padded.push([{ date: `2025-01-${String(padded.length).padStart(2, "0")}`, count: 1 }])
-    }
+    const padded = sequentialDayWeeks(730, "2023-01-01", (i) => (i < 365 ? 1 : 2))
     const cmp = trailingYearComparison(padded as typeof weeks)
-    expect(cmp.recentTotal).toBeGreaterThan(0)
+    expect(cmp.priorTotal).toBe(365)
+    expect(cmp.recentTotal).toBe(730)
+    expect(cmp.delta).toBe(365)
+    expect(cmp.deltaPct).toBe(100)
+    expect(cmp.hasPrior).toBe(true)
   })
 })
 
