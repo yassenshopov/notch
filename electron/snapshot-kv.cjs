@@ -36,34 +36,86 @@ function syncedAtNum(value) {
   return null
 }
 
-async function readWithMeta(namespace, kind = "default") {
-  if (db.isConfigured() && (await db.ensureReady())) {
-    const sql = db.getSql()
-    if (sql) {
-      try {
-        const rows = await sql`
-          SELECT payload, synced_at
-          FROM app_kv_snapshots
-          WHERE namespace = ${namespace} AND kind = ${kind}
-          LIMIT 1
-        `
-        const row = rows?.[0]
-        if (row?.payload) {
-          return {
-            payload: row.payload,
-            syncedAt: syncedAtNum(row.synced_at),
-          }
-        }
-      } catch (err) {
-        console.warn(`[notch] kv read ${namespace}/${kind}:`, err?.message || err)
+function localMirrorRow(namespace, kind) {
+  const row = readMirror(namespace, kind)
+  if (row?.payload == null) return null
+  return {
+    payload: row.payload,
+    syncedAt: syncedAtNum(row.syncedAt),
+  }
+}
+
+async function readRemoteSyncedAt(namespace, kind = "default") {
+  if (!db.isConfigured() || !(await db.ensureReady())) return null
+  const sql = db.getSql()
+  if (!sql) return null
+  try {
+    const rows = await sql`
+      SELECT synced_at
+      FROM app_kv_snapshots
+      WHERE namespace = ${namespace} AND kind = ${kind}
+      LIMIT 1
+    `
+    const row = rows?.[0]
+    if (row == null) return null
+    return syncedAtNum(row.synced_at)
+  } catch (err) {
+    console.warn(`[notch] kv remote meta ${namespace}/${kind}:`, err?.message || err)
+    return null
+  }
+}
+
+async function readRemotePayload(namespace, kind = "default") {
+  if (!db.isConfigured() || !(await db.ensureReady())) return null
+  const sql = db.getSql()
+  if (!sql) return null
+  try {
+    const rows = await sql`
+      SELECT payload, synced_at
+      FROM app_kv_snapshots
+      WHERE namespace = ${namespace} AND kind = ${kind}
+      LIMIT 1
+    `
+    const row = rows?.[0]
+    if (row?.payload == null) return null
+    const syncedAt = syncedAtNum(row.synced_at)
+    writeMirror(namespace, kind, row.payload, syncedAt ?? Date.now())
+    return { payload: row.payload, syncedAt }
+  } catch (err) {
+    console.warn(`[notch] kv read ${namespace}/${kind}:`, err?.message || err)
+    return null
+  }
+}
+
+/**
+ * @param {string} namespace
+ * @param {string} [kind]
+ * @param {{ preferRemote?: boolean }} [options]
+ */
+async function readWithMeta(namespace, kind = "default", options = {}) {
+  if (!options.preferRemote) {
+    const local = localMirrorRow(namespace, kind)
+    if (local) return local
+  }
+
+  const remote = await readRemotePayload(namespace, kind)
+  if (remote) return remote
+
+  if (!options.preferRemote) {
+    const local = readMirror(namespace, kind)
+    if (local?.payload != null) {
+      return {
+        payload: local.payload,
+        syncedAt: syncedAtNum(local.syncedAt),
       }
     }
   }
-  return readMirror(namespace, kind)
+
+  return null
 }
 
-async function read(namespace, kind = "default") {
-  const row = await readWithMeta(namespace, kind)
+async function read(namespace, kind = "default", options = {}) {
+  const row = await readWithMeta(namespace, kind, options)
   return row?.payload ?? null
 }
 
@@ -117,6 +169,7 @@ async function remove(namespace, kind = "default") {
 module.exports = {
   read,
   readWithMeta,
+  readRemoteSyncedAt,
   write,
   remove,
 }

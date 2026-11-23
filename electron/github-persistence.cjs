@@ -20,6 +20,9 @@ function writeFileStore(payload) {
 }
 
 async function readLatestLogin() {
+  const file = readFileStore()
+  if (file?.login) return file.login
+
   if (!db.isConfigured() || !(await db.ensureReady())) return null
   const sql = db.getSql()
   if (!sql) return null
@@ -29,6 +32,18 @@ async function readLatestLogin() {
     LIMIT 1
   `
   return rows?.[0]?.login ?? null
+}
+
+function upsertFileSnapshot(login, kind, payload, syncedAt) {
+  if (!login || !kind || payload == null) return
+  const file = readFileStore()
+  const at = Number(syncedAt) || Date.now()
+  const next = {
+    login,
+    syncedAt: file?.login === login ? Math.max(Number(file.syncedAt) || 0, at) : at,
+    snapshots: { ...(file?.login === login ? file.snapshots : {}), [kind]: payload },
+  }
+  writeFileStore(next)
 }
 
 function syncedAtFromPayload(payload, rowSyncedAt) {
@@ -42,46 +57,86 @@ function syncedAtFromPayload(payload, rowSyncedAt) {
   return null
 }
 
-async function readSnapshotWithMeta(login, kind) {
-  const key = login || (await readLatestLogin())
+async function readRemoteSnapshotSyncedAt(login, kind) {
+  if (!login || !kind || !db.isConfigured() || !(await db.ensureReady())) return null
+  const sql = db.getSql()
+  if (!sql) return null
+  try {
+    const rows = await sql`
+      SELECT synced_at
+      FROM github_snapshots
+      WHERE login = ${login} AND kind = ${kind}
+      LIMIT 1
+    `
+    const row = rows?.[0]
+    if (row == null) return null
+    return syncedAtFromPayload(null, row.synced_at)
+  } catch {
+    return null
+  }
+}
 
-  if (db.isConfigured() && (await db.ensureReady())) {
-    const sql = db.getSql()
-    if (sql && key && kind) {
-      const rows = await sql`
-        SELECT payload, synced_at
-        FROM github_snapshots
-        WHERE login = ${key} AND kind = ${kind}
-        LIMIT 1
-      `
-      const row = rows?.[0]
-      if (row?.payload) {
-        return {
-          payload: row.payload,
-          syncedAt: syncedAtFromPayload(row.payload, row.synced_at),
-        }
+/**
+ * @param {string | null | undefined} login
+ * @param {string} kind
+ * @param {{ preferRemote?: boolean }} [options]
+ */
+async function readSnapshotWithMeta(login, kind, options = {}) {
+  const key = login || (await readLatestLogin())
+  if (!key || !kind) return null
+
+  if (!options.preferRemote) {
+    const file = readFileStore()
+    if (file?.login === key && file?.snapshots && typeof file.snapshots[kind] === "object") {
+      const payload = file.snapshots[kind]
+      return {
+        payload,
+        syncedAt: syncedAtFromPayload(payload, file.syncedAt),
       }
     }
   }
 
-  const file = readFileStore()
-  if (
-    file?.login === key &&
-    file?.snapshots &&
-    typeof file.snapshots[kind] === "object"
-  ) {
-    const payload = file.snapshots[kind]
-    return {
-      payload,
-      syncedAt: syncedAtFromPayload(payload, file.syncedAt),
+  if (db.isConfigured() && (await db.ensureReady())) {
+    const sql = db.getSql()
+    if (sql) {
+      try {
+        const rows = await sql`
+          SELECT payload, synced_at
+          FROM github_snapshots
+          WHERE login = ${key} AND kind = ${kind}
+          LIMIT 1
+        `
+        const row = rows?.[0]
+        if (row?.payload) {
+          const syncedAt = syncedAtFromPayload(row.payload, row.synced_at)
+          upsertFileSnapshot(key, kind, row.payload, syncedAt)
+          return {
+            payload: row.payload,
+            syncedAt,
+          }
+        }
+      } catch (err) {
+        console.warn("[notch] github read snapshot (neon):", err?.message || err)
+      }
+    }
+  }
+
+  if (!options.preferRemote) {
+    const file = readFileStore()
+    if (file?.login === key && file?.snapshots && typeof file.snapshots[kind] === "object") {
+      const payload = file.snapshots[kind]
+      return {
+        payload,
+        syncedAt: syncedAtFromPayload(payload, file.syncedAt),
+      }
     }
   }
 
   return null
 }
 
-async function readSnapshot(login, kind) {
-  const meta = await readSnapshotWithMeta(login, kind)
+async function readSnapshot(login, kind, options = {}) {
+  const meta = await readSnapshotWithMeta(login, kind, options)
   return meta?.payload ?? null
 }
 
@@ -199,6 +254,7 @@ async function clearGithubCache() {
 module.exports = {
   readSnapshot,
   readSnapshotWithMeta,
+  readRemoteSnapshotSyncedAt,
   writeSnapshot,
   writeStatusBundle,
   readCachedStatus,

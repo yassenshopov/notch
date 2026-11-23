@@ -20,11 +20,11 @@ function fileMtime() {
 }
 
 async function pullFromNeonIfNewer() {
-  const row = await kv.readWithMeta(NS, KIND)
-  if (!row?.payload || typeof row.payload !== "object") return false
-  const dbAt = row.syncedAt ?? 0
   const fileAt = fileMtime()
-  if (dbAt <= fileAt) return false
+  const dbAt = (await kv.readRemoteSyncedAt(NS, KIND)) ?? 0
+  if (!dbAt || dbAt <= fileAt) return false
+  const row = await kv.readWithMeta(NS, KIND, { preferRemote: true })
+  if (!row?.payload || typeof row.payload !== "object") return false
   fs.writeFileSync(settingsPath(), JSON.stringify(row.payload, null, 2), "utf8")
   return true
 }
@@ -35,7 +35,7 @@ async function pushToNeon(settings) {
 }
 
 async function bootstrap() {
-  const row = await kv.readWithMeta(NS, KIND)
+  let row = null
   let fileExists = false
   try {
     fileExists = fs.statSync(settingsPath()).isFile()
@@ -43,14 +43,21 @@ async function bootstrap() {
     fileExists = false
   }
 
-  if (!fileExists && row?.payload) {
-    fs.writeFileSync(settingsPath(), JSON.stringify(row.payload, null, 2), "utf8")
-    return { source: "neon" }
+  if (!fileExists) {
+    row = await kv.readWithMeta(NS, KIND)
+    if (row?.payload) {
+      fs.writeFileSync(settingsPath(), JSON.stringify(row.payload, null, 2), "utf8")
+      return { source: "neon" }
+    }
   }
 
   if (fileExists) {
     const pulled = await pullFromNeonIfNewer()
     if (pulled) return { source: "neon" }
+  }
+
+  if (fileExists) {
+    row = await kv.readWithMeta(NS, KIND)
     if (!row?.payload) {
       try {
         const file = JSON.parse(fs.readFileSync(settingsPath(), "utf8"))

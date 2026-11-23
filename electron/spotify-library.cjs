@@ -5,7 +5,11 @@ const path = require("path")
 const { app } = require("electron")
 const { Pool } = require("@neondatabase/serverless")
 const db = require("./db.cjs")
+const kv = require("./snapshot-kv.cjs")
 const spotifyApi = require("./spotify.cjs")
+
+const INSIGHTS_CACHE_NS = "spotify_library"
+const INSIGHTS_CACHE_STALE_MS = 30 * 60_000
 
 const EXPORT_GLOB_PREFIXES = ["Streaming_History_Audio", "Streaming_History_Video"]
 const INSERT_BATCH = 400
@@ -453,6 +457,17 @@ function yearBounds(year) {
 }
 
 async function activityInsights(options = {}) {
+  const chartYear = Number(options.year) || new Date().getFullYear()
+  const force = options.force === true
+
+  if (!force) {
+    const cached = await kv.readWithMeta(INSIGHTS_CACHE_NS, `insights:${chartYear}`)
+    const at = cached?.syncedAt ?? 0
+    if (cached?.payload && Date.now() - at < INSIGHTS_CACHE_STALE_MS) {
+      return cached.payload
+    }
+  }
+
   const status = await libraryStatus()
   if (!status.ready || status.totalStreams === 0) {
     return {
@@ -473,7 +488,6 @@ async function activityInsights(options = {}) {
   }
 
   const sql = db.getSql()
-  const chartYear = Number(options.year) || new Date().getFullYear()
   const bounds = yearBounds(chartYear)
 
   const yearRows = await sql`
@@ -658,7 +672,7 @@ async function activityInsights(options = {}) {
   const totalMs = Number(totals?.[0]?.ms || 0)
   const totalMinutes = listeningMinutesFromMs(totalMs)
 
-  return {
+  const result = {
     ...status,
     connected: true,
     years,
@@ -697,6 +711,9 @@ async function activityInsights(options = {}) {
       artUrl: r.track_id ? artByTrackId[r.track_id] || null : null,
     })),
   }
+
+  await kv.write(INSIGHTS_CACHE_NS, `insights:${chartYear}`, result)
+  return result
 }
 
 async function dayDetail(dateKey) {

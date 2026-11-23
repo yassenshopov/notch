@@ -51,29 +51,43 @@ async function importFileIndexToDb(filePayload) {
   })
 }
 
-async function readActivityIndex() {
-  const fileFallback = readActivityIndexFile()
-
-  if (!db.isConfigured()) {
-    return fileFallback
-  }
-
+async function readAthleteSyncMeta(athleteId) {
+  if (!db.isConfigured() || !(await db.ensureReady())) return null
+  const sql = db.getSql()
+  if (!sql) return null
   try {
-    const ready = await db.ensureReady()
-    if (!ready) {
-      return fileFallback
+    if (athleteId != null) {
+      const rows = await sql`
+        SELECT athlete_id, synced_at
+        FROM strava_athlete_sync
+        WHERE athlete_id = ${String(athleteId)}
+        LIMIT 1
+      `
+      return rows?.[0] ?? null
     }
-
-    const sql = db.getSql()
-    if (!sql) return fileFallback
-
-    const athleteRows = await sql`
+    const rows = await sql`
       SELECT athlete_id, synced_at
       FROM strava_athlete_sync
       ORDER BY updated_at DESC
       LIMIT 1
     `
-    const meta = athleteRows?.[0]
+    return rows?.[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+async function readActivityIndexFromNeon(fileFallback) {
+  if (!db.isConfigured()) return fileFallback
+
+  try {
+    const ready = await db.ensureReady()
+    if (!ready) return fileFallback
+
+    const sql = db.getSql()
+    if (!sql) return fileFallback
+
+    const meta = await readAthleteSyncMeta(fileFallback?.athleteId)
     if (!meta?.athlete_id) {
       if (fileFallback) {
         await importFileIndexToDb(fileFallback).catch((err) => {
@@ -95,15 +109,36 @@ async function readActivityIndex() {
       .map((row) => row.payload)
       .filter((row) => row && typeof row === "object")
 
-    return {
+    const next = {
       athleteId: meta.athlete_id,
       syncedAt: Number(meta.synced_at) || null,
       activities,
     }
+    writeActivityIndexFile(next)
+    return next
   } catch (err) {
     console.warn("[notch] strava readActivityIndex (neon) failed:", err?.message || err)
     return fileFallback
   }
+}
+
+/**
+ * @param {{ forceRemote?: boolean }} [options]
+ */
+async function readActivityIndex(options = {}) {
+  const fileFallback = readActivityIndexFile()
+  const forceRemote = options.forceRemote === true
+
+  if (!forceRemote && fileFallback?.activities?.length) {
+    const fileAt = Number(fileFallback.syncedAt) || 0
+    const remoteMeta = await readAthleteSyncMeta(fileFallback.athleteId)
+    const remoteAt = remoteMeta?.synced_at != null ? Number(remoteMeta.synced_at) || 0 : 0
+    if (!remoteMeta?.athlete_id || remoteAt <= fileAt) {
+      return fileFallback
+    }
+  }
+
+  return readActivityIndexFromNeon(fileFallback)
 }
 
 async function upsertActivityChunk(sql, athleteId, chunk) {
@@ -189,25 +224,55 @@ async function writeHeatmapCache(athleteId, heatmap) {
   }
 }
 
+async function readRemoteStatusSyncedAt() {
+  if (!db.isConfigured() || !(await db.ensureReady())) return null
+  const sql = db.getSql()
+  if (!sql) return null
+  try {
+    const rows = await sql`
+      SELECT synced_at
+      FROM strava_status_snapshot
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `
+    const row = rows?.[0]
+    if (row?.synced_at == null) return null
+    return Number(row.synced_at) || null
+  } catch {
+    return null
+  }
+}
+
 async function readStatusSnapshot() {
   let fileSyncedAt = null
+  let fileAthleteId = null
   let payload = null
   try {
     const file = JSON.parse(fs.readFileSync(statusSnapshotPath(), "utf8"))
     payload = file?.payload ?? null
     fileSyncedAt = file?.syncedAt ?? null
+    fileAthleteId = file?.athleteId ?? null
   } catch {
+    // ignore
+  }
+
+  if (payload) {
+    const remoteAt = await readRemoteStatusSyncedAt()
+    const fileAt = Number(fileSyncedAt) || 0
+    if (remoteAt == null || remoteAt <= fileAt) {
+      return { payload, syncedAt: fileSyncedAt, athleteId: fileAthleteId }
+    }
   }
 
   if (!db.isConfigured() || !(await db.ensureReady())) {
     if (!payload) return null
-    return { payload, syncedAt: fileSyncedAt }
+    return { payload, syncedAt: fileSyncedAt, athleteId: fileAthleteId }
   }
 
   const sql = db.getSql()
   if (!sql) {
     if (!payload) return null
-    return { payload, syncedAt: fileSyncedAt }
+    return { payload, syncedAt: fileSyncedAt, athleteId: fileAthleteId }
   }
 
   try {
@@ -220,14 +285,20 @@ async function readStatusSnapshot() {
     const row = rows?.[0]
     if (row?.payload) {
       const syncedAt = Number(row.synced_at) || fileSyncedAt
-      return { payload: row.payload, syncedAt, athleteId: row.athlete_id }
+      const key = row.athlete_id
+      fs.writeFileSync(
+        statusSnapshotPath(),
+        JSON.stringify({ athleteId: key, syncedAt, payload: row.payload }),
+        "utf8",
+      )
+      return { payload: row.payload, syncedAt, athleteId: key }
     }
   } catch (err) {
     console.warn("[notch] strava readStatusSnapshot (neon) failed:", err?.message || err)
   }
 
   if (!payload) return null
-  return { payload, syncedAt: fileSyncedAt }
+  return { payload, syncedAt: fileSyncedAt, athleteId: fileAthleteId }
 }
 
 async function writeStatusSnapshot(athleteId, payload) {
