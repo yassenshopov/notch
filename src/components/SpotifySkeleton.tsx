@@ -86,12 +86,10 @@ function MonthlyChartSkeleton() {
   return (
     <div className="min-w-0">
       <SectionLabelSkeleton />
-      <div className="mt-3 rounded-xl border border-black/[0.05] bg-black/[0.02] p-4 dark:border-white/8 dark:bg-white/[0.02]">
-        <div className="flex h-36 items-end gap-1.5 sm:gap-2">
-          {Array.from({ length: 12 }, (_, i) => (
-            <MonthlyBarPlaceholder key={i} index={i} />
-          ))}
-        </div>
+      <div className="mt-3 flex h-36 items-stretch gap-1.5 sm:gap-2">
+        {Array.from({ length: 12 }, (_, i) => (
+          <MonthlyBarPlaceholder key={i} index={i} />
+        ))}
       </div>
     </div>
   )

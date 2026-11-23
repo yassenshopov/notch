@@ -81,7 +81,7 @@ function useLiveActivityRotation(
   dwellMs: number,
 ): LiveActivity | null {
   const key = activities.map((a) => a.id).join("|")
-  const list = useMemo(() => activities, [key])
+  const list = useMemo(() => activities, [key, activities])
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
@@ -94,7 +94,7 @@ function useLiveActivityRotation(
       setIndex((i) => (i + 1) % list.length)
     }, Math.max(3_000, dwellMs))
     return () => window.clearInterval(id)
-  }, [enabled, list, dwellMs, key])
+  }, [enabled, list, dwellMs])
 
   if (list.length === 0) return null
   return list[index % list.length] ?? list[0]

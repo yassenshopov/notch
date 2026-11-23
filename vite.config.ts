@@ -37,6 +37,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined
+          if (id.includes("@react-three")) return "react-three"
+          if (id.includes("three/examples") || id.includes("three/addons")) {
+            return "three-addons"
+          }
           if (id.includes("three")) return "three"
           if (id.includes("leaflet")) return "leaflet"
           if (id.includes("motion")) return "motion"
