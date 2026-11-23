@@ -1,3 +1,4 @@
+# Lint + production build only. Neon verify, Electron expand smoke, and NSIS dist run locally.
 name: CI
 
 on:
@@ -23,3 +24,5 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+      - run: npm run check:bundle

@@ -35,9 +35,15 @@ export function useSpotify() {
 
   useEffect(() => {
     void refresh()
-    const id = window.setInterval(() => void refresh(), settings.spotify.pollIntervalMs)
+    const fast = settings.spotify.pollIntervalMs
+    const interval = !status.configured
+      ? 120_000
+      : status.connected
+        ? fast
+        : Math.max(fast, 60_000)
+    const id = window.setInterval(() => void refresh(), interval)
     return () => window.clearInterval(id)
-  }, [refresh, settings.spotify.pollIntervalMs])
+  }, [refresh, settings.spotify.pollIntervalMs, status.configured, status.connected])
 
   useEffect(() => {
     if (!status.isPlaying || !status.durationMs) return

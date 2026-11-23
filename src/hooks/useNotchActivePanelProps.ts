@@ -115,7 +115,7 @@ export function useNotchActivePanelProps(
     refresh: refreshPi,
   } = usePi(piPoll)
 
-  const cursorPoll = pollPanel("cursor", activePanel, mode, true) || overviewPoll
+  const cursorPoll = pollPanel("cursor", activePanel, mode, false) || overviewPoll
   const {
     status: cursorStatus,
     loading: cursorLoading,

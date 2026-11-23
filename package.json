@@ -21,6 +21,7 @@
     "lint": "oxlint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
     "preview": "vite preview",
     "verify:expand": "npm run build && cross-env NOTCH_VERIFY_EXPAND=1 electron .",
     "verify:neon": "node scripts/verify-neon.mjs",
