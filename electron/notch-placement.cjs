@@ -191,24 +191,6 @@ function boundsForPlacement(placement, contentW, contentH) {
   }
 }
 
-function slotFromPointer(edge, display, shellW, shellH, screenX, screenY, axisOffset) {
-  const db = display.bounds
-  const count = grid.slotCount(edge)
-  const max = count - 1
-
-  if (edge === "top") {
-    const travel = Math.max(0, db.width - shellW)
-    const x = clamp(db.x, screenX - axisOffset, db.x + travel)
-    const frac = travel > 0 ? (x - db.x) / travel : 0.5
-    return grid.clampSlot(edge, Math.round(frac * max))
-  }
-
-  const travel = Math.max(0, db.height - shellH)
-  const y = clamp(db.y, screenY - axisOffset, db.y + travel)
-  const frac = travel > 0 ? (y - db.y) / travel : 0.5
-  return grid.clampSlot(edge, Math.round(frac * max))
-}
-
 function edgeFromPointer(screenX, screenY, currentEdge) {
   const display = screen.getDisplayNearestPoint({ x: screenX, y: screenY })
   const db = display.bounds

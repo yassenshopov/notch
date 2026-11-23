@@ -365,7 +365,7 @@ function dedupeEvents(events) {
       : event.id
     if (seen.has(key)) continue
     seen.add(key)
-    const { iCalUID, ...rest } = event
+    const { iCalUID: _iCalUID, ...rest } = event
     out.push(rest)
   }
 

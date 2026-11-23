@@ -39,12 +39,6 @@ function liveRowHash({ sourceType, playedAt, trackUri, trackId, msPlayed = 0 }) 
   return crypto.createHash("sha256").update(payload).digest("hex")
 }
 
-function trackIdFromUri(uri) {
-  if (!uri || typeof uri !== "string") return null
-  const parts = uri.split(":")
-  return parts[parts.length - 1] || null
-}
-
 function contentKindFromUri(uri) {
   if (!uri || typeof uri !== "string") return "audio"
   if (uri.includes(":episode:")) return "podcast"
