@@ -43,7 +43,7 @@ Settings, weather detail, Spotify, GitHub, Strava, calendar, air quality, market
 - Strava API (OAuth loopback `127.0.0.1:43111`)
 - Google Calendar API (OAuth loopback `127.0.0.1:43112`)
 - Year wallpaper PNG generation (`pngjs` in the main process)
-- Optional [Neon](https://neon.tech) Postgres (`DATABASE_URL`) for Strava activity cache (migrates from local JSON on first sync)
+- Optional [Neon](https://neon.tech) Postgres (`DATABASE_URL`) for settings sync, GitHub/Strava/calendar/markets snapshots, Spotify listening history, and SSH stats (local JSON/kv-mirror fallbacks; OAuth tokens stay on disk only)
 
 ## Prerequisites
 
@@ -136,7 +136,7 @@ npm run test:coverage
 npm run dist    # Windows NSIS installer → release/
 ```
 
-GitHub Actions runs `npm run lint`, `npm test`, `npm run test:coverage`, and `npm run build` on pushes and pull requests to `main`.
+GitHub Actions runs `npm run lint`, `npm run test:coverage`, `npm run build`, and `npm run check:bundle` on pushes and pull requests to `main`. It does not run `npm run verify:neon`, `npm run verify:expand`, or `npm run dist` — run those locally (or add repo secrets for Neon in CI).
 
 Use **`npm run dev`** or **`npm start`** for wallpaper regen and OAuth — not the browser tab alone.
 

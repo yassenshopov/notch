@@ -4,7 +4,19 @@ const { contextBridge, ipcRenderer } = require("electron")
 const cartoApiKey =
   process.env.CARTO_API_KEY || process.env.VITE_CARTO_API_KEY || ""
 
+const verifyExpandBridge =
+  process.env.NOTCH_VERIFY_EXPAND === "1"
+    ? {
+        onTestExpand: (cb) => {
+          const handler = () => cb()
+          ipcRenderer.on("notch:test-expand", handler)
+          return () => ipcRenderer.removeListener("notch:test-expand", handler)
+        },
+      }
+    : {}
+
 contextBridge.exposeInMainWorld("notch", {
+  ...verifyExpandBridge,
   desktop: {
     open: (panel) => ipcRenderer.invoke("desktop:open", panel),
     onNavigate: (cb) => {
@@ -35,11 +47,6 @@ contextBridge.exposeInMainWorld("notch", {
     const handler = () => cb()
     ipcRenderer.on("notch:escape", handler)
     return () => ipcRenderer.removeListener("notch:escape", handler)
-  },
-  onTestExpand: (cb) => {
-    const handler = () => cb()
-    ipcRenderer.on("notch:test-expand", handler)
-    return () => ipcRenderer.removeListener("notch:test-expand", handler)
   },
   platform: process.platform,
   spotify: {

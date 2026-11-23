@@ -662,6 +662,9 @@ function registerServicesIpc(ipcMain, deps) {
   ipcMain.handle("settings:get", () => settingsStore.readSettings())
 
   ipcMain.handle("settings:set", (_event, partial) => {
+    if (!partial || typeof partial !== "object" || Array.isArray(partial)) {
+      throw new Error("invalid_settings")
+    }
     const next = settingsStore.writeSettings(partial)
     if (partial && Object.prototype.hasOwnProperty.call(partial, "launchAtLogin")) {
       syncLaunchAtLogin(resolveLaunchAtLogin(next))

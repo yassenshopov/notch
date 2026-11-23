@@ -2,7 +2,7 @@ const fs = require("fs")
 const path = require("path")
 require("dotenv").config({ path: path.join(__dirname, "../.env") })
 const lifeAppEnv = path.resolve(__dirname, "../../life-app/.env")
-if (fs.existsSync(lifeAppEnv)) {
+if (process.env.NOTCH_LOAD_LIFE_APP_ENV === "1" && fs.existsSync(lifeAppEnv)) {
   require("dotenv").config({ path: lifeAppEnv, override: false })
 }
 
@@ -389,18 +389,16 @@ function resolveLaunchAtLogin(saved) {
 
 function syncLaunchAtLogin(enabled = resolveLaunchAtLogin(settingsStore.readSettings())) {
   const openAtLogin = Boolean(enabled)
-  // Packaged: register the built app. Unpackaged: register Electron pointing at the
-  // project root (loads dist via main.cjs — do not pass ELECTRON_DEV here).
-  if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin })
-  } else {
-    const appPath = app.getAppPath()
-    app.setLoginItemSettings({
-      openAtLogin,
-      path: process.execPath,
-      args: [appPath],
-    })
+  if (!app.isPackaged) {
+    if (openAtLogin) {
+      console.warn(
+        "[notch] Launch at login requires a packaged install (npm run dist). Ignoring while running from source.",
+      )
+    }
+    app.setLoginItemSettings({ openAtLogin: false })
+    return
   }
+  app.setLoginItemSettings({ openAtLogin })
 }
 
 registerServicesIpc(ipcMain, {
