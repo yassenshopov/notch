@@ -1,7 +1,7 @@
-const http = require("http")
 const fs = require("fs")
 const path = require("path")
-const { shell, app } = require("electron")
+const { app } = require("electron")
+const { runLoopbackOAuth } = require("./oauth-loopback.cjs")
 const { createSmartCache } = require("./smart-cache.cjs")
 const stravaStore = require("./strava-persistence.cjs")
 const kv = require("./snapshot-kv.cjs")
@@ -9,6 +9,7 @@ const kv = require("./snapshot-kv.cjs")
 const API = "https://www.strava.com/api/v3"
 const SCOPES = "read,activity:read_all"
 const CALLBACK_PORT = 43111
+let stravaAuthInFlight = false
 
 const cache = createSmartCache()
 const STATUS_TTL_MS = 3 * 60_000
@@ -718,81 +719,44 @@ async function status(options = {}) {
 }
 
 function startAuth() {
-  return new Promise((resolve, reject) => {
-    const { clientId, redirectUri } = getConfig()
-    if (!isConfigured()) {
-      reject(new Error("Strava credentials missing in .env"))
-      return
-    }
+  const { clientId, redirectUri } = getConfig()
+  if (!isConfigured()) {
+    return Promise.reject(new Error("Strava credentials missing in .env"))
+  }
 
-    const server = http.createServer(async (req, res) => {
-      try {
-        const url = new URL(req.url, `http://127.0.0.1:${CALLBACK_PORT}`)
-        if (url.pathname !== "/callback") {
-          res.writeHead(404)
-          res.end()
-          return
-        }
-
-        const error = url.searchParams.get("error")
-        const code = url.searchParams.get("code")
-
-        if (error || !code) {
-          res.writeHead(400, { "Content-Type": "text/html" })
-          res.end("<h1>Strava auth failed</h1><p>You can close this window.</p>")
-          server.close()
-          reject(new Error(error || "missing_code"))
-          return
-        }
-
-        const tokens = await exchangeToken({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: redirectUri,
-        })
-
-        writeTokens({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_at: Date.now() + (tokens.expires_in ?? 21600) * 1000,
-          athlete_id: stravaObjectId(tokens.athlete),
-        })
-
-        res.writeHead(200, { "Content-Type": "text/html" })
-        res.end(
-          "<h1>Connected to Strava</h1><p>You can close this window and return to notch.</p>",
-        )
-        server.close()
-        resolve(true)
-      } catch (err) {
-        res.writeHead(500, { "Content-Type": "text/html" })
-        res.end("<h1>Auth error</h1><p>You can close this window.</p>")
-        server.close()
-        reject(err)
-      }
-    })
-
-    server.listen(CALLBACK_PORT, "127.0.0.1", () => {
+  return runLoopbackOAuth({
+    port: CALLBACK_PORT,
+    getInFlight: () => stravaAuthInFlight,
+    setInFlight: (value) => {
+      stravaAuthInFlight = value
+    },
+    successHtml:
+      "<h1>Connected to Strava</h1><p>You can close this window and return to notch.</p>",
+    failHtml: "<h1>Strava auth failed</h1><p>You can close this window.</p>",
+    buildAuthorizeUrl: (state) => {
       const params = new URLSearchParams({
         client_id: clientId,
         response_type: "code",
         redirect_uri: redirectUri,
         approval_prompt: "auto",
         scope: SCOPES,
+        state,
       })
-      void shell.openExternal(`https://www.strava.com/oauth/authorize?${params}`)
-    })
-
-    server.on("error", (err) => reject(err))
-
-    setTimeout(() => {
-      try {
-        server.close()
-      } catch {
-        // ignore
-      }
-      reject(new Error("Auth timed out"))
-    }, 5 * 60 * 1000)
+      return `https://www.strava.com/oauth/authorize?${params}`
+    },
+    onCallback: async (code) => {
+      const tokens = await exchangeToken({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+      })
+      writeTokens({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at: Date.now() + (tokens.expires_in ?? 21600) * 1000,
+        athlete_id: stravaObjectId(tokens.athlete),
+      })
+    },
   })
 }
 

@@ -1,7 +1,7 @@
-const http = require("http")
 const fs = require("fs")
 const path = require("path")
-const { shell, app } = require("electron")
+const { app } = require("electron")
+const { runLoopbackOAuth } = require("./oauth-loopback.cjs")
 const kv = require("./snapshot-kv.cjs")
 
 const SPOTIFY_NOW_STALE_MS = 3 * 60 * 1000
@@ -29,6 +29,7 @@ const SCOPES = [
 ].join(" ")
 
 const CALLBACK_PORT = 43110
+let spotifyAuthInFlight = false
 
 function tokenPath() {
   return path.join(app.getPath("userData"), "spotify-tokens.json")
@@ -545,84 +546,44 @@ async function playbackAction(action, options = {}) {
 }
 
 function startAuth() {
-  return new Promise((resolve, reject) => {
-    const { clientId, redirectUri } = getConfig()
-    if (!isConfigured()) {
-      reject(new Error("Spotify credentials missing in .env"))
-      return
-    }
+  const { clientId, redirectUri } = getConfig()
+  if (!isConfigured()) {
+    return Promise.reject(new Error("Spotify credentials missing in .env"))
+  }
 
-    const server = http.createServer(async (req, res) => {
-      try {
-        const url = new URL(req.url, `http://127.0.0.1:${CALLBACK_PORT}`)
-        if (url.pathname !== "/callback") {
-          res.writeHead(404)
-          res.end()
-          return
-        }
-
-        const error = url.searchParams.get("error")
-        const code = url.searchParams.get("code")
-
-        if (error || !code) {
-          res.writeHead(400, { "Content-Type": "text/html" })
-          res.end("<h1>Spotify auth failed</h1><p>You can close this window.</p>")
-          server.close()
-          reject(new Error(error || "missing_code"))
-          return
-        }
-
-        const tokens = await exchangeToken({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: redirectUri,
-        })
-
-        writeTokens({
-          access_token: tokens.access_token,
-          refresh_token: tokens.refresh_token,
-          expires_in: tokens.expires_in,
-          expires_at: Date.now() + tokens.expires_in * 1000,
-        })
-
-        res.writeHead(200, { "Content-Type": "text/html" })
-        res.end(
-          "<h1>Connected to Spotify</h1><p>You can close this window and return to notch.</p>",
-        )
-        server.close()
-        resolve(true)
-      } catch (err) {
-        res.writeHead(500, { "Content-Type": "text/html" })
-        res.end("<h1>Auth error</h1><p>You can close this window.</p>")
-        server.close()
-        reject(err)
-      }
-    })
-
-    server.listen(CALLBACK_PORT, "127.0.0.1", () => {
+  return runLoopbackOAuth({
+    port: CALLBACK_PORT,
+    getInFlight: () => spotifyAuthInFlight,
+    setInFlight: (value) => {
+      spotifyAuthInFlight = value
+    },
+    successHtml:
+      "<h1>Connected to Spotify</h1><p>You can close this window and return to notch.</p>",
+    failHtml: "<h1>Spotify auth failed</h1><p>You can close this window.</p>",
+    buildAuthorizeUrl: (state) => {
       const params = new URLSearchParams({
         response_type: "code",
         client_id: clientId,
         scope: SCOPES,
         redirect_uri: redirectUri,
         show_dialog: "true",
+        state,
       })
-      void shell.openExternal(`https://accounts.spotify.com/authorize?${params}`)
-    })
-
-    server.on("error", (err) => {
-      reject(err)
-    })
-
-    // Safety timeout
-    setTimeout(() => {
-      try {
-        server.close()
-      } catch {
-        // ignore
-      }
-      reject(new Error("Auth timed out"))
-    }, 5 * 60 * 1000)
+      return `https://accounts.spotify.com/authorize?${params}`
+    },
+    onCallback: async (code) => {
+      const tokens = await exchangeToken({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+      })
+      writeTokens({
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_in: tokens.expires_in,
+        expires_at: Date.now() + tokens.expires_in * 1000,
+      })
+    },
   })
 }
 

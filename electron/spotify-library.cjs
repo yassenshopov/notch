@@ -1,6 +1,8 @@
 const crypto = require("crypto")
 const fs = require("fs")
+const os = require("os")
 const path = require("path")
+const { app } = require("electron")
 const { Pool } = require("@neondatabase/serverless")
 const db = require("./db.cjs")
 const spotifyApi = require("./spotify.cjs")
@@ -273,11 +275,30 @@ async function dedupeLiveAgainstExport(client) {
   return res.rowCount ?? 0
 }
 
-async function importDirectory(dir, options = {}) {
-  const sourcePath = path.resolve(String(dir || "").trim())
-  if (!sourcePath || !fs.existsSync(sourcePath)) {
-    return { ok: false, error: "directory_not_found", path: sourcePath }
+function resolveImportDirectory(dir) {
+  const resolved = path.resolve(String(dir || "").trim())
+  if (!resolved || !fs.existsSync(resolved)) {
+    return { ok: false, error: "directory_not_found", path: resolved }
   }
+  const bases = [os.homedir(), app.getPath("userData")]
+  const envDir = process.env.SPOTIFY_EXTENDED_HISTORY_DIR
+  if (envDir) bases.push(path.resolve(envDir))
+  const allowed = bases.some((base) => {
+    const rel = path.relative(path.resolve(base), resolved)
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
+  })
+  if (!allowed) {
+    return { ok: false, error: "import_path_not_allowed", path: resolved }
+  }
+  return { ok: true, path: resolved }
+}
+
+async function importDirectory(dir, options = {}) {
+  const resolved = resolveImportDirectory(dir)
+  if (!resolved.ok) {
+    return { ok: false, error: resolved.error, path: resolved.path }
+  }
+  const sourcePath = resolved.path
   if (!db.isConfigured() || !(await db.ensureReady())) {
     return { ok: false, error: "database_not_configured" }
   }
